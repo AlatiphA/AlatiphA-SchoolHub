@@ -1,6 +1,6 @@
 {
-  "name": "AlatiphA SchoolFlow",
-  "short_name": "SchoolFlow",
+  "name": "AlatiphA SchoolHub",
+  "short_name": "SchoolHub",
   "description": "Multi-teacher school report card system with roles and cloud sync.",
   "id": "/",
   "start_url": "./index.html",

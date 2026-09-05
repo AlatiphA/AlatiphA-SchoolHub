@@ -1,5 +1,5 @@
-// AlatiphA SchoolFlow — app-4.js
-const APP_VERSION = 'v4';
+// AlatiphA SchoolHub — app-4.js
+const APP_VERSION = 'v5';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -25,7 +25,67 @@ let currentUid = null;
 let currentSchoolId = null;
 let currentRole = null;   // 'headteacher' | 'teacher'
 let currentStatus = null; // 'active' | 'pending'
+let currentAssignedClassIds = [];
+let currentAssignedSubjectIds = [];
+let currentUserData = null;
 function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}` : base; }
+function isHeadTeacher() {
+  return currentRole === 'headteacher' && currentStatus === 'active';
+}
+
+function isTeacher() {
+  return currentRole === 'teacher' && currentStatus === 'active';
+}
+
+function accessibleClassIds() {
+  if (isHeadTeacher()) return DB.get(KEYS.classes, []).map(c => c.id);
+  if (isTeacher()) return Array.isArray(currentAssignedClassIds) ? currentAssignedClassIds : [];
+  return [];
+}
+
+function getAccessibleClasses() {
+  const ids = new Set(accessibleClassIds());
+  return DB.get(KEYS.classes, []).filter(c => ids.has(c.id));
+}
+
+function getAccessibleStudents() {
+  const ids = new Set(accessibleClassIds());
+  return DB.get(KEYS.students, []).filter(s => ids.has(s.classId));
+}
+
+function getAccessibleSubjects() {
+  const all = DB.get(KEYS.subjects, []);
+  if (isHeadTeacher()) return all;
+  const ids = new Set(Array.isArray(currentAssignedSubjectIds) ? currentAssignedSubjectIds : []);
+  return all.filter(s => ids.has(s.id));
+}
+
+function canAccessClass(classId) {
+  return accessibleClassIds().indexOf(classId) !== -1;
+}
+
+function canAccessSubject(subjectId) {
+  if (isHeadTeacher()) return true;
+  return Array.isArray(currentAssignedSubjectIds) && currentAssignedSubjectIds.indexOf(subjectId) !== -1;
+}
+
+function requireHeadTeacher(action) {
+  if (!isHeadTeacher()) {
+    alert('Only the Head Teacher can ' + action + '.');
+    return false;
+  }
+  return true;
+}
+
+function requireClassAccess(classId) {
+  if (!canAccessClass(classId)) {
+    alert('You do not have access to this class.');
+    return false;
+  }
+  return true;
+}
+
+
 
 const KEYS = {
   get settings() { return ns('arc_settings'); },
@@ -120,11 +180,14 @@ function ordinal(n) {
 /* ---------- view switching ---------- */
 const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'grades', 'remarks', 'reports', 'history', 'manage-teachers'];
 function showView(name) {
+  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'manage-teachers'].indexOf(name) !== -1) {
+    name = 'home';
+  }
   views.forEach(v => {
     document.getElementById('view-' + v).classList.toggle('hidden', v !== name);
   });
   document.getElementById('backBtn').classList.toggle('hidden', name === 'home');
-  document.getElementById('brandText').textContent = name === 'home' ? 'AlatiphA SchoolFlow' : sectionTitle(name);
+  document.getElementById('brandText').textContent = name === 'home' ? 'AlatiphA SchoolHub' : sectionTitle(name);
   if (name === 'home') renderHome();
   if (name === 'setup') { refreshHeadTeacherSelect(); renderCloudSyncStatus(); }
   if (name === 'students') renderStudentClassSelect();
@@ -151,24 +214,24 @@ function sectionTitle(name) {
     grades: 'Grades', remarks: 'Remarks', reports: 'Reports', history: 'Term History',
     'manage-teachers': 'Manage Teachers'
   };
-  return titles[name] || 'AlatiphA SchoolFlow';
+  return titles[name] || 'AlatiphA SchoolHub';
 }
 
 document.getElementById('backBtn').addEventListener('click', () => showView('home'));
 
 /* ---------- Home dashboard ---------- */
 const QUICK_ACCESS_CARDS = [
-  { view: 'setup', title: 'Setup', description: 'School info, term, and report layout',
+  { view: 'setup', title: 'Setup', description: 'School info, term, and report layout', headteacherOnly: true,
     icon: '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/>' },
   { view: 'manage-teachers', title: 'Manage Teachers', description: 'Approve, assign classes, disable', headteacherOnly: true,
     icon: '<circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/><path d="M17 8l3 3-3 3"/><path d="M20 11h-6"/>' },
-  { view: 'staff', title: 'Staff', description: 'Staff records, ranks, and signatures',
+  { view: 'staff', title: 'Staff', description: 'Staff records, ranks, and signatures', headteacherOnly: true,
     icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="13" y2="14"/><line x1="8" y1="17" x2="11" y2="17"/>' },
-  { view: 'classes', title: 'Classes', description: 'Create and manage your classes',
+  { view: 'classes', title: 'Classes', description: 'Create and manage your classes', headteacherOnly: true,
     icon: '<polygon points="12 2 22 8 12 14 2 8 12 2"/><polyline points="2 14 12 20 22 14"/>' },
   { view: 'students', title: 'Students', description: 'Add, edit, search, and photo students',
     icon: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>' },
-  { view: 'subjects', title: 'Subjects', description: 'Manage the subjects taught',
+  { view: 'subjects', title: 'Subjects', description: 'Manage the subjects taught', headteacherOnly: true,
     icon: '<path d="M4 4h8a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H4z"/><path d="M20 4h-8a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h9z"/>' },
   { view: 'grades', title: 'Grades', description: 'Enter class and exam scores',
     icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>' },
@@ -376,19 +439,20 @@ function loadSettingsForm() {
 }
 
 document.getElementById('schoolLogo').addEventListener('change', e => {
+  if (!requireHeadTeacher('upload the school logo')) return;
   const file = e.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
+  uploadSchoolAsset(file, 'logos', 'school-logo').then(url => {
     const s = DB.get(KEYS.settings, {});
-    s.logo = reader.result;
+    s.logo = url;
+    s.logoUrl = url;
     DB.set(KEYS.settings, s);
     loadSettingsForm();
-  };
-  reader.readAsDataURL(file);
-});
+  }).catch(err => alert('Could not upload the school logo: ' + err.message));
+});;
 
 document.getElementById('removeLogo').addEventListener('click', () => {
+  if (!requireHeadTeacher('change school settings')) return;
   const s = DB.get(KEYS.settings, {});
   s.logo = '';
   DB.set(KEYS.settings, s);
@@ -396,6 +460,7 @@ document.getElementById('removeLogo').addEventListener('click', () => {
 });
 
 document.getElementById('saveSettings').addEventListener('click', () => {
+  if (!requireHeadTeacher('change school settings')) return;
   const s = DB.get(KEYS.settings, {});
   s.teacherName = document.getElementById('teacherName').value.trim();
   s.schoolName = document.getElementById('schoolName').value.trim();
@@ -414,7 +479,7 @@ document.getElementById('saveSettings').addEventListener('click', () => {
 /* ---------- Backup & Restore ---------- */
 document.getElementById('exportBackupBtn').addEventListener('click', () => {
   const payload = {
-    app: 'AlatiphA SchoolFlow',
+    app: 'AlatiphA SchoolHub',
     exportedAt: new Date().toISOString(),
     version: APP_VERSION,
     data: {
@@ -454,7 +519,7 @@ document.getElementById('importBackupInput').addEventListener('change', e => {
       return;
     }
     if (!parsed || !parsed.data) {
-      alert('That file does not look like an AlatiphA SchoolFlow backup.');
+      alert('That file does not look like an AlatiphA SchoolHub backup.');
       e.target.value = '';
       return;
     }
@@ -478,9 +543,15 @@ document.getElementById('importBackupInput').addEventListener('change', e => {
 let editingClassId = null;
 
 function renderClasses() {
+  if (isTeacher()) {
+    const list = document.getElementById('classList');
+    const classes = getAccessibleClasses();
+    list.innerHTML = classes.length ? classes.map(c => `<li><div><strong>${escapeHtml(c.name)}</strong><div class="meta">${DB.get(KEYS.students, []).filter(s => s.classId === c.id).length} student(s) on roll</div></div></li>`).join('') : '<li class="empty">No classes have been assigned to you yet.</li>';
+    return;
+  }
   fillStaffSelect(document.getElementById('newClassTeacherSelect'), '');
   const list = document.getElementById('classList');
-  const classes = DB.get(KEYS.classes, []);
+  const classes = getAccessibleClasses();
   const staffById = {};
   DB.get(KEYS.staff, []).forEach(s => { staffById[s.id] = s; });
   list.innerHTML = '';
@@ -554,6 +625,7 @@ function renderClasses() {
 }
 
 document.getElementById('addClassBtn').addEventListener('click', () => {
+  if (!requireHeadTeacher('manage classes')) return;
   const input = document.getElementById('newClassName');
   const name = input.value.trim();
   if (!name) return;
@@ -573,11 +645,11 @@ function renderStudentClassSelect() {
 }
 
 function fillClassSelect(sel) {
-  const classes = DB.get(KEYS.classes, []);
+  const classes = getAccessibleClasses();
   const prev = sel.value;
   sel.innerHTML = classes.length
     ? classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
-    : '<option value="">No classes yet</option>';
+    : '<option value="">No assigned classes</option>';
   if (classes.some(c => c.id === prev)) sel.value = prev;
 }
 
@@ -593,7 +665,7 @@ function renderStudents() {
 
   let students;
   if (searchMode) {
-    students = DB.get(KEYS.students, []).filter(s => {
+    students = getAccessibleStudents().filter(s => {
       const inName = s.name.toLowerCase().includes(query);
       const inId = s.admissionId && s.admissionId.toLowerCase().includes(query);
       return inName || inId;
@@ -601,8 +673,9 @@ function renderStudents() {
     if (!students.length) { list.innerHTML = '<li class="empty">No students match your search.</li>'; return; }
   } else {
     const classId = sel.value;
+    if (classId && !requireClassAccess(classId)) { list.innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
     if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; return; }
-    students = DB.get(KEYS.students, []).filter(s => s.classId === classId);
+    students = getAccessibleStudents().filter(s => s.classId === classId);
     if (!students.length) { list.innerHTML = '<li class="empty">No students yet — add one below.</li>'; return; }
   }
 
@@ -658,15 +731,16 @@ function renderStudents() {
     input.addEventListener('change', e => {
       const file = e.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const students = DB.get(KEYS.students, []);
-        const st = students.find(x => x.id === input.dataset.student);
-        if (st) st.photo = reader.result;
-        DB.set(KEYS.students, students);
+      const students = DB.get(KEYS.students, []);
+      const st = students.find(x => x.id === input.dataset.student);
+      if (!st || !requireClassAccess(st.classId)) return;
+      uploadSchoolAsset(file, 'student-photos', st.classId + '/' + st.id).then(url => {
+        const currentStudents = DB.get(KEYS.students, []);
+        const current = currentStudents.find(x => x.id === input.dataset.student);
+        if (current) { current.photo = url; current.photoUrl = url; }
+        DB.set(KEYS.students, currentStudents);
         renderStudents(); // stays in edit mode — editingStudentId is untouched
-      };
-      reader.readAsDataURL(file);
+      }).catch(err => alert('Could not upload the student photo: ' + err.message));
     });
   });
   list.querySelectorAll('.remove-student-photo').forEach(btn => {
@@ -718,6 +792,7 @@ document.getElementById('studentSearchInput').addEventListener('input', renderSt
 document.getElementById('addStudentBtn').addEventListener('click', () => {
   const classId = document.getElementById('studentClassSelect').value;
   if (!classId) { alert('Add a class first.'); return; }
+  if (!requireClassAccess(classId)) return;
   const nameInput = document.getElementById('newStudentName');
   const name = nameInput.value.trim();
   if (!name) return;
@@ -814,6 +889,7 @@ function renderSubjects() {
 }
 
 document.getElementById('addSubjectBtn').addEventListener('click', () => {
+  if (!requireHeadTeacher('manage subjects')) return;
   const input = document.getElementById('newSubjectName');
   const name = input.value.trim();
   if (!name) return;
@@ -898,15 +974,13 @@ function renderStaff() {
     input.addEventListener('change', e => {
       const file = e.target.files[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
+      uploadSchoolAsset(file, 'signatures', input.dataset.staff).then(url => {
         const staffList = DB.get(KEYS.staff, []);
         const st = staffList.find(x => x.id === input.dataset.staff);
-        if (st) st.signature = reader.result;
+        if (st) { st.signature = url; st.signatureUrl = url; }
         DB.set(KEYS.staff, staffList);
         renderStaff(); // stays in edit mode — editingStaffId is untouched
-      };
-      reader.readAsDataURL(file);
+      }).catch(err => alert('Could not upload the signature: ' + err.message));
     });
   });
   list.querySelectorAll('.remove-staff-signature').forEach(btn => {
@@ -953,6 +1027,7 @@ function renderStaff() {
 }
 
 document.getElementById('addStaffBtn').addEventListener('click', () => {
+  if (!requireHeadTeacher('manage staff')) return;
   const nameInput = document.getElementById('newStaffName');
   const name = nameInput.value.trim();
   if (!name) return;
@@ -972,9 +1047,8 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
   };
 
   if (file) {
-    const reader = new FileReader();
-    reader.onload = () => commit(reader.result);
-    reader.readAsDataURL(file);
+    uploadSchoolAsset(file, 'signatures', uid()).then(url => commit(url))
+      .catch(err => alert('Could not upload the signature: ' + err.message));
   } else {
     commit('');
   }
@@ -989,10 +1063,11 @@ function renderGradesClassSelect() {
 
 function renderGradesTable() {
   const classId = document.getElementById('gradesClassSelect').value;
+  if (classId && !canAccessClass(classId)) { document.getElementById('gradesTableWrap').innerHTML = '<p class="empty">You do not have access to this class.</p>'; return; }
   const wrap = document.getElementById('gradesTableWrap');
   if (!classId) { wrap.innerHTML = '<p class="empty">Add a class first.</p>'; return; }
-  const students = DB.get(KEYS.students, []).filter(s => s.classId === classId);
-  const subjects = DB.get(KEYS.subjects, []);
+  const students = getAccessibleStudents().filter(s => s.classId === classId);
+  const subjects = getAccessibleSubjects();
   if (!students.length || !subjects.length) {
     wrap.innerHTML = '<p class="empty">Add students and subjects first.</p>';
     return;
@@ -1049,6 +1124,7 @@ document.getElementById('gradesClassSelect').addEventListener('change', renderGr
 document.getElementById('saveGradesBtn').addEventListener('click', () => {
   const classId = document.getElementById('gradesClassSelect').value;
   if (!classId) return;
+  if (!requireClassAccess(classId)) return;
   const settings = DB.get(KEYS.settings, {});
   if (!settings.currentTerm || !settings.currentYear) {
     alert('Set the current Term and Academic Year in Setup first.');
@@ -1087,7 +1163,7 @@ document.getElementById('exportGradesXlsxBtn').addEventListener('click', () => {
     return;
   }
   const simple = settings.reportLayout === 'simple';
-  const students = DB.get(KEYS.students, []).filter(s => s.classId === classId);
+  const students = getAccessibleStudents().filter(s => s.classId === classId);
   const subjects = DB.get(KEYS.subjects, []);
   if (!students.length || !subjects.length) { alert('Add students and subjects first.'); return; }
   const key = gradeKey(classId, settings.currentTerm, settings.currentYear);
@@ -1166,7 +1242,7 @@ document.getElementById('importGradesXlsxInput').addEventListener('change', e =>
           eIdx: header.indexOf(`${sub.name} - Exam (100)`)
         });
 
-    const students = DB.get(KEYS.students, []).filter(s => s.classId === classId);
+    const students = getAccessibleStudents().filter(s => s.classId === classId);
     const byId = {}, byName = {};
     students.forEach(s => {
       if (s.admissionId) byId[s.admissionId.trim().toLowerCase()] = s;
@@ -1223,9 +1299,10 @@ function renderRemarksClassSelect() {
 
 function renderRemarksForm() {
   const classId = document.getElementById('remarksClassSelect').value;
+  if (classId && !canAccessClass(classId)) { document.getElementById('remarksFormWrap').innerHTML = '<p class="empty">You do not have access to this class.</p>'; return; }
   const wrap = document.getElementById('remarksFormWrap');
   if (!classId) { wrap.innerHTML = '<p class="empty">Add a class first.</p>'; return; }
-  const students = DB.get(KEYS.students, []).filter(s => s.classId === classId);
+  const students = getAccessibleStudents().filter(s => s.classId === classId);
   if (!students.length) { wrap.innerHTML = '<p class="empty">No students in this class.</p>'; return; }
   const settings = DB.get(KEYS.settings, {});
   const key = gradeKey(classId, settings.currentTerm, settings.currentYear);
@@ -1265,6 +1342,7 @@ document.getElementById('remarksClassSelect').addEventListener('change', renderR
 document.getElementById('saveRemarksBtn').addEventListener('click', () => {
   const classId = document.getElementById('remarksClassSelect').value;
   if (!classId) return;
+  if (!requireClassAccess(classId)) return;
   const settings = DB.get(KEYS.settings, {});
   if (!settings.currentTerm || !settings.currentYear) {
     alert('Set the current Term and Academic Year in Setup first.');
@@ -1305,8 +1383,8 @@ function computeAggregate(entries) {
 
 /* ---------- Results computation ---------- */
 function computeClassResults(classId, term, year) {
-  const students = DB.get(KEYS.students, []).filter(s => s.classId === classId);
-  const subjects = DB.get(KEYS.subjects, []);
+  const students = getAccessibleStudents().filter(s => s.classId === classId);
+  const subjects = getAccessibleSubjects();
   const key = gradeKey(classId, term, year);
   const classGrades = DB.get(KEYS.grades, {})[key] || {};
   const settings = DB.get(KEYS.settings, {});
@@ -1370,8 +1448,8 @@ function computeClassResults(classId, term, year) {
 
 // Per-subject class-wide position: e.g. "8th in Mathematics" for this class/term.
 function computeSubjectPositions(classId, term, year) {
-  const students = DB.get(KEYS.students, []).filter(s => s.classId === classId);
-  const subjects = DB.get(KEYS.subjects, []);
+  const students = getAccessibleStudents().filter(s => s.classId === classId);
+  const subjects = getAccessibleSubjects();
   const key = gradeKey(classId, term, year);
   const classGrades = DB.get(KEYS.grades, {})[key] || {};
   const settings = DB.get(KEYS.settings, {});
@@ -1411,6 +1489,7 @@ function renderReportsClassSelect() {
 
 function renderReportsStudentList() {
   const classId = document.getElementById('reportsClassSelect').value;
+  if (classId && !canAccessClass(classId)) { document.getElementById('reportsStudentList').innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
   const list = document.getElementById('reportsStudentList');
   list.innerHTML = '';
   if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; return; }
@@ -1476,7 +1555,7 @@ function shareResultViaWhatsApp(result, classInfo, settings) {
 // Grade 1-6 (score 50+) is a pass, Grade 7-9 (score below 50) is a fail.
 function computeClassStatistics(classId, term, year) {
   const results = computeClassResults(classId, term, year);
-  const subjects = DB.get(KEYS.subjects, []);
+  const subjects = getAccessibleSubjects();
 
   const subjectStats = subjects.map(sub => {
     const scores = [];
@@ -1679,7 +1758,7 @@ function renderHistoryClassSelect() {
   });
   collect(DB.get(KEYS.grades, {}));
   collect(DB.get(KEYS.remarks, {}));
-  const classes = DB.get(KEYS.classes, []).filter(c => classIds.has(c.id));
+  const classes = getAccessibleClasses().filter(c => classIds.has(c.id));
   const prev = sel.value;
   sel.innerHTML = classes.length
     ? classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
@@ -2062,7 +2141,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.text('Remarks: 80-100 Highly Proficient · 54-79 Proficient · 46-53 Approaching Proficiency · 40-45 Developing · 0-39 Emerging', pageWidth / 2, y, { align: 'center' });
   doc.setTextColor(GOLD[0], GOLD[1], GOLD[2]);
   doc.setFontSize(8);
-  doc.text('Generated with AlatiphA SchoolFlow', pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
+  doc.text('Generated with AlatiphA SchoolHub', pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
   doc.setTextColor(0, 0, 0);
 }
 
@@ -2124,12 +2203,429 @@ function migrateDataIntoSchool(schoolId) {
   });
 }
 
-/* ---------- Cloud Sync (Firestore) — one shared document per school.
-   Syncs text data across every teacher/device in that school. Photos,
-   signatures, and the school logo stay local to each device for now
-   (they're base64 images, and Firestore documents cap at 1MB — full
-   image sync needs Firebase Storage, a separate future upgrade). ---------- */
+/* ---------- Cloud Sync (Firestore) ----------
+   Phase 3 uses school-scoped subcollections instead of one large shared
+   school document. Teachers only download and write documents for their
+   assigned classes/subjects. Head Teachers can synchronize the whole school.
+*/
 const LAST_SYNCED_KEY = 'arc_last_synced';
+const CLOUD_SCHEMA_VERSION = 3;
+
+function schoolRef() {
+  return firebase.firestore().collection('schools').doc(currentSchoolId);
+}
+
+function classRef(id) {
+  return schoolRef().collection('classes').doc(id);
+}
+
+function studentRef(id) {
+  return schoolRef().collection('students').doc(id);
+}
+
+function subjectRef(id) {
+  return schoolRef().collection('subjects').doc(id);
+}
+
+function gradeRef(key) {
+  return schoolRef().collection('grades').doc(key);
+}
+
+function remarkRef(key) {
+  return schoolRef().collection('remarks').doc(key);
+}
+
+function staffRef(id) {
+  return schoolRef().collection('staff').doc(id);
+}
+
+
+/* ---------- Firebase Storage ---------- */
+function storageRef(path) {
+  return firebase.storage().ref().child(path);
+}
+
+function uploadSchoolAsset(file, kind, id) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !file) return Promise.resolve('');
+  const safeName = String(file.name || 'image').replace(/[^a-zA-Z0-9._-]/g, '_');
+  let path;
+  if (kind === 'student-photos' && id && String(id).indexOf('/') !== -1) {
+    const parts = String(id).split('/');
+    path = `schools/${currentSchoolId}/student-photos/${parts[0]}/${parts[1]}_${safeName}`;
+  } else {
+    path = `schools/${currentSchoolId}/${kind}/${id || uid()}_${safeName}`;
+  }
+  return storageRef(path).put(file, { contentType: file.type || 'application/octet-stream' })
+    .then(snapshot => snapshot.ref.getDownloadURL());
+}
+
+function removeStorageFile(url) {
+  if (!url || !FIREBASE_ENABLED) return Promise.resolve();
+  try {
+    return firebase.storage().refFromURL(url).delete().catch(() => {});
+  } catch (e) {
+    return Promise.resolve();
+  }
+}
+
+function cloudChunk(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
+function commitChunks(ops) {
+  if (!ops.length) return Promise.resolve();
+  const chunks = cloudChunk(ops, 450);
+  return chunks.reduce((p, chunk) => p.then(() => {
+    const batch = firebase.firestore().batch();
+    chunk.forEach(op => op(batch));
+    return batch.commit();
+  }), Promise.resolve());
+}
+
+function stripImagesForCloud(field, value) {
+  if (field === 'students' && Array.isArray(value)) {
+    return value.map(s => {
+      const c = Object.assign({}, s);
+      delete c.photo;
+      return c;
+    });
+  }
+  if (field === 'staff' && Array.isArray(value)) {
+    return value.map(s => {
+      const c = Object.assign({}, s);
+      delete c.signature;
+      return c;
+    });
+  }
+  if (field === 'settings' && value && typeof value === 'object') {
+    const c = Object.assign({}, value);
+    delete c.logo;
+    return c;
+  }
+  return value;
+}
+
+function mergeLocalImage(field, cloudValue, id) {
+  if (field === 'students') {
+    const local = DB.get(KEYS.students, []).find(s => s.id === id);
+    return Object.assign({}, cloudValue, { photo: cloudValue.photoUrl || (local ? (local.photo || '') : '') });
+  }
+  if (field === 'staff') {
+    const local = DB.get(KEYS.staff, []).find(s => s.id === id);
+    return Object.assign({}, cloudValue, { signature: cloudValue.signatureUrl || (local ? (local.signature || '') : '') });
+  }
+  return cloudValue;
+}
+
+function classIdsForCloudSync() {
+  return new Set(accessibleClassIds());
+}
+
+function gradeEntriesForClass(classId, grades) {
+  const out = {};
+  Object.keys(grades || {}).forEach(key => {
+    if (key.indexOf(classId + '__') === 0) out[key] = grades[key];
+  });
+  return out;
+}
+
+function remarkEntriesForClass(classId, remarks) {
+  const out = {};
+  Object.keys(remarks || {}).forEach(key => {
+    if (key.indexOf(classId + '__') === 0) out[key] = remarks[key];
+  });
+  return out;
+}
+
+function migrateLegacySchoolDocument() {
+  if (!isHeadTeacher() || !currentSchoolId) return Promise.resolve(false);
+  return schoolRef().get().then(doc => {
+    if (!doc.exists) return false;
+    const data = doc.data() || {};
+    if (Number(data.schemaVersion || 0) >= CLOUD_SCHEMA_VERSION) return false;
+
+    const hasLegacy = ['classes', 'subjects', 'students', 'grades', 'remarks', 'staff']
+      .some(k => data[k] !== undefined);
+    if (!hasLegacy) {
+      return schoolRef().set({ schemaVersion: CLOUD_SCHEMA_VERSION }, { merge: true }).then(() => false);
+    }
+
+    const classes = Array.isArray(data.classes) ? data.classes : [];
+    const subjects = Array.isArray(data.subjects) ? data.subjects : [];
+    const students = Array.isArray(data.students) ? data.students : [];
+    const staff = Array.isArray(data.staff) ? data.staff : [];
+    const grades = data.grades && typeof data.grades === 'object' ? data.grades : {};
+    const remarks = data.remarks && typeof data.remarks === 'object' ? data.remarks : {};
+
+    const ops = [];
+    classes.forEach(c => ops.push(batch => batch.set(classRef(c.id), Object.assign({}, c, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
+    subjects.forEach(s => ops.push(batch => batch.set(subjectRef(s.id), stripImagesForCloud('subjects', s))));
+    students.forEach(s => ops.push(batch => batch.set(studentRef(s.id), stripImagesForCloud('students', s))));
+    staff.forEach(s => ops.push(batch => batch.set(staffRef(s.id), stripImagesForCloud('staff', s))));
+    Object.keys(grades).forEach(key => ops.push(batch => batch.set(gradeRef(key), { classId: key.split('__')[0], entries: grades[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() })));
+    Object.keys(remarks).forEach(key => ops.push(batch => batch.set(remarkRef(key), { classId: key.split('__')[0], entries: remarks[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() })));
+
+    return commitChunks(ops).then(() => {
+      const remove = {};
+      ['classes', 'subjects', 'students', 'grades', 'remarks', 'staff'].forEach(k => { remove[k] = firebase.firestore.FieldValue.delete(); });
+      return schoolRef().set(Object.assign(remove, { schemaVersion: CLOUD_SCHEMA_VERSION, migratedAt: firebase.firestore.FieldValue.serverTimestamp() }), { merge: true });
+    }).then(() => true);
+  });
+}
+
+function pullSubcollection(name, allowedIds) {
+  const ref = schoolRef().collection(name);
+  if (allowedIds === null) return ref.get();
+  const ids = Array.from(allowedIds);
+  if (!ids.length) return Promise.resolve({ empty: true, forEach: function() {} });
+  return Promise.all(ids.map(id => ref.doc(id).get())).then(docs => ({
+    empty: docs.length === 0,
+    forEach: fn => docs.forEach(d => { if (d.exists) fn(d); })
+  }));
+}
+
+
+function pullStudentsForAccess(all, classIds) {
+  if (all) return schoolRef().collection('students').get();
+  const ids = Array.from(classIds || []);
+  if (!ids.length) return Promise.resolve({ empty: true, forEach: function() {} });
+  return Promise.all(ids.map(classId =>
+    schoolRef().collection('students').where('classId', '==', classId).get()
+  )).then(snaps => {
+    const docs = [];
+    snaps.forEach(snap => snap.forEach(d => docs.push(d)));
+    return { empty: docs.length === 0, forEach: fn => docs.forEach(fn) };
+  });
+}
+
+function pullGradesForAccess(all, classIds) {
+  if (all) return schoolRef().collection('grades').get();
+  const ids = Array.from(classIds || []);
+  if (!ids.length) return Promise.resolve({ empty: true, forEach: function() {} });
+  return Promise.all(ids.map(classId =>
+    schoolRef().collection('grades').where('classId', '==', classId).get()
+  )).then(snaps => {
+    const docs = [];
+    snaps.forEach(snap => snap.forEach(d => docs.push(d)));
+    return { empty: docs.length === 0, forEach: fn => docs.forEach(fn) };
+  });
+}
+
+function pullRemarksForAccess(all, classIds) {
+  if (all) return schoolRef().collection('remarks').get();
+  const ids = Array.from(classIds || []);
+  if (!ids.length) return Promise.resolve({ empty: true, forEach: function() {} });
+  return Promise.all(ids.map(classId =>
+    schoolRef().collection('remarks').where('classId', '==', classId).get()
+  )).then(snaps => {
+    const docs = [];
+    snaps.forEach(snap => snap.forEach(d => docs.push(d)));
+    return { empty: docs.length === 0, forEach: fn => docs.forEach(fn) };
+  });
+}
+
+function pullCloudData() {
+  if (!FIREBASE_ENABLED || !currentSchoolId) return Promise.resolve();
+
+  return migrateLegacySchoolDocument().then(() => {
+    const all = isHeadTeacher();
+    const classIds = all ? null : classIdsForCloudSync();
+    const subjectIds = all ? null : new Set(currentAssignedSubjectIds || []);
+
+    return Promise.all([
+      schoolRef().get(),
+      pullSubcollection('classes', classIds),
+      pullSubcollection('subjects', subjectIds),
+      pullStudentsForAccess(all, classIds),
+      pullSubcollection('staff', null),
+      pullGradesForAccess(all, classIds),
+      pullRemarksForAccess(all, classIds)
+    ]).then(results => {
+      const schoolDoc = results[0];
+      const classSnap = results[1];
+      const subjectSnap = results[2];
+      const studentSnap = results[3];
+      const staffSnap = results[4];
+      const gradeSnap = results[5];
+      const remarkSnap = results[6];
+
+      if (schoolDoc.exists) {
+        const p = schoolDoc.data().profile || {};
+        const localSettings = DB.get(KEYS.settings, {});
+        const mergedProfile = Object.assign({}, localSettings, p);
+        if (p.logoUrl) mergedProfile.logo = p.logoUrl;
+        DB.set(KEYS.settings, mergedProfile);
+      }
+
+      const classes = [];
+      classSnap.forEach(d => classes.push(d.data()));
+      DB.set(KEYS.classes, classes);
+
+      const subjects = [];
+      subjectSnap.forEach(d => subjects.push(d.data()));
+      DB.set(KEYS.subjects, subjects);
+
+      const students = [];
+      studentSnap.forEach(d => {
+        const s = d.data();
+        if (all || classIds.has(s.classId)) students.push(mergeLocalImage('students', s, d.id));
+      });
+      DB.set(KEYS.students, students);
+
+      const staff = [];
+      staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
+      DB.set(KEYS.staff, staff);
+
+      const grades = {};
+      gradeSnap.forEach(d => {
+        const key = d.id;
+        const classId = key.split('__')[0];
+        if (all || classIds.has(classId)) grades[key] = (d.data() || {}).entries || {};
+      });
+      DB.set(KEYS.grades, grades);
+
+      const remarks = {};
+      remarkSnap.forEach(d => {
+        const key = d.id;
+        const classId = key.split('__')[0];
+        if (all || classIds.has(classId)) remarks[key] = (d.data() || {}).entries || {};
+      });
+      DB.set(KEYS.remarks, remarks);
+      setLastSyncedNow();
+    });
+  });
+}
+
+const pushTimers = {};
+function scheduleCloudPush(rawKey) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return;
+  const match = syncableFields().find(f => f.key === rawKey);
+  if (!match) return;
+  clearTimeout(pushTimers[rawKey]);
+  pushTimers[rawKey] = setTimeout(() => {
+    pushFieldToCloud(match).catch(err => console.error('Cloud sync failed for', match.field, err));
+  }, 800);
+}
+
+
+function syncCollectionArray(ref, items, cleanFn) {
+  const currentIds = new Set(items.map(item => item.id));
+  return ref.get().then(snapshot => {
+    const ops = [];
+    items.forEach(item => ops.push(batch => batch.set(ref.doc(item.id), cleanFn(item))));
+    snapshot.forEach(doc => {
+      if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id)));
+    });
+    return commitChunks(ops);
+  });
+}
+
+function syncKeyedCollection(ref, entries, makeData, allowedClassIds) {
+  const currentIds = new Set(Object.keys(entries));
+  let existingPromise;
+  if (allowedClassIds === null) {
+    existingPromise = ref.get();
+  } else {
+    const ids = Array.from(allowedClassIds || []);
+    existingPromise = Promise.all(ids.map(classId => ref.where('classId', '==', classId).get()))
+      .then(snaps => {
+        const docs = [];
+        snaps.forEach(snap => snap.forEach(d => docs.push(d)));
+        return { forEach: fn => docs.forEach(fn) };
+      });
+  }
+  return existingPromise.then(snapshot => {
+    const ops = [];
+    Object.keys(entries).forEach(key => ops.push(batch => batch.set(ref.doc(key), makeData(key, entries[key]))));
+    snapshot.forEach(doc => {
+      if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id)));
+    });
+    return commitChunks(ops);
+  });
+}
+
+function pushFieldToCloud(match) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return Promise.resolve();
+  const field = match.field;
+  const value = DB.get(match.key, fieldDefault(field));
+
+  if (field === 'settings') {
+    if (!isHeadTeacher()) return Promise.resolve();
+    return schoolRef().set({ profile: stripImagesForCloud('settings', value), schemaVersion: CLOUD_SCHEMA_VERSION, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+      .then(() => setLastSyncedNow());
+  }
+
+  if (field === 'classes') {
+    if (!isHeadTeacher()) return Promise.resolve();
+    return syncCollectionArray(schoolRef().collection('classes'), value,
+      c => Object.assign({}, c, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))
+      .then(() => setLastSyncedNow());
+  }
+
+  if (field === 'subjects') {
+    if (!isHeadTeacher()) return Promise.resolve();
+    return syncCollectionArray(schoolRef().collection('subjects'), value,
+      s => Object.assign({}, s, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))
+      .then(() => setLastSyncedNow());
+  }
+
+  if (field === 'staff') {
+    if (!isHeadTeacher()) return Promise.resolve();
+    return syncCollectionArray(schoolRef().collection('staff'), value,
+      s => stripImagesForCloud('staff', s))
+      .then(() => setLastSyncedNow());
+  }
+
+  if (field === 'students') {
+    const allowed = classIdsForCloudSync();
+    const filtered = value.filter(s => allowed.has(s.classId));
+    const ref = schoolRef().collection('students');
+    const existingPromise = isHeadTeacher()
+      ? ref.get()
+      : Promise.all(Array.from(allowed).map(classId => ref.where('classId', '==', classId).get()))
+          .then(snaps => {
+            const docs = [];
+            snaps.forEach(snap => snap.forEach(d => docs.push(d)));
+            return { forEach: fn => docs.forEach(fn) };
+          });
+    return existingPromise.then(snapshot => {
+      const currentIds = new Set(filtered.map(s => s.id));
+      const ops = [];
+      filtered.forEach(s => ops.push(batch => batch.set(ref.doc(s.id), stripImagesForCloud('students', s))));
+      snapshot.forEach(doc => { if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id))); });
+      return commitChunks(ops);
+    }).then(() => setLastSyncedNow());
+  }
+
+  if (field === 'grades') {
+    const allowed = classIdsForCloudSync();
+    const filtered = {};
+    Object.keys(value).forEach(key => {
+      const classId = key.split('__')[0];
+      if (allowed.has(classId)) filtered[key] = value[key];
+    });
+    return syncKeyedCollection(schoolRef().collection('grades'), filtered,
+      (key, entries) => ({ classId: key.split('__')[0], entries, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
+      isHeadTeacher() ? null : allowed)
+      .then(() => setLastSyncedNow());
+  }
+
+  if (field === 'remarks') {
+    const allowed = classIdsForCloudSync();
+    const filtered = {};
+    Object.keys(value).forEach(key => {
+      const classId = key.split('__')[0];
+      if (allowed.has(classId)) filtered[key] = value[key];
+    });
+    return syncKeyedCollection(schoolRef().collection('remarks'), filtered,
+      (key, entries) => ({ classId: key.split('__')[0], entries, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
+      isHeadTeacher() ? null : allowed)
+      .then(() => setLastSyncedNow());
+  }
+  return Promise.resolve();
+}
 
 function syncableFields() {
   return [
@@ -2147,97 +2643,10 @@ function fieldDefault(field) {
   return (field === 'settings' || field === 'grades' || field === 'remarks') ? {} : [];
 }
 
-// Never push images to Firestore — strip them before every push.
-function stripImagesForSync(field, value) {
-  if (field === 'students' && Array.isArray(value)) {
-    return value.map(s => { const c = Object.assign({}, s); delete c.photo; return c; });
-  }
-  if (field === 'staff' && Array.isArray(value)) {
-    return value.map(s => { const c = Object.assign({}, s); delete c.signature; return c; });
-  }
-  if (field === 'settings' && value && typeof value === 'object') {
-    const c = Object.assign({}, value); delete c.logo; return c;
-  }
-  return value;
-}
-
-// When pulling cloud data down, re-attach whatever image this specific
-// device already has locally (matched by id) so a sync never wipes out
-// a photo/signature/logo that was only ever uploaded on this device.
-function mergeCloudWithLocalImages(field, cloudValue) {
-  if (field === 'settings') {
-    const localSettings = DB.get(KEYS.settings, {});
-    return Object.assign({}, cloudValue, { logo: localSettings.logo || '' });
-  }
-  if (field === 'students' || field === 'staff') {
-    const imageKey = field === 'students' ? 'photo' : 'signature';
-    const localArray = DB.get(field === 'students' ? KEYS.students : KEYS.staff, []);
-    const localById = {};
-    localArray.forEach(item => { localById[item.id] = item; });
-    return cloudValue.map(item => {
-      const local = localById[item.id];
-      return Object.assign({}, item, { [imageKey]: local ? (local[imageKey] || '') : '' });
-    });
-  }
-  return cloudValue;
-}
-
-const pushTimers = {};
-function scheduleCloudPush(rawKey) {
-  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return;
-  const match = syncableFields().find(f => f.key === rawKey);
-  if (!match) return;
-  clearTimeout(pushTimers[rawKey]);
-  pushTimers[rawKey] = setTimeout(() => pushFieldToCloud(match), 800);
-}
-
-function pushFieldToCloud(match) {
-  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return;
-  const value = DB.get(match.key, fieldDefault(match.field));
-  const cleaned = stripImagesForSync(match.field, value);
-  firebase.firestore().collection('schools').doc(currentSchoolId)
-    .set({ [match.cloudField]: cleaned, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
-    .then(() => setLastSyncedNow())
-    .catch(err => console.error('Cloud sync failed for', match.field, err));
-}
-
-// Pulls the school's cloud document down. If it doesn't exist yet
-// (shouldn't normally happen — registration creates it), pushes
-// whatever's local up instead, so that becomes the starting cloud copy.
-function pullCloudData() {
-  if (!FIREBASE_ENABLED || !currentSchoolId) return Promise.resolve();
-  return firebase.firestore().collection('schools').doc(currentSchoolId).get().then(doc => {
-    if (!doc.exists) {
-      syncableFields().forEach(f => pushFieldToCloud(f));
-      return;
-    }
-    const data = doc.data();
-    syncableFields().forEach(f => {
-      if (data[f.cloudField] === undefined) return;
-      const merged = mergeCloudWithLocalImages(f.field, data[f.cloudField]);
-      localStorage.setItem(f.key, JSON.stringify(merged));
-    });
-    setLastSyncedNow();
-  });
-}
-
-// Pushes every field's complete current local value up to the cloud in
-// one deterministic batch, waiting for all of them. Used right after
-// registering a new school — at that moment local data (freshly
-// migrated) is authoritative and the cloud document is deliberately
-// incomplete (just profile/joinCode/createdAt), so this must PUSH
-// local up, never pull the incomplete cloud doc back down over it.
 function pushAllFieldsNow() {
-  const writes = syncableFields().map(f => {
-    const value = DB.get(f.key, fieldDefault(f.field));
-    const cleaned = stripImagesForSync(f.field, value);
-    return firebase.firestore().collection('schools').doc(currentSchoolId)
-      .set({ [f.cloudField]: cleaned }, { merge: true });
-  });
-  return Promise.all(writes).then(() => {
-    return firebase.firestore().collection('schools').doc(currentSchoolId)
-      .set({ updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-  }).then(() => setLastSyncedNow());
+  return Promise.all(syncableFields().map(f => pushFieldToCloud(f))).then(() =>
+    schoolRef().set({ schemaVersion: CLOUD_SCHEMA_VERSION, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+  ).then(() => setLastSyncedNow());
 }
 
 function setLastSyncedNow() {
@@ -2265,7 +2674,7 @@ function renderCloudSyncStatus() {
   }
   const last = localStorage.getItem(LAST_SYNCED_KEY);
   const lastText = last ? new Date(Number(last)).toLocaleString() : 'never';
-  wrap.innerHTML = `<p class="hint">Signed in as ${escapeHtml(firebase.auth().currentUser.email)} (${escapeHtml(currentRole)}). Last synced: ${lastText}. Photos, signatures, and the school logo stay local to each device — only text data syncs.</p>`;
+  wrap.innerHTML = `<p class="hint">Signed in as ${escapeHtml(firebase.auth().currentUser.email)} (${escapeHtml(currentRole)}). Last synced: ${lastText}. Photos, signatures, and the school logo are synchronized through Firebase Storage.</p>`;
   btn.classList.remove('hidden');
   if (joinCodeWrap) {
     if (currentRole === 'headteacher') {
@@ -2356,6 +2765,8 @@ function registerSchool(schoolName, address, email) {
   return generateUniqueJoinCode().then(joinCode => {
     return schoolRef.set({
       profile: { schoolName, address, email },
+      ownerUid: currentUid,
+      subscription: { plan: 'free', status: 'inactive' },
       joinCode,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     })
@@ -2380,7 +2791,7 @@ function joinSchoolWithCode(code) {
     if (!doc.exists) throw new Error('That code was not found. Check it and try again.');
     const schoolId = doc.data().schoolId;
     return firebase.firestore().collection('users').doc(currentUid).set({
-      schoolId, role: 'teacher', status: 'pending',
+      schoolId, role: 'teacher', status: 'pending', assignedClassIds: [], assignedSubjectIds: [],
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(() => {
       currentSchoolId = null; // stays null until a Head Teacher approves — no data namespace touched yet
@@ -2406,89 +2817,116 @@ function fetchSchoolMembers() {
 
 function renderManageTeachers() {
   const list = document.getElementById('manageTeachersList');
-  if (currentRole !== 'headteacher') {
-    list.innerHTML = '<li class="empty">Only a Head Teacher can manage teachers.</li>';
+  if (!isHeadTeacher()) {
+    list.innerHTML = '<li class="empty">Only the Head Teacher can manage teachers.</li>';
     return;
   }
   list.innerHTML = '<li class="empty">Loading…</li>';
   const classes = DB.get(KEYS.classes, []);
-  fetchSchoolMembers().then(members => {
-    members.sort((a, b) => (a.status === 'pending' ? -1 : 1) - (b.status === 'pending' ? -1 : 1));
-    list.innerHTML = '';
-    if (!members.length) { list.innerHTML = '<li class="empty">No teachers yet.</li>'; return; }
-    members.forEach(m => {
-      const li = document.createElement('li');
-      const isSelf = m.uid === currentUid;
-      const roleLabel = m.role === 'headteacher' ? 'Head Teacher' : 'Teacher';
-      const statusBadge = m.status === 'pending' ? ' · Pending approval' : m.status === 'disabled' ? ' · Disabled' : '';
-      const assignedNames = (m.assignedClassIds || [])
-        .map(id => { const c = classes.find(x => x.id === id); return c ? c.name : null; })
-        .filter(Boolean);
-      const assignedText = assignedNames.length ? ` · Classes: ${assignedNames.join(', ')}` : '';
+  const subjects = DB.get(KEYS.subjects, []);
 
-      if (m.status === 'pending') {
-        const classCheckboxes = classes.map(c =>
-          `<label class="checkbox-row"><input type="checkbox" class="assign-class-cb" value="${c.id}"> ${escapeHtml(c.name)}</label>`
-        ).join('') || '<p class="hint">No classes created yet — you can assign classes later by editing this teacher.</p>';
-        li.innerHTML = `<div class="edit-row">
-          <strong>${escapeHtml(m.email || m.uid)}</strong>
-          <div class="meta">${roleLabel}${statusBadge}</div>
-          <p class="hint">Assign classes, then approve:</p>
-          ${classCheckboxes}
-          <div class="edit-actions">
-            <button class="save-btn approve-teacher-btn" data-uid="${m.uid}">Approve</button>
-            <button class="cancel-btn reject-teacher-btn" data-uid="${m.uid}">Reject</button>
-          </div>
-        </div>`;
-      } else {
-        li.innerHTML = `<div><strong>${escapeHtml(m.email || m.uid)}</strong>
-            <div class="meta">${roleLabel}${statusBadge}${assignedText}</div></div>
-          <div class="actions">
-            ${isSelf || m.role === 'headteacher' ? '' : (m.status === 'disabled'
-              ? `<button class="edit-student reactivate-teacher-btn" data-uid="${m.uid}">Reactivate</button>`
-              : `<button class="del-student disable-teacher-btn" data-uid="${m.uid}">Disable</button>`)}
-          </div>`;
-      }
+  fetchSchoolMembers().then(members => {
+    members.sort((a, b) => {
+      if (a.role === 'headteacher' && b.role !== 'headteacher') return -1;
+      if (a.role !== 'headteacher' && b.role === 'headteacher') return 1;
+      return (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1);
+    });
+    list.innerHTML = '';
+    const teachers = members.filter(m => m.role === 'teacher');
+    if (!teachers.length) {
+      list.innerHTML = '<li class="empty">No teachers have joined your school yet.</li>';
+      return;
+    }
+
+    teachers.forEach(m => {
+      const li = document.createElement('li');
+      const assignedClasses = Array.isArray(m.assignedClassIds) ? m.assignedClassIds : [];
+      const assignedSubjects = Array.isArray(m.assignedSubjectIds) ? m.assignedSubjectIds : [];
+      const statusText = m.status === 'pending' ? ' · Pending approval' : m.status === 'disabled' ? ' · Disabled' : ' · Active';
+
+      const classChecks = classes.map(c =>
+        `<label class="checkbox-row"><input type="checkbox" class="assign-class-cb" value="${escapeHtml(c.id)}" ${assignedClasses.indexOf(c.id) !== -1 ? 'checked' : ''}> ${escapeHtml(c.name)}</label>`
+      ).join('') || '<p class="hint">Create classes first.</p>';
+
+      const subjectChecks = subjects.map(sub =>
+        `<label class="checkbox-row"><input type="checkbox" class="assign-subject-cb" value="${escapeHtml(sub.id)}" ${assignedSubjects.indexOf(sub.id) !== -1 ? 'checked' : ''}> ${escapeHtml(sub.name)}</label>`
+      ).join('') || '<p class="hint">Create subjects first.</p>';
+
+      const actionLabel = m.status === 'pending' ? 'Approve & Assign' : 'Save Assignments';
+      const disableButton = m.status === 'disabled'
+        ? `<button class="edit-student reactivate-teacher-btn" data-uid="${m.uid}">Reactivate</button>`
+        : `<button class="del-student disable-teacher-btn" data-uid="${m.uid}">Disable</button>`;
+
+      li.innerHTML = `<div class="edit-row">
+        <strong>${escapeHtml(m.email || m.uid)}</strong>
+        <div class="meta">Teacher${statusText}</div>
+        <p class="hint">Assign the class(es) and subject(s) this teacher is allowed to work with.</p>
+        <strong>Classes</strong>
+        ${classChecks}
+        <strong>Subjects</strong>
+        ${subjectChecks}
+        <div class="edit-actions">
+          <button class="save-btn save-teacher-assignment" data-uid="${m.uid}">${actionLabel}</button>
+          ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton}
+        </div>
+      </div>`;
       list.appendChild(li);
     });
 
-    list.querySelectorAll('.approve-teacher-btn').forEach(btn => {
+    list.querySelectorAll('.save-teacher-assignment').forEach(btn => {
       btn.addEventListener('click', () => {
         const li = btn.closest('li');
         const assignedClassIds = Array.from(li.querySelectorAll('.assign-class-cb:checked')).map(cb => cb.value);
-        firebase.firestore().collection('users').doc(btn.dataset.uid)
-          .update({ status: 'active', assignedClassIds })
+        const assignedSubjectIds = Array.from(li.querySelectorAll('.assign-subject-cb:checked')).map(cb => cb.value);
+        if (!assignedClassIds.length) {
+          alert('Assign at least one class before approving or activating a teacher.');
+          return;
+        }
+        const isPending = li.querySelector('.meta').textContent.indexOf('Pending') !== -1;
+        const updates = {
+          assignedClassIds,
+          assignedSubjectIds,
+          status: isPending ? 'active' : 'active',
+          assignmentsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        firebase.firestore().collection('users').doc(btn.dataset.uid).update(updates)
           .then(() => renderManageTeachers())
-          .catch(err => alert('Could not approve: ' + err.message));
+          .catch(err => alert('Could not save teacher assignment: ' + err.message));
       });
     });
+
     list.querySelectorAll('.reject-teacher-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (!confirm('Reject this request? They can try joining again with a different code.')) return;
-        firebase.firestore().collection('users').doc(btn.dataset.uid)
-          .update({
-            schoolId: firebase.firestore.FieldValue.delete(),
-            role: firebase.firestore.FieldValue.delete(),
-            status: firebase.firestore.FieldValue.delete(),
-            assignedClassIds: firebase.firestore.FieldValue.delete()
-          })
-          .then(() => renderManageTeachers())
+        if (!confirm('Reject this request? The teacher will need to join again with a school code.')) return;
+        firebase.firestore().collection('users').doc(btn.dataset.uid).update({
+          schoolId: firebase.firestore.FieldValue.delete(),
+          role: firebase.firestore.FieldValue.delete(),
+          status: 'rejected',
+          assignedClassIds: firebase.firestore.FieldValue.delete(),
+          assignedSubjectIds: firebase.firestore.FieldValue.delete()
+        }).then(() => renderManageTeachers())
           .catch(err => alert('Could not reject: ' + err.message));
       });
     });
+
     list.querySelectorAll('.disable-teacher-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (!confirm('Disable this teacher? They will be blocked from opening the app until reactivated. Their data stays in the school.')) return;
-        firebase.firestore().collection('users').doc(btn.dataset.uid)
-          .update({ status: 'disabled' })
+        if (!confirm('Disable this teacher? Their school data will remain safe, but access will be blocked.')) return;
+        firebase.firestore().collection('users').doc(btn.dataset.uid).update({ status: 'disabled' })
           .then(() => renderManageTeachers())
           .catch(err => alert('Could not disable: ' + err.message));
       });
     });
+
     list.querySelectorAll('.reactivate-teacher-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        firebase.firestore().collection('users').doc(btn.dataset.uid)
-          .update({ status: 'active' })
+        const teacher = members.find(m => m.uid === btn.dataset.uid);
+        const ids = Array.isArray(teacher && teacher.assignedClassIds) ? teacher.assignedClassIds : [];
+        if (!ids.length) {
+          alert('Assign at least one class before reactivating this teacher.');
+          return;
+        }
+        firebase.firestore().collection('users').doc(btn.dataset.uid).update({ status: 'active' })
           .then(() => renderManageTeachers())
           .catch(err => alert('Could not reactivate: ' + err.message));
       });
@@ -2592,6 +3030,9 @@ function initAuth() {
       showAuthGate();
       firebase.firestore().collection('users').doc(currentUid).get().then(userDoc => {
         const data = userDoc.exists ? userDoc.data() : null;
+        currentUserData = data || null;
+        currentAssignedClassIds = data && Array.isArray(data.assignedClassIds) ? data.assignedClassIds : [];
+        currentAssignedSubjectIds = data && Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds : [];
 
         if (!data || !data.schoolId) {
           currentSchoolId = null; currentRole = null; currentStatus = null;
@@ -2629,7 +3070,7 @@ function initAuth() {
         setAuthError('Could not load your account: ' + err.message);
       });
     } else {
-      currentUid = null; currentSchoolId = null; currentRole = null; currentStatus = null;
+      currentUid = null; currentSchoolId = null; currentRole = null; currentStatus = null; currentUserData = null; currentAssignedClassIds = []; currentAssignedSubjectIds = [];
       if (localStorage.getItem(GUEST_MODE_KEY)) {
         hideAuthGate(); hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
         initLockScreen();
