@@ -8,7 +8,7 @@
 // Until real values are set, the app has no working accounts/sync.
 
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyBUaoyy7rvAWaRe_m1ieq3_4iCySLU21o0",
-  authDomain: "alatipha-schoolflow.firebaseapp.com",
-  projectId: "alatipha-schoolflow"
+  apiKey: "AIzaSyADvwL7iA8ZY4xbT90Iz8MCy48iwCEWzWI",
+  authDomain: "alatipha-schoolhub.firebaseapp.com",
+  projectId: "alatipha-schoolhub"
 };
