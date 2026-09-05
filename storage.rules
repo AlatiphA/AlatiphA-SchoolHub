@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myUser() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isMember(schoolId) {
+      return signedIn()
+        && myUser().schoolId == schoolId
+        && (myUser().status == 'active' || myUser().status == 'pending');
+    }
+
+    function isHeadTeacher(schoolId) {
+      return signedIn()
+        && myUser().schoolId == schoolId
+        && myUser().role == 'headteacher'
+        && myUser().status == 'active';
+    }
+
+    match /schools/{schoolId}/student-photos/{classId}/{fileName} {
+      allow read: if isMember(schoolId) && (isHeadTeacher(schoolId) || classId in myUser().assignedClassIds);
+      allow write: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId) && classId in myUser().assignedClassIds);
+      allow delete: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId) && classId in myUser().assignedClassIds);
+    }
+
+    function isActiveTeacherForStorage(schoolId) {
+      return signedIn()
+        && myUser().schoolId == schoolId
+        && myUser().role == 'teacher'
+        && myUser().status == 'active'
+        && myUser().assignedClassIds is list;
+    }
+
+    match /schools/{schoolId}/{assetType}/{fileName} {
+      allow read: if isMember(schoolId);
+      allow write, delete: if isHeadTeacher(schoolId);
+    }
+  }
+}

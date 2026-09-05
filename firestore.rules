@@ -1,0 +1,156 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isHeadTeacher(schoolId) {
+      return signedIn()
+        && myUser().schoolId == schoolId
+        && myUser().role == 'headteacher'
+        && myUser().status == 'active';
+    }
+
+    function isActiveTeacher(schoolId) {
+      return signedIn()
+        && myUser().schoolId == schoolId
+        && myUser().role == 'teacher'
+        && myUser().status == 'active';
+    }
+
+    function hasClass(schoolId, classId) {
+      return isActiveTeacher(schoolId)
+        && myUser().assignedClassIds is list
+        && classId in myUser().assignedClassIds;
+    }
+
+    function hasSubject(schoolId, subjectId) {
+      return isActiveTeacher(schoolId)
+        && myUser().assignedSubjectIds is list
+        && subjectId in myUser().assignedSubjectIds;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isHeadTeacher(resource.data.schoolId));
+
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && (
+          (
+            request.resource.data.role == 'headteacher'
+            && request.resource.data.status == 'active'
+            && request.resource.data.schoolId != null
+            && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == uid
+          )
+          ||
+          (
+            request.resource.data.role == 'teacher'
+            && request.resource.data.status == 'pending'
+            && request.resource.data.schoolId != null
+            && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId))
+          )
+        );
+
+      allow update: if
+        (
+          isHeadTeacher(resource.data.schoolId)
+          && request.resource.data.schoolId == resource.data.schoolId
+          && request.resource.data.role == 'teacher'
+          && request.resource.data.assignedClassIds is list
+          && request.resource.data.assignedSubjectIds is list
+        )
+        ||
+        (
+          signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
+        );
+
+      allow delete: if false;
+    }
+
+    match /joinCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create, update, delete: if signedIn()
+        && request.resource.data.schoolId != null
+        && isHeadTeacher(request.resource.data.schoolId);
+    }
+
+    match /schools/{schoolId} {
+      allow read: if signedIn()
+        && (
+          isHeadTeacher(schoolId)
+          || isActiveTeacher(schoolId)
+          || (
+            myUser().schoolId == schoolId
+            && myUser().status == 'pending'
+          )
+        );
+
+      allow create: if signedIn()
+        && request.auth.uid == request.resource.data.ownerUid
+        && request.resource.data.profile.schoolName is string;
+
+      allow update: if isHeadTeacher(schoolId);
+      allow delete: if false;
+
+      match /classes/{classId} {
+        allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, classId);
+        allow create, update, delete: if isHeadTeacher(schoolId);
+      }
+
+      match /students/{studentId} {
+        allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+        allow create: if isHeadTeacher(schoolId)
+          || hasClass(schoolId, request.resource.data.classId);
+        allow update: if isHeadTeacher(schoolId)
+          || (
+            hasClass(schoolId, resource.data.classId)
+            && request.resource.data.classId == resource.data.classId
+          );
+        allow delete: if isHeadTeacher(schoolId)
+          || hasClass(schoolId, resource.data.classId);
+      }
+
+      match /subjects/{subjectId} {
+        allow read: if isHeadTeacher(schoolId) || hasSubject(schoolId, subjectId);
+        allow create, update, delete: if isHeadTeacher(schoolId);
+      }
+
+      match /grades/{gradeId} {
+        allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+        allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);
+        allow update: if isHeadTeacher(schoolId)
+          || (
+            hasClass(schoolId, resource.data.classId)
+            && request.resource.data.classId == resource.data.classId
+          );
+        allow delete: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+      }
+
+      match /remarks/{remarkId} {
+        allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+        allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);
+        allow update: if isHeadTeacher(schoolId)
+          || (
+            hasClass(schoolId, resource.data.classId)
+            && request.resource.data.classId == resource.data.classId
+          );
+        allow delete: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+      }
+
+      match /staff/{staffId} {
+        allow read: if isHeadTeacher(schoolId) || isActiveTeacher(schoolId);
+        allow create, update, delete: if isHeadTeacher(schoolId);
+      }
+    }
+  }
+}
