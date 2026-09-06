@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v12';
+const APP_VERSION = 'v13';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2143,19 +2143,21 @@ const RED_INK = [150, 55, 40];
 // Looks up the assigned Class Teacher (per class) and Head Teacher (per
 // school, from Setup) staff records, returning their names and uploaded
 // signature images (if any) for use on the report card.
-function getStaffSignatures(classInfo, settings) {
+function getStaffSignatures(classInfo, settings, resolvedAssets) {
   const staffList = DB.get(KEYS.staff, []);
   const classTeacher = classInfo && classInfo.classTeacherId ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
   const headTeacher = settings.headTeacherId ? staffList.find(s => s.id === settings.headTeacherId) : null;
   return {
     classTeacherName: classTeacher ? classTeacher.name : '',
-    classTeacherSignature: classTeacher ? (classTeacher.signature || classTeacher.signatureUrl || '') : '',
+    classTeacherSignature: resolvedAssets && resolvedAssets.classTeacherSignature !== undefined
+      ? resolvedAssets.classTeacherSignature : (classTeacher ? (classTeacher.signatureUrl || classTeacher.signature || '') : ''),
     headTeacherName: headTeacher ? headTeacher.name : '',
-    headTeacherSignature: headTeacher ? (headTeacher.signature || headTeacher.signatureUrl || '') : ''
+    headTeacherSignature: resolvedAssets && resolvedAssets.headTeacherSignature !== undefined
+      ? resolvedAssets.headTeacherSignature : (headTeacher ? (headTeacher.signatureUrl || headTeacher.signature || '') : '')
   };
 }
 
-function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, resolvedImages) {
+function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, resolvedAssets) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const left = 15, right = pageWidth - 15;
   let y = 18;
@@ -2184,11 +2186,17 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.setLineWidth(0.2);
   doc.setTextColor(0, 0, 0);
 
-  if (resolvedImages && resolvedImages.logo) addResolvedImage(doc, resolvedImages.logo, left, 12, 20, 20);
+  const logoImage = resolvedAssets && resolvedAssets.logo !== undefined ? resolvedAssets.logo : settings.logo;
+  if (logoImage) {
+    try { doc.addImage(logoImage, 'PNG', left, 12, 20, 20); }
+    catch (e) { try { doc.addImage(logoImage, 'JPEG', left, 12, 20, 20); } catch (e2) {} }
+  }
 
-  if (resolvedImages && resolvedImages.photo) {
+  const photoImage = resolvedAssets && resolvedAssets.photo !== undefined ? resolvedAssets.photo : result.student.photo;
+  if (photoImage) {
     const pw = 20, ph = 24; // slightly taller than wide, passport-style
-    addResolvedImage(doc, resolvedImages.photo, right - pw, 12, pw, ph);
+    try { doc.addImage(photoImage, 'PNG', right - pw, 12, pw, ph); }
+    catch (e) { try { doc.addImage(photoImage, 'JPEG', right - pw, 12, pw, ph); } catch (e2) {} }
     doc.setDrawColor(200, 200, 200);
     doc.setLineWidth(0.2);
     doc.rect(right - pw, 12, pw, ph);
@@ -2313,15 +2321,21 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // distributed across the row width and centered under its own line.
   // If a staff member's uploaded signature image is available, it's
   // drawn just above the line; their name prints below the role label.
-  const sig = resolvedImages || getStaffSignatures(classInfo, settings);
+  const sig = getStaffSignatures(classInfo, settings, resolvedAssets);
   const sigLineWidth = 60;
   const halfWidth = (right - left) / 2;
   const leftSigCenter = left + halfWidth / 2;
   const rightSigCenter = left + halfWidth + halfWidth / 2;
   const sigImgW = 34, sigImgH = 12;
 
-  addResolvedImage(doc, sig.classTeacherSignature, leftSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH);
-  addResolvedImage(doc, sig.headTeacherSignature, rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH);
+  if (sig.classTeacherSignature) {
+    try { doc.addImage(sig.classTeacherSignature, 'PNG', leftSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); }
+    catch (e) { try { doc.addImage(sig.classTeacherSignature, 'JPEG', leftSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); } catch (e2) {} }
+  }
+  if (sig.headTeacherSignature) {
+    try { doc.addImage(sig.headTeacherSignature, 'PNG', rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); }
+    catch (e) { try { doc.addImage(sig.headTeacherSignature, 'JPEG', rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); } catch (e2) {} }
+  }
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
@@ -2355,222 +2369,75 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.text('Remarks: 80-100 Highly Proficient · 54-79 Proficient · 46-53 Approaching Proficiency · 40-45 Developing · 0-39 Emerging', pageWidth / 2, y, { align: 'center' });
   doc.setTextColor(GOLD[0], GOLD[1], GOLD[2]);
   doc.setFontSize(8);
-  doc.text('Generated with AlatiphA SchoolHub', pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
+  doc.text('Generated with AlatiphA SchoolFlow', pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
   doc.setTextColor(0, 0, 0);
 }
 
-const reportImageCache = new Map();
-const reportStorageAssetCache = new Map();
-
-// Report-card images can originate from:
-// 1. legacy data:image URLs,
-// 2. Firestore URLs such as logoUrl/photoUrl/signatureUrl,
-// 3. Firebase Storage files whose URL was not persisted by an older build.
-//
-// jsPDF reliably accepts PNG/JPEG data URLs, so every source is normalized
-// to PNG data before it reaches doc.addImage(). This also handles WebP and
-// other browser-supported image formats.
-
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
-    reader.readAsDataURL(blob);
-  });
-}
-
-function imageDataUrlToPng(dataUrl) {
-  if (!dataUrl) return Promise.resolve('');
-  if (!/^data:image\//i.test(dataUrl)) return Promise.resolve(dataUrl);
-  if (/^data:image\/png/i.test(dataUrl)) return Promise.resolve(dataUrl);
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-        if (!canvas.width || !canvas.height) throw new Error('Image has no usable dimensions.');
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
-      } catch (e) {
-        reject(e);
-      }
-    };
-    img.onerror = () => reject(new Error('Browser could not decode the image.'));
-    img.src = dataUrl;
-  });
-}
-
-async function imageSourceToDataUrl(source) {
+async function reportImageToDataUrl(source) {
   if (!source) return '';
   const value = String(source);
+  if (/^data:image\//i.test(value)) return value;
 
-  if (reportImageCache.has(value)) return reportImageCache.get(value);
-
-  const promise = (async () => {
-    try {
-      let dataUrl = '';
-
-      if (/^data:image\//i.test(value)) {
-        dataUrl = value;
-      } else if (FIREBASE_ENABLED && /^https?:\/\//i.test(value)) {
-        // Prefer Firebase Storage SDK for our own Storage URLs. This avoids
-        // CORS/download-token differences between browsers.
-        try {
-          const ref = firebase.storage().refFromURL(value);
-          const meta = await ref.getMetadata();
-          const bytes = await ref.getBytes(8 * 1024 * 1024);
-          const mime = (meta && meta.contentType) || 'image/png';
-          const blob = new Blob([bytes], { type: mime });
-          dataUrl = await blobToDataUrl(blob);
-        } catch (storageErr) {
-          // Fall back to the public download URL if the SDK cannot resolve it.
-          const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
-          if (!response.ok) throw storageErr;
-          dataUrl = await blobToDataUrl(await response.blob());
-        }
-      } else {
-        const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
-        if (!response.ok) throw new Error(`Image request failed (${response.status})`);
-        dataUrl = await blobToDataUrl(await response.blob());
+  try {
+    // Firebase Storage SDK is the primary path for SchoolHub assets.
+    if (typeof firebase !== 'undefined' && firebase.storage && /^https?:\/\//i.test(value)) {
+      try {
+        const ref = firebase.storage().refFromURL(value);
+        const snapshot = await ref.getBytes(10 * 1024 * 1024);
+        const meta = await ref.getMetadata().catch(() => null);
+        const mime = (meta && meta.contentType) || 'image/png';
+        const blob = new Blob([snapshot], { type: mime });
+        return await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
+          reader.readAsDataURL(blob);
+        });
+      } catch (storageError) {
+        console.warn('Firebase Storage image read failed, trying URL fallback.', storageError);
       }
-
-      // Normalize JPEG/WebP/GIF/etc. to PNG because jsPDF's PNG path is the
-      // most reliable across browsers.
-      return await imageDataUrlToPng(dataUrl);
-    } catch (err) {
-      console.warn('Could not resolve report-card image:', err);
-      return '';
     }
-  })();
 
-  reportImageCache.set(value, promise);
-  return promise;
-}
-
-async function findStorageDownloadUrl(path) {
-  if (!FIREBASE_ENABLED || !currentSchoolId || !path) return '';
-  const key = String(path);
-  if (reportStorageAssetCache.has(key)) return reportStorageAssetCache.get(key);
-
-  const promise = (async () => {
-    try {
-      const folderRef = firebase.storage().ref(key);
-      const result = await folderRef.listAll();
-      if (!result.items.length) return '';
-      return await result.items[0].getDownloadURL();
-    } catch (err) {
-      console.warn('Could not locate report-card asset in Storage:', key, err);
-      return '';
-    }
-  })();
-
-  reportStorageAssetCache.set(key, promise);
-  return promise;
-}
-
-async function findStorageFileUrl(folderPath, namePrefix) {
-  if (!FIREBASE_ENABLED || !currentSchoolId || !folderPath || !namePrefix) return '';
-  const key = `${folderPath}|${namePrefix}`;
-  if (reportStorageAssetCache.has(key)) return reportStorageAssetCache.get(key);
-
-  const promise = (async () => {
-    try {
-      const result = await firebase.storage().ref(folderPath).listAll();
-      const item = result.items.find(item => item.name.indexOf(String(namePrefix)) === 0);
-      return item ? await item.getDownloadURL() : '';
-    } catch (err) {
-      console.warn('Could not locate report-card file in Storage:', folderPath, namePrefix, err);
-      return '';
-    }
-  })();
-
-  reportStorageAssetCache.set(key, promise);
-  return promise;
-}
-
-async function resolveStudentPhotoSource(student) {
-  if (!student) return '';
-  const direct = student.photo || student.photoUrl || '';
-  if (direct) return direct;
-
-  // Older Phase 3 uploads stored the file in Storage but did not persist
-  // photoUrl in Firestore. Recover it from the known class/student folder.
-  if (student.classId && student.id) {
-    return await findStorageFileUrl(
-      `schools/${currentSchoolId}/student-photos/${student.classId}`,
-      `${student.id}_`
-    );
+    const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
+    if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
+    const blob = await response.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
+      reader.readAsDataURL(blob);
+    });
+  } catch (err) {
+    console.warn('Report image could not be loaded:', err);
+    return '';
   }
-  return '';
 }
 
-async function resolveSchoolLogoSource(settings) {
-  const direct = settings && (settings.logo || settings.logoUrl || '');
-  if (direct) return direct;
-
-  return await findStorageFileUrl(
-    `schools/${currentSchoolId}/logos`,
-    'school-logo_'
-  );
-}
-
-async function resolveStaffSignatureSource(staff, kind) {
-  if (!staff) return '';
-  const direct = staff.signature || staff.signatureUrl || '';
-  if (direct) return direct;
-
-  return await findStorageFileUrl(
-    `schools/${currentSchoolId}/signatures`,
-    `${staff.id}_`
-  );
-}
-
-async function resolveReportImages(result, settings, classInfo) {
+async function prepareReportAssets(result, settings, classInfo) {
   const staffList = DB.get(KEYS.staff, []);
   const classTeacher = classInfo && classInfo.classTeacherId
-    ? staffList.find(s => s.id === classInfo.classTeacherId)
-    : null;
+    ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
   const headTeacher = settings && settings.headTeacherId
-    ? staffList.find(s => s.id === settings.headTeacherId)
-    : null;
+    ? staffList.find(s => s.id === settings.headTeacherId) : null;
 
-  const [logoSource, photoSource, classSigSource, headSigSource] = await Promise.all([
-    resolveSchoolLogoSource(settings || {}),
-    resolveStudentPhotoSource(result && result.student),
-    resolveStaffSignatureSource(classTeacher, 'class'),
-    resolveStaffSignatureSource(headTeacher, 'head')
-  ]);
+  const logoSource = settings ? (settings.logoUrl || settings.logo || '') : '';
+  const photoSource = result && result.student ? (result.student.photoUrl || result.student.photo || '') : '';
+  const classSigSource = classTeacher ? (classTeacher.signatureUrl || classTeacher.signature || '') : '';
+  const headSigSource = headTeacher ? (headTeacher.signatureUrl || headTeacher.signature || '') : '';
 
-  const [logo, photo, classTeacherSignature, headTeacherSignature] = await Promise.all([
-    imageSourceToDataUrl(logoSource),
-    imageSourceToDataUrl(photoSource),
-    imageSourceToDataUrl(classSigSource),
-    imageSourceToDataUrl(headSigSource)
+  const values = await Promise.all([
+    reportImageToDataUrl(logoSource),
+    reportImageToDataUrl(photoSource),
+    reportImageToDataUrl(classSigSource),
+    reportImageToDataUrl(headSigSource)
   ]);
 
   return {
-    logo,
-    photo,
-    classTeacherSignature,
-    headTeacherSignature,
-    classTeacherName: classTeacher ? classTeacher.name : '',
-    headTeacherName: headTeacher ? headTeacher.name : ''
+    logo: values[0],
+    photo: values[1],
+    classTeacherSignature: values[2],
+    headTeacherSignature: values[3]
   };
-}
-
-function addResolvedImage(doc, source, x, y, w, h) {
-  if (!source) return;
-  try {
-    // v12 normalizes all report images to PNG before reaching this function.
-    doc.addImage(source, 'PNG', x, y, w, h);
-  } catch (e) {
-    console.warn('Could not add report-card image:', e);
-  }
 }
 
 async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
@@ -2578,8 +2445,8 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
-  const reportImages = await resolveReportImages(result, settings, classInfo);
-  drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, reportImages);
+  const assets = await prepareReportAssets(result, settings, classInfo);
+  drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
   doc.save(`${result.student.name.replace(/\s+/g, '_')}_report.pdf`);
 }
 
@@ -2589,12 +2456,12 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
-  const reportImagesByStudent = new Map();
-  for (const r of usable) reportImagesByStudent.set(r.student.id, await resolveReportImages(r, settings, classInfo));
-  usable.forEach((r, i) => {
+  for (let i = 0; i < usable.length; i++) {
     if (i > 0) doc.addPage();
-    drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, reportImagesByStudent.get(r.student.id));
-  });
+    const r = usable[i];
+    const assets = await prepareReportAssets(r, settings, classInfo);
+    drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, assets);
+  }
   doc.save('class_report_cards.pdf');
 }
 
