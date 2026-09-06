@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v9';
+const APP_VERSION = 'v10';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2155,7 +2155,7 @@ function getStaffSignatures(classInfo, settings) {
   };
 }
 
-function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks) {
+function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, resolvedSignatures) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const left = 15, right = pageWidth - 15;
   let y = 18;
@@ -2317,21 +2317,15 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // distributed across the row width and centered under its own line.
   // If a staff member's uploaded signature image is available, it's
   // drawn just above the line; their name prints below the role label.
-  const sig = getStaffSignatures(classInfo, settings);
+  const sig = resolvedSignatures || getStaffSignatures(classInfo, settings);
   const sigLineWidth = 60;
   const halfWidth = (right - left) / 2;
   const leftSigCenter = left + halfWidth / 2;
   const rightSigCenter = left + halfWidth + halfWidth / 2;
   const sigImgW = 34, sigImgH = 12;
 
-  if (sig.classTeacherSignature) {
-    try { doc.addImage(sig.classTeacherSignature, 'PNG', leftSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); }
-    catch (e) { try { doc.addImage(sig.classTeacherSignature, 'JPEG', leftSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); } catch (e2) {} }
-  }
-  if (sig.headTeacherSignature) {
-    try { doc.addImage(sig.headTeacherSignature, 'PNG', rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); }
-    catch (e) { try { doc.addImage(sig.headTeacherSignature, 'JPEG', rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); } catch (e2) {} }
-  }
+  addResolvedSignature(doc, sig.classTeacherSignature, leftSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH);
+  addResolvedSignature(doc, sig.headTeacherSignature, rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH);
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
@@ -2369,24 +2363,73 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.setTextColor(0, 0, 0);
 }
 
-function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
+const reportImageCache = new Map();
+
+function imageSourceToDataUrl(source) {
+  if (!source) return Promise.resolve('');
+  const value = String(source);
+  if (value.indexOf('data:image/') === 0) return Promise.resolve(value);
+  if (reportImageCache.has(value)) return reportImageCache.get(value);
+
+  const promise = fetch(value, { mode: 'cors', credentials: 'omit' })
+    .then(response => {
+      if (!response.ok) throw new Error(`Signature image request failed (${response.status})`);
+      return response.blob();
+    })
+    .then(blob => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(reader.error || new Error('Could not read signature image.'));
+      reader.readAsDataURL(blob);
+    }))
+    .catch(err => {
+      console.warn('Could not resolve report-card signature image:', err);
+      return '';
+    });
+
+  reportImageCache.set(value, promise);
+  return promise;
+}
+
+async function resolveStaffSignatures(classInfo, settings) {
+  const sig = getStaffSignatures(classInfo, settings);
+  const [classTeacherSignature, headTeacherSignature] = await Promise.all([
+    imageSourceToDataUrl(sig.classTeacherSignature),
+    imageSourceToDataUrl(sig.headTeacherSignature)
+  ]);
+  return Object.assign({}, sig, { classTeacherSignature, headTeacherSignature });
+}
+
+function addResolvedSignature(doc, source, x, y, w, h) {
+  if (!source) return;
+  try {
+    const format = /^data:image\/jpe?g/i.test(source) ? 'JPEG' : 'PNG';
+    doc.addImage(source, format, x, y, w, h);
+  } catch (e) {
+    console.warn('Could not add report-card signature image:', e);
+  }
+}
+
+async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
   if (!result.entries.length) { alert('No grades entered for this student yet.'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
-  drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks);
+  const signatures = await resolveStaffSignatures(classInfo, settings);
+  drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, signatures);
   doc.save(`${result.student.name.replace(/\s+/g, '_')}_report.pdf`);
 }
 
-function generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settingsOverride) {
+async function generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settingsOverride) {
   const usable = results.filter(r => r.entries.length > 0);
   if (!usable.length) { alert('No grades entered for this class yet.'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
+  const signatures = await resolveStaffSignatures(classInfo, settings);
   usable.forEach((r, i) => {
     if (i > 0) doc.addPage();
-    drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {});
+    drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, signatures);
   });
   doc.save('class_report_cards.pdf');
 }
@@ -2800,7 +2843,12 @@ function syncKeyedCollection(ref, entries, makeData, allowedClassIds) {
   }
   return existingPromise.then(snapshot => {
     const ops = [];
-    Object.keys(entries).forEach(key => ops.push(batch => batch.set(ref.doc(key), makeData(key, entries[key]))));
+    Object.keys(entries).forEach(key => {
+      // Local grade/remark keys can contain '/', e.g. 2025/2026.
+      // Encode the same ID used for comparison and reads before writing.
+      const docId = cloudKey(key);
+      ops.push(batch => batch.set(ref.doc(docId), makeData(key, entries[key])));
+    });
     snapshot.forEach(doc => {
       if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id)));
     });
