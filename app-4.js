@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v13';
+const APP_VERSION = 'v14';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2413,31 +2413,80 @@ async function reportImageToDataUrl(source) {
   }
 }
 
+async function findStorageAssetUrl(folderPath, prefixes) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !folderPath) return '';
+  try {
+    const ref = firebase.storage().ref(folderPath);
+    const result = await ref.listAll();
+    const list = Array.isArray(prefixes) ? prefixes : [prefixes];
+    const item = result.items.find(it => list.some(prefix => String(it.name).indexOf(String(prefix)) === 0));
+    return item ? await item.getDownloadURL() : '';
+  } catch (err) {
+    console.warn('Report Storage lookup failed:', folderPath, err);
+    return '';
+  }
+}
+
+async function resolveReportAsset(primarySource, fallbackFolder, fallbackPrefixes) {
+  // First use the persisted/local value. If it is missing or cannot be read,
+  // recover the existing file directly from Firebase Storage.
+  if (primarySource) {
+    const data = await reportImageToDataUrl(primarySource);
+    if (data) return data;
+  }
+  const url = await findStorageAssetUrl(fallbackFolder, fallbackPrefixes);
+  return url ? await reportImageToDataUrl(url) : '';
+}
+
 async function prepareReportAssets(result, settings, classInfo) {
   const staffList = DB.get(KEYS.staff, []);
-  const classTeacher = classInfo && classInfo.classTeacherId
+  const classId = classInfo ? classInfo.id : (result && result.student ? result.student.classId : '');
+
+  // Prefer the explicit class/head-teacher assignment, then fall back to the
+  // staff records themselves. This makes reports resilient to older Phase 3
+  // records where the assignment field was not copied into the local cache.
+  let classTeacher = classInfo && classInfo.classTeacherId
     ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
-  const headTeacher = settings && settings.headTeacherId
+  if (!classTeacher && classId) {
+    classTeacher = staffList.find(s => s.role === 'Teacher' && Array.isArray(s.assignedClassIds) && s.assignedClassIds.indexOf(classId) !== -1) || null;
+  }
+
+  let headTeacher = settings && settings.headTeacherId
     ? staffList.find(s => s.id === settings.headTeacherId) : null;
+  if (!headTeacher) {
+    headTeacher = staffList.find(s => s.role === 'Head Teacher' || String(s.role || '').toLowerCase() === 'headteacher') || null;
+  }
 
   const logoSource = settings ? (settings.logoUrl || settings.logo || '') : '';
   const photoSource = result && result.student ? (result.student.photoUrl || result.student.photo || '') : '';
   const classSigSource = classTeacher ? (classTeacher.signatureUrl || classTeacher.signature || '') : '';
   const headSigSource = headTeacher ? (headTeacher.signatureUrl || headTeacher.signature || '') : '';
 
-  const values = await Promise.all([
-    reportImageToDataUrl(logoSource),
-    reportImageToDataUrl(photoSource),
-    reportImageToDataUrl(classSigSource),
-    reportImageToDataUrl(headSigSource)
-  ]);
+  const logo = await resolveReportAsset(
+    logoSource,
+    `schools/${currentSchoolId}/logos`,
+    ['school-logo_']
+  );
 
-  return {
-    logo: values[0],
-    photo: values[1],
-    classTeacherSignature: values[2],
-    headTeacherSignature: values[3]
-  };
+  const photo = await resolveReportAsset(
+    photoSource,
+    `schools/${currentSchoolId}/student-photos/${classId}`,
+    result && result.student ? [`${result.student.id}_`] : []
+  );
+
+  const classTeacherSignature = await resolveReportAsset(
+    classSigSource,
+    `schools/${currentSchoolId}/signatures`,
+    classTeacher ? [`${classTeacher.id}_`, `${classTeacher.id}.`] : []
+  );
+
+  const headTeacherSignature = await resolveReportAsset(
+    headSigSource,
+    `schools/${currentSchoolId}/signatures`,
+    headTeacher ? [`${headTeacher.id}_`, `${headTeacher.id}.`] : []
+  );
+
+  return { logo, photo, classTeacherSignature, headTeacherSignature };
 }
 
 async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
@@ -2445,7 +2494,13 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
-  const assets = await prepareReportAssets(result, settings, classInfo);
+  let assets;
+  try {
+    assets = await prepareReportAssets(result, settings, classInfo);
+  } catch (assetError) {
+    console.warn('Report image preparation failed:', assetError);
+    assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '' };
+  }
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
   doc.save(`${result.student.name.replace(/\s+/g, '_')}_report.pdf`);
 }
@@ -2459,7 +2514,13 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   for (let i = 0; i < usable.length; i++) {
     if (i > 0) doc.addPage();
     const r = usable[i];
-    const assets = await prepareReportAssets(r, settings, classInfo);
+    let assets;
+    try {
+      assets = await prepareReportAssets(r, settings, classInfo);
+    } catch (assetError) {
+      console.warn('Report image preparation failed:', assetError);
+      assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '' };
+    }
     drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, assets);
   }
   doc.save('class_report_cards.pdf');
