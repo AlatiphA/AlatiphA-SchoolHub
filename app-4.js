@@ -2227,12 +2227,27 @@ function subjectRef(id) {
   return schoolRef().collection('subjects').doc(id);
 }
 
+// Firestore document IDs cannot contain path separators.
+// Local SchoolHub keys may contain '/' in academic years such as 2025/2026.
+// Encode the complete local key for Firestore, then decode it when reading back.
+function cloudKey(key) {
+  return encodeURIComponent(String(key));
+}
+
+function localKeyFromCloudId(id) {
+  try {
+    return decodeURIComponent(String(id));
+  } catch (e) {
+    return String(id);
+  }
+}
+
 function gradeRef(key) {
-  return schoolRef().collection('grades').doc(key);
+  return schoolRef().collection('grades').doc(cloudKey(key));
 }
 
 function remarkRef(key) {
-  return schoolRef().collection('remarks').doc(key);
+  return schoolRef().collection('remarks').doc(cloudKey(key));
 }
 
 function staffRef(id) {
@@ -2480,7 +2495,7 @@ function pullCloudData() {
 
       const grades = {};
       gradeSnap.forEach(d => {
-        const key = d.id;
+        const key = localKeyFromCloudId(d.id);
         const classId = key.split('__')[0];
         if (all || classIds.has(classId)) grades[key] = (d.data() || {}).entries || {};
       });
@@ -2488,7 +2503,7 @@ function pullCloudData() {
 
       const remarks = {};
       remarkSnap.forEach(d => {
-        const key = d.id;
+        const key = localKeyFromCloudId(d.id);
         const classId = key.split('__')[0];
         if (all || classIds.has(classId)) remarks[key] = (d.data() || {}).entries || {};
       });
@@ -2523,7 +2538,10 @@ function syncCollectionArray(ref, items, cleanFn) {
 }
 
 function syncKeyedCollection(ref, entries, makeData, allowedClassIds) {
-  const currentIds = new Set(Object.keys(entries));
+  // Compare encoded Firestore IDs, not the raw local keys.
+  // This prevents valid documents such as 2025/2026 from being deleted
+  // during synchronization after their keys are encoded for Firestore.
+  const currentIds = new Set(Object.keys(entries).map(cloudKey));
   let existingPromise;
   if (allowedClassIds === null) {
     existingPromise = ref.get();
