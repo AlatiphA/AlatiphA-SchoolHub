@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v8';
+const APP_VERSION = 'v9';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -1175,22 +1175,34 @@ function renderStaff() {
     input.addEventListener('change', e => {
       const file = e.target.files[0];
       if (!file) return;
-      uploadSchoolAsset(file, 'signatures', input.dataset.staff).then(url => {
+      const staffId = input.dataset.staff;
+      uploadSchoolAsset(file, 'signatures', staffId).then(url => {
         const staffList = DB.get(KEYS.staff, []);
-        const st = staffList.find(x => x.id === input.dataset.staff);
-        if (st) { st.signature = url; st.signatureUrl = url; }
+        const st = staffList.find(x => x.id === staffId);
+        if (!st) throw new Error('Staff record not found.');
+        st.signature = url;
+        st.signatureUrl = url;
         DB.set(KEYS.staff, staffList);
+        return persistStaffSignature(staffId, url);
+      }).then(() => {
         renderStaff(); // stays in edit mode — editingStaffId is untouched
-      }).catch(err => alert('Could not upload the signature: ' + err.message));
+      }).catch(err => alert('Could not save the signature: ' + err.message));
     });
   });
   list.querySelectorAll('.remove-staff-signature').forEach(btn => {
     btn.addEventListener('click', () => {
       const staffList = DB.get(KEYS.staff, []);
       const st = staffList.find(x => x.id === btn.dataset.id);
-      if (st) st.signature = '';
+      if (!st) return;
+      const oldUrl = st.signatureUrl || st.signature || '';
+      st.signature = '';
+      st.signatureUrl = '';
       DB.set(KEYS.staff, staffList);
-      renderStaff();
+      Promise.all([
+        removeStorageFile(oldUrl),
+        persistStaffSignature(st.id, '')
+      ]).then(() => renderStaff())
+        .catch(err => alert('Could not remove the signature: ' + err.message));
     });
   });
   list.querySelectorAll('.save-staff').forEach(btn => {
@@ -1237,21 +1249,32 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
   STAFF_FIELDS.forEach(f => { values[f.key] = document.getElementById('newStaff_' + f.key).value.trim(); });
   const file = document.getElementById('newStaffSignature').files[0];
 
+  const staffId = uid();
   const commit = signatureDataUrl => {
     const staffList = DB.get(KEYS.staff, []);
-    staffList.push(Object.assign({ id: uid(), name, role, signature: signatureDataUrl || '' }, values));
+    const record = Object.assign({
+      id: staffId,
+      name,
+      role,
+      signature: signatureDataUrl || '',
+      signatureUrl: signatureDataUrl || ''
+    }, values);
+    staffList.push(record);
     DB.set(KEYS.staff, staffList);
-    nameInput.value = '';
-    STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; });
-    document.getElementById('newStaffSignature').value = '';
-    renderStaff();
+    const cloudSave = signatureDataUrl ? persistStaffSignature(staffId, signatureDataUrl) : Promise.resolve();
+    return cloudSave.then(() => {
+      nameInput.value = '';
+      STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; });
+      document.getElementById('newStaffSignature').value = '';
+      renderStaff();
+    });
   };
 
   if (file) {
-    uploadSchoolAsset(file, 'signatures', uid()).then(url => commit(url))
+    uploadSchoolAsset(file, 'signatures', staffId).then(url => commit(url))
       .catch(err => alert('Could not upload the signature: ' + err.message));
   } else {
-    commit('');
+    commit('').catch(err => alert('Could not save the staff member: ' + err.message));
   }
 });
 
@@ -2126,9 +2149,9 @@ function getStaffSignatures(classInfo, settings) {
   const headTeacher = settings.headTeacherId ? staffList.find(s => s.id === settings.headTeacherId) : null;
   return {
     classTeacherName: classTeacher ? classTeacher.name : '',
-    classTeacherSignature: classTeacher ? classTeacher.signature : '',
+    classTeacherSignature: classTeacher ? (classTeacher.signature || classTeacher.signatureUrl || '') : '',
     headTeacherName: headTeacher ? headTeacher.name : '',
-    headTeacherSignature: headTeacher ? headTeacher.signature : ''
+    headTeacherSignature: headTeacher ? (headTeacher.signature || headTeacher.signatureUrl || '') : ''
   };
 }
 
@@ -2475,6 +2498,15 @@ function uploadSchoolAsset(file, kind, id) {
     .then(snapshot => snapshot.ref.getDownloadURL());
 }
 
+function persistStaffSignature(staffId, url) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !staffId) return Promise.resolve();
+  if (!isHeadTeacher()) return Promise.resolve();
+  return staffRef(staffId).set({
+    signatureUrl: url || '',
+    signatureUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+
 function removeStorageFile(url) {
   if (!url || !FIREBASE_ENABLED) return Promise.resolve();
   try {
@@ -2511,6 +2543,7 @@ function stripImagesForCloud(field, value) {
   if (field === 'staff' && Array.isArray(value)) {
     return value.map(s => {
       const c = Object.assign({}, s);
+      if (!c.signatureUrl && c.signature) c.signatureUrl = c.signature;
       delete c.signature;
       return c;
     });
@@ -2530,7 +2563,7 @@ function mergeLocalImage(field, cloudValue, id) {
   }
   if (field === 'staff') {
     const local = DB.get(KEYS.staff, []).find(s => s.id === id);
-    return Object.assign({}, cloudValue, { signature: cloudValue.signatureUrl || (local ? (local.signature || '') : '') });
+    return Object.assign({}, cloudValue, { signature: cloudValue.signatureUrl || (local ? (local.signatureUrl || local.signature || '') : '') });
   }
   return cloudValue;
 }
