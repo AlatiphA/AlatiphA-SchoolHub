@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v5';
+const APP_VERSION = 'v7';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -53,11 +53,50 @@ function getAccessibleStudents() {
   return DB.get(KEYS.students, []).filter(s => ids.has(s.classId));
 }
 
+function subjectOrderValue(subject, fallbackIndex) {
+  const n = Number(subject && subject.order);
+  return Number.isFinite(n) ? n : fallbackIndex;
+}
+
+function sortSubjectsByOrder(subjects) {
+  return subjects.slice().sort((a, b) => {
+    const ao = subjectOrderValue(a, 0);
+    const bo = subjectOrderValue(b, 0);
+    return ao - bo || String(a.name || '').localeCompare(String(b.name || '')) || String(a.id || '').localeCompare(String(b.id || ''));
+  });
+}
+
+// Existing Phase 3 subject records did not have an explicit order field.
+// Preserve their current local order the first time we encounter them, then
+// keep a stable numeric order for Firestore and aggregate calculations.
+function ensureSubjectOrder(subjects) {
+  let changed = false;
+  subjects.forEach((subject, index) => {
+    if (!Number.isFinite(Number(subject.order))) {
+      subject.order = index;
+      changed = true;
+    }
+  });
+  const sorted = sortSubjectsByOrder(subjects);
+  sorted.forEach((subject, index) => {
+    if (Number(subject.order) !== index) {
+      subject.order = index;
+      changed = true;
+    }
+  });
+  if (changed) {
+    subjects.length = 0;
+    sorted.forEach(subject => subjects.push(subject));
+  }
+  return changed;
+}
+
 function getAccessibleSubjects() {
   const all = DB.get(KEYS.subjects, []);
-  if (isHeadTeacher()) return all;
+  const ordered = sortSubjectsByOrder(all);
+  if (isHeadTeacher()) return ordered;
   const ids = new Set(Array.isArray(currentAssignedSubjectIds) ? currentAssignedSubjectIds : []);
-  return all.filter(s => ids.has(s.id));
+  return ordered.filter(s => ids.has(s.id));
 }
 
 function canAccessClass(classId) {
@@ -106,7 +145,10 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 
 function ensureDefaults() {
   if (DB.get(KEYS.subjects, null) === null) {
-    DB.set(KEYS.subjects, DEFAULT_SUBJECTS.map(name => ({ id: uid(), name })));
+    DB.set(KEYS.subjects, DEFAULT_SUBJECTS.map((name, order) => ({ id: uid(), name, order })));
+  } else {
+    const subjects = DB.get(KEYS.subjects, []);
+    if (Array.isArray(subjects) && ensureSubjectOrder(subjects)) DB.set(KEYS.subjects, subjects);
   }
   if (DB.get(KEYS.settings, null) === null) {
     DB.set(KEYS.settings, {
@@ -834,15 +876,130 @@ document.getElementById('bulkAddStudentsBtn').addEventListener('click', () => {
 
 /* ---------- Subjects ---------- */
 let editingSubjectId = null;
+let subjectArrangeMode = false;
+let draggedSubjectId = null;
+let subjectDragMoved = false;
+let subjectDragPointerId = null;
+
+function saveSubjectOrderFromList(list) {
+  const ids = Array.from(list.querySelectorAll('.subject-sort-item')).map(li => li.dataset.subjectId);
+  const subjects = DB.get(KEYS.subjects, []);
+  const byId = new Map(subjects.map(sub => [sub.id, sub]));
+  const reordered = [];
+  ids.forEach((id, index) => {
+    const sub = byId.get(id);
+    if (sub) {
+      sub.order = index;
+      reordered.push(sub);
+    }
+  });
+  subjects.forEach(sub => {
+    if (!reordered.includes(sub)) {
+      sub.order = reordered.length;
+      reordered.push(sub);
+    }
+  });
+  DB.set(KEYS.subjects, reordered);
+}
+
+function moveSubjectRow(list, dragged, clientY) {
+  const rows = Array.from(list.querySelectorAll('.subject-sort-item:not(.dragging)'));
+  let closest = null;
+  let closestOffset = Number.NEGATIVE_INFINITY;
+  rows.forEach(row => {
+    const rect = row.getBoundingClientRect();
+    const offset = clientY - rect.top - rect.height / 2;
+    if (offset < 0 && offset > closestOffset) {
+      closestOffset = offset;
+      closest = row;
+    }
+  });
+  if (closest) list.insertBefore(dragged, closest);
+  else list.appendChild(dragged);
+}
+
+function finishSubjectDrag(list) {
+  if (!draggedSubjectId) return;
+  const wasMoved = subjectDragMoved;
+  const dragged = list.querySelector(`[data-subject-id="${CSS.escape(draggedSubjectId)}"]`);
+  if (dragged) dragged.classList.remove('dragging');
+  if (wasMoved) {
+    saveSubjectOrderFromList(list);
+    renderSubjects();
+  }
+  draggedSubjectId = null;
+  subjectDragMoved = false;
+  subjectDragPointerId = null;
+}
+
+function moveSubjectByStep(subjectId, direction) {
+  if (!subjectArrangeMode) return;
+  const subjects = sortSubjectsByOrder(DB.get(KEYS.subjects, []));
+  const index = subjects.findIndex(sub => sub.id === subjectId);
+  if (index < 0) return;
+  const target = index + direction;
+  if (target < 0 || target >= subjects.length) return;
+  const temp = subjects[index];
+  subjects[index] = subjects[target];
+  subjects[target] = temp;
+  subjects.forEach((sub, i) => { sub.order = i; });
+  DB.set(KEYS.subjects, subjects);
+  renderSubjects();
+}
+
+// Delegated pointer handling makes touch dragging reliable on Android/iOS as
+// well as mouse dragging on desktop. The document-level listeners avoid losing
+// pointermove/pointerup when the finger or mouse leaves the small drag handle.
+if (!window.__schoolhubSubjectDragHandlers) {
+  window.__schoolhubSubjectDragHandlers = true;
+  document.addEventListener('pointermove', event => {
+    if (!draggedSubjectId) return;
+    if (subjectDragPointerId !== null && event.pointerId !== subjectDragPointerId) return;
+    const list = document.getElementById('subjectList');
+    const row = list && list.querySelector(`[data-subject-id="${CSS.escape(draggedSubjectId)}"]`);
+    if (!list || !row) return;
+    moveSubjectRow(list, row, event.clientY);
+    subjectDragMoved = true;
+    event.preventDefault();
+  }, { passive: false });
+  document.addEventListener('pointerup', event => {
+    if (!draggedSubjectId) return;
+    if (subjectDragPointerId !== null && event.pointerId !== subjectDragPointerId) return;
+    finishSubjectDrag(document.getElementById('subjectList'));
+  });
+  document.addEventListener('pointercancel', event => {
+    if (!draggedSubjectId) return;
+    if (subjectDragPointerId !== null && event.pointerId !== subjectDragPointerId) return;
+    finishSubjectDrag(document.getElementById('subjectList'));
+  });
+}
 
 function renderSubjects() {
   const list = document.getElementById('subjectList');
   const subjects = DB.get(KEYS.subjects, []);
+  ensureSubjectOrder(subjects);
+  const orderedSubjects = sortSubjectsByOrder(subjects);
   list.innerHTML = '';
-  if (!subjects.length) { list.innerHTML = '<li class="empty">No subjects yet — add one below.</li>'; return; }
-  subjects.forEach(sub => {
+
+  const arrangeBtn = document.getElementById('toggleSubjectArrangeBtn');
+  const orderHint = document.getElementById('subjectOrderHint');
+  if (arrangeBtn) arrangeBtn.textContent = subjectArrangeMode ? 'Done Arranging' : 'Arrange Order';
+  if (orderHint) {
+    orderHint.textContent = subjectArrangeMode
+      ? 'Drag the handle to set the subject order. The first 4 are the core subjects; the next 2 best grades are added to the aggregate.'
+      : 'Aggregate uses the first 4 subjects in this order, plus the 2 best grades from the remaining subjects.';
+  }
+
+  if (!orderedSubjects.length) {
+    list.innerHTML = '<li class="empty">No subjects yet — add one below.</li>';
+    return;
+  }
+
+  orderedSubjects.forEach((sub, index) => {
     const li = document.createElement('li');
-    if (editingSubjectId === sub.id) {
+    li.className = 'subject-sort-item' + (subjectArrangeMode ? ' arranging' : '');
+    li.dataset.subjectId = sub.id;
+    if (editingSubjectId === sub.id && !subjectArrangeMode) {
       li.innerHTML = `<div class="edit-row">
         <input type="text" class="edit-subject-name" value="${escapeHtml(sub.name)}">
         <div class="edit-actions">
@@ -850,8 +1007,18 @@ function renderSubjects() {
           <button class="cancel-btn cancel-subject">Cancel</button>
         </div>
       </div>`;
+    } else if (subjectArrangeMode) {
+      const role = index < 4 ? 'Core ' + (index + 1) : 'Best-subject pool';
+      li.innerHTML = `<div class="subject-order-main">
+          <span class="subject-drag-handle" role="button" tabindex="0" aria-label="Drag ${escapeHtml(sub.name)} to reorder" title="Drag to reorder">☷</span>
+          <div class="subject-order-text"><strong>${escapeHtml(sub.name)}</strong><div class="subject-order-role">${escapeHtml(role)}</div></div>
+        </div>
+        <div class="subject-order-actions">
+          <button type="button" class="subject-move-up" data-id="${sub.id}" aria-label="Move ${escapeHtml(sub.name)} up" title="Move up">▲</button>
+          <button type="button" class="subject-move-down" data-id="${sub.id}" aria-label="Move ${escapeHtml(sub.name)} down" title="Move down">▼</button>
+        </div>`;
     } else {
-      li.innerHTML = `<div>${escapeHtml(sub.name)}</div>
+      li.innerHTML = `<div class="subject-row-main"><strong>${escapeHtml(sub.name)}</strong></div>
         <div class="actions">
           <button data-id="${sub.id}" class="edit-subject">Edit</button>
           <button data-id="${sub.id}" class="del-subject">Delete</button>
@@ -859,6 +1026,7 @@ function renderSubjects() {
     }
     list.appendChild(li);
   });
+
   list.querySelectorAll('.edit-subject').forEach(btn => {
     btn.addEventListener('click', () => { editingSubjectId = btn.dataset.id; renderSubjects(); });
   });
@@ -882,11 +1050,42 @@ function renderSubjects() {
     btn.addEventListener('click', () => {
       if (!confirm('Delete this subject from all classes?')) return;
       const id = btn.dataset.id;
-      DB.set(KEYS.subjects, DB.get(KEYS.subjects, []).filter(s => s.id !== id));
+      const subjects = DB.get(KEYS.subjects, []).filter(s => s.id !== id);
+      subjects.forEach((sub, i) => { sub.order = i; });
+      DB.set(KEYS.subjects, subjects);
       renderSubjects();
     });
   });
+
+  if (subjectArrangeMode) {
+    list.querySelectorAll('.subject-move-up').forEach(btn => {
+      btn.addEventListener('click', () => moveSubjectByStep(btn.dataset.id, -1));
+    });
+    list.querySelectorAll('.subject-move-down').forEach(btn => {
+      btn.addEventListener('click', () => moveSubjectByStep(btn.dataset.id, 1));
+    });
+    list.querySelectorAll('.subject-drag-handle').forEach(handle => {
+      handle.addEventListener('pointerdown', event => {
+        if (event.button !== undefined && event.button !== 0) return;
+        const row = handle.closest('.subject-sort-item');
+        if (!row) return;
+        draggedSubjectId = row.dataset.subjectId;
+        subjectDragPointerId = event.pointerId;
+        subjectDragMoved = false;
+        row.classList.add('dragging');
+        try { handle.setPointerCapture(event.pointerId); } catch (e) {}
+        event.preventDefault();
+      });
+    });
+  }
 }
+
+document.getElementById('toggleSubjectArrangeBtn').addEventListener('click', () => {
+  if (!requireHeadTeacher('arrange subjects')) return;
+  editingSubjectId = null;
+  subjectArrangeMode = !subjectArrangeMode;
+  renderSubjects();
+});
 
 document.getElementById('addSubjectBtn').addEventListener('click', () => {
   if (!requireHeadTeacher('manage subjects')) return;
@@ -894,7 +1093,9 @@ document.getElementById('addSubjectBtn').addEventListener('click', () => {
   const name = input.value.trim();
   if (!name) return;
   const subjects = DB.get(KEYS.subjects, []);
-  subjects.push({ id: uid(), name });
+  subjects.forEach(sub => { sub.order = subjectOrderValue(sub, 0); });
+  const maxOrder = subjects.reduce((max, sub) => Math.max(max, Number(sub.order) || 0), -1);
+  subjects.push({ id: uid(), name, order: maxOrder + 1 });
   DB.set(KEYS.subjects, subjects);
   input.value = '';
   renderSubjects();
@@ -2478,9 +2679,19 @@ function pullCloudData() {
       classSnap.forEach(d => classes.push(d.data()));
       DB.set(KEYS.classes, classes);
 
+      // Firestore collection reads have no guaranteed display order. Use the
+      // persisted order field, falling back to the existing local order for
+      // older Phase 3 subject documents that predate this field.
+      const localSubjects = DB.get(KEYS.subjects, []);
+      const localOrder = new Map(localSubjects.map((s, i) => [s.id, subjectOrderValue(s, i)]));
       const subjects = [];
-      subjectSnap.forEach(d => subjects.push(d.data()));
-      DB.set(KEYS.subjects, subjects);
+      subjectSnap.forEach(d => {
+        const subject = Object.assign({}, d.data());
+        if (!Number.isFinite(Number(subject.order))) subject.order = localOrder.has(d.id) ? localOrder.get(d.id) : subjects.length;
+        subjects.push(subject);
+      });
+      ensureSubjectOrder(subjects);
+      DB.set(KEYS.subjects, sortSubjectsByOrder(subjects));
 
       const students = [];
       studentSnap.forEach(d => {
