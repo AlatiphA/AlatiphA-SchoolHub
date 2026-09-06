@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v10';
+const APP_VERSION = 'v11';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2155,7 +2155,7 @@ function getStaffSignatures(classInfo, settings) {
   };
 }
 
-function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, resolvedSignatures) {
+function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, resolvedImages) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const left = 15, right = pageWidth - 15;
   let y = 18;
@@ -2184,15 +2184,11 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.setLineWidth(0.2);
   doc.setTextColor(0, 0, 0);
 
-  if (settings.logo) {
-    try { doc.addImage(settings.logo, 'PNG', left, 12, 20, 20); }
-    catch (e) { try { doc.addImage(settings.logo, 'JPEG', left, 12, 20, 20); } catch (e2) {} }
-  }
+  if (resolvedImages && resolvedImages.logo) addResolvedImage(doc, resolvedImages.logo, left, 12, 20, 20);
 
-  if (result.student.photo) {
+  if (resolvedImages && resolvedImages.photo) {
     const pw = 20, ph = 24; // slightly taller than wide, passport-style
-    try { doc.addImage(result.student.photo, 'PNG', right - pw, 12, pw, ph); }
-    catch (e) { try { doc.addImage(result.student.photo, 'JPEG', right - pw, 12, pw, ph); } catch (e2) {} }
+    addResolvedImage(doc, resolvedImages.photo, right - pw, 12, pw, ph);
     doc.setDrawColor(200, 200, 200);
     doc.setLineWidth(0.2);
     doc.rect(right - pw, 12, pw, ph);
@@ -2317,15 +2313,15 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // distributed across the row width and centered under its own line.
   // If a staff member's uploaded signature image is available, it's
   // drawn just above the line; their name prints below the role label.
-  const sig = resolvedSignatures || getStaffSignatures(classInfo, settings);
+  const sig = resolvedImages || getStaffSignatures(classInfo, settings);
   const sigLineWidth = 60;
   const halfWidth = (right - left) / 2;
   const leftSigCenter = left + halfWidth / 2;
   const rightSigCenter = left + halfWidth + halfWidth / 2;
   const sigImgW = 34, sigImgH = 12;
 
-  addResolvedSignature(doc, sig.classTeacherSignature, leftSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH);
-  addResolvedSignature(doc, sig.headTeacherSignature, rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH);
+  addResolvedImage(doc, sig.classTeacherSignature, leftSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH);
+  addResolvedImage(doc, sig.headTeacherSignature, rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH);
 
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
@@ -2365,48 +2361,71 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 
 const reportImageCache = new Map();
 
+// Resolve both Firebase Storage download URLs and legacy data URLs into
+// data URLs that jsPDF can reliably embed. Using Firebase Storage's SDK
+// avoids browser CORS failures that can occur with fetch(downloadURL).
 function imageSourceToDataUrl(source) {
   if (!source) return Promise.resolve('');
   const value = String(source);
   if (value.indexOf('data:image/') === 0) return Promise.resolve(value);
   if (reportImageCache.has(value)) return reportImageCache.get(value);
 
-  const promise = fetch(value, { mode: 'cors', credentials: 'omit' })
-    .then(response => {
-      if (!response.ok) throw new Error(`Signature image request failed (${response.status})`);
-      return response.blob();
-    })
-    .then(blob => new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(reader.error || new Error('Could not read signature image.'));
-      reader.readAsDataURL(blob);
-    }))
-    .catch(err => {
-      console.warn('Could not resolve report-card signature image:', err);
+  const promise = (async () => {
+    try {
+      if (FIREBASE_ENABLED && /^https?:\/\//i.test(value)) {
+        const ref = firebase.storage().refFromURL(value);
+        const meta = await ref.getMetadata();
+        const bytes = await ref.getBytes(8 * 1024 * 1024);
+        let mime = (meta && meta.contentType) || 'image/png';
+        if (mime === 'image/jpg') mime = 'image/jpeg';
+        let binary = '';
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+        }
+        return `data:${mime};base64,${btoa(binary)}`;
+      }
+
+      const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
+      if (!response.ok) throw new Error(`Image request failed (${response.status})`);
+      const blob = await response.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn('Could not resolve report-card image:', err);
       return '';
-    });
+    }
+  })();
 
   reportImageCache.set(value, promise);
   return promise;
 }
 
-async function resolveStaffSignatures(classInfo, settings) {
+async function resolveReportImages(result, settings, classInfo) {
   const sig = getStaffSignatures(classInfo, settings);
-  const [classTeacherSignature, headTeacherSignature] = await Promise.all([
+  const logoSource = settings.logo || settings.logoUrl || '';
+  const photoSource = result && result.student ? (result.student.photo || result.student.photoUrl || '') : '';
+  const [logo, photo, classTeacherSignature, headTeacherSignature] = await Promise.all([
+    imageSourceToDataUrl(logoSource),
+    imageSourceToDataUrl(photoSource),
     imageSourceToDataUrl(sig.classTeacherSignature),
     imageSourceToDataUrl(sig.headTeacherSignature)
   ]);
-  return Object.assign({}, sig, { classTeacherSignature, headTeacherSignature });
+  return { logo, photo, classTeacherSignature, headTeacherSignature,
+    classTeacherName: sig.classTeacherName, headTeacherName: sig.headTeacherName };
 }
 
-function addResolvedSignature(doc, source, x, y, w, h) {
+function addResolvedImage(doc, source, x, y, w, h) {
   if (!source) return;
   try {
     const format = /^data:image\/jpe?g/i.test(source) ? 'JPEG' : 'PNG';
     doc.addImage(source, format, x, y, w, h);
   } catch (e) {
-    console.warn('Could not add report-card signature image:', e);
+    console.warn('Could not add report-card image:', e);
   }
 }
 
@@ -2415,8 +2434,8 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
-  const signatures = await resolveStaffSignatures(classInfo, settings);
-  drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, signatures);
+  const reportImages = await resolveReportImages(result, settings, classInfo);
+  drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, reportImages);
   doc.save(`${result.student.name.replace(/\s+/g, '_')}_report.pdf`);
 }
 
@@ -2426,10 +2445,11 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
-  const signatures = await resolveStaffSignatures(classInfo, settings);
+  const reportImagesByStudent = new Map();
+  for (const r of usable) reportImagesByStudent.set(r.student.id, await resolveReportImages(r, settings, classInfo));
   usable.forEach((r, i) => {
     if (i > 0) doc.addPage();
-    drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, signatures);
+    drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, reportImagesByStudent.get(r.student.id));
   });
   doc.save('class_report_cards.pdf');
 }
