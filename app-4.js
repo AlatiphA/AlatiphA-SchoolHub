@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v11';
+const APP_VERSION = 'v12';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2360,41 +2360,88 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 }
 
 const reportImageCache = new Map();
+const reportStorageAssetCache = new Map();
 
-// Resolve both Firebase Storage download URLs and legacy data URLs into
-// data URLs that jsPDF can reliably embed. Using Firebase Storage's SDK
-// avoids browser CORS failures that can occur with fetch(downloadURL).
-function imageSourceToDataUrl(source) {
-  if (!source) return Promise.resolve('');
+// Report-card images can originate from:
+// 1. legacy data:image URLs,
+// 2. Firestore URLs such as logoUrl/photoUrl/signatureUrl,
+// 3. Firebase Storage files whose URL was not persisted by an older build.
+//
+// jsPDF reliably accepts PNG/JPEG data URLs, so every source is normalized
+// to PNG data before it reaches doc.addImage(). This also handles WebP and
+// other browser-supported image formats.
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function imageDataUrlToPng(dataUrl) {
+  if (!dataUrl) return Promise.resolve('');
+  if (!/^data:image\//i.test(dataUrl)) return Promise.resolve(dataUrl);
+  if (/^data:image\/png/i.test(dataUrl)) return Promise.resolve(dataUrl);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        if (!canvas.width || !canvas.height) throw new Error('Image has no usable dimensions.');
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => reject(new Error('Browser could not decode the image.'));
+    img.src = dataUrl;
+  });
+}
+
+async function imageSourceToDataUrl(source) {
+  if (!source) return '';
   const value = String(source);
-  if (value.indexOf('data:image/') === 0) return Promise.resolve(value);
+
   if (reportImageCache.has(value)) return reportImageCache.get(value);
 
   const promise = (async () => {
     try {
-      if (FIREBASE_ENABLED && /^https?:\/\//i.test(value)) {
-        const ref = firebase.storage().refFromURL(value);
-        const meta = await ref.getMetadata();
-        const bytes = await ref.getBytes(8 * 1024 * 1024);
-        let mime = (meta && meta.contentType) || 'image/png';
-        if (mime === 'image/jpg') mime = 'image/jpeg';
-        let binary = '';
-        const chunk = 0x8000;
-        for (let i = 0; i < bytes.length; i += chunk) {
-          binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+      let dataUrl = '';
+
+      if (/^data:image\//i.test(value)) {
+        dataUrl = value;
+      } else if (FIREBASE_ENABLED && /^https?:\/\//i.test(value)) {
+        // Prefer Firebase Storage SDK for our own Storage URLs. This avoids
+        // CORS/download-token differences between browsers.
+        try {
+          const ref = firebase.storage().refFromURL(value);
+          const meta = await ref.getMetadata();
+          const bytes = await ref.getBytes(8 * 1024 * 1024);
+          const mime = (meta && meta.contentType) || 'image/png';
+          const blob = new Blob([bytes], { type: mime });
+          dataUrl = await blobToDataUrl(blob);
+        } catch (storageErr) {
+          // Fall back to the public download URL if the SDK cannot resolve it.
+          const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
+          if (!response.ok) throw storageErr;
+          dataUrl = await blobToDataUrl(await response.blob());
         }
-        return `data:${mime};base64,${btoa(binary)}`;
+      } else {
+        const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
+        if (!response.ok) throw new Error(`Image request failed (${response.status})`);
+        dataUrl = await blobToDataUrl(await response.blob());
       }
 
-      const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
-      if (!response.ok) throw new Error(`Image request failed (${response.status})`);
-      const blob = await response.blob();
-      return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
-        reader.readAsDataURL(blob);
-      });
+      // Normalize JPEG/WebP/GIF/etc. to PNG because jsPDF's PNG path is the
+      // most reliable across browsers.
+      return await imageDataUrlToPng(dataUrl);
     } catch (err) {
       console.warn('Could not resolve report-card image:', err);
       return '';
@@ -2405,25 +2452,122 @@ function imageSourceToDataUrl(source) {
   return promise;
 }
 
+async function findStorageDownloadUrl(path) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !path) return '';
+  const key = String(path);
+  if (reportStorageAssetCache.has(key)) return reportStorageAssetCache.get(key);
+
+  const promise = (async () => {
+    try {
+      const folderRef = firebase.storage().ref(key);
+      const result = await folderRef.listAll();
+      if (!result.items.length) return '';
+      return await result.items[0].getDownloadURL();
+    } catch (err) {
+      console.warn('Could not locate report-card asset in Storage:', key, err);
+      return '';
+    }
+  })();
+
+  reportStorageAssetCache.set(key, promise);
+  return promise;
+}
+
+async function findStorageFileUrl(folderPath, namePrefix) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !folderPath || !namePrefix) return '';
+  const key = `${folderPath}|${namePrefix}`;
+  if (reportStorageAssetCache.has(key)) return reportStorageAssetCache.get(key);
+
+  const promise = (async () => {
+    try {
+      const result = await firebase.storage().ref(folderPath).listAll();
+      const item = result.items.find(item => item.name.indexOf(String(namePrefix)) === 0);
+      return item ? await item.getDownloadURL() : '';
+    } catch (err) {
+      console.warn('Could not locate report-card file in Storage:', folderPath, namePrefix, err);
+      return '';
+    }
+  })();
+
+  reportStorageAssetCache.set(key, promise);
+  return promise;
+}
+
+async function resolveStudentPhotoSource(student) {
+  if (!student) return '';
+  const direct = student.photo || student.photoUrl || '';
+  if (direct) return direct;
+
+  // Older Phase 3 uploads stored the file in Storage but did not persist
+  // photoUrl in Firestore. Recover it from the known class/student folder.
+  if (student.classId && student.id) {
+    return await findStorageFileUrl(
+      `schools/${currentSchoolId}/student-photos/${student.classId}`,
+      `${student.id}_`
+    );
+  }
+  return '';
+}
+
+async function resolveSchoolLogoSource(settings) {
+  const direct = settings && (settings.logo || settings.logoUrl || '');
+  if (direct) return direct;
+
+  return await findStorageFileUrl(
+    `schools/${currentSchoolId}/logos`,
+    'school-logo_'
+  );
+}
+
+async function resolveStaffSignatureSource(staff, kind) {
+  if (!staff) return '';
+  const direct = staff.signature || staff.signatureUrl || '';
+  if (direct) return direct;
+
+  return await findStorageFileUrl(
+    `schools/${currentSchoolId}/signatures`,
+    `${staff.id}_`
+  );
+}
+
 async function resolveReportImages(result, settings, classInfo) {
-  const sig = getStaffSignatures(classInfo, settings);
-  const logoSource = settings.logo || settings.logoUrl || '';
-  const photoSource = result && result.student ? (result.student.photo || result.student.photoUrl || '') : '';
+  const staffList = DB.get(KEYS.staff, []);
+  const classTeacher = classInfo && classInfo.classTeacherId
+    ? staffList.find(s => s.id === classInfo.classTeacherId)
+    : null;
+  const headTeacher = settings && settings.headTeacherId
+    ? staffList.find(s => s.id === settings.headTeacherId)
+    : null;
+
+  const [logoSource, photoSource, classSigSource, headSigSource] = await Promise.all([
+    resolveSchoolLogoSource(settings || {}),
+    resolveStudentPhotoSource(result && result.student),
+    resolveStaffSignatureSource(classTeacher, 'class'),
+    resolveStaffSignatureSource(headTeacher, 'head')
+  ]);
+
   const [logo, photo, classTeacherSignature, headTeacherSignature] = await Promise.all([
     imageSourceToDataUrl(logoSource),
     imageSourceToDataUrl(photoSource),
-    imageSourceToDataUrl(sig.classTeacherSignature),
-    imageSourceToDataUrl(sig.headTeacherSignature)
+    imageSourceToDataUrl(classSigSource),
+    imageSourceToDataUrl(headSigSource)
   ]);
-  return { logo, photo, classTeacherSignature, headTeacherSignature,
-    classTeacherName: sig.classTeacherName, headTeacherName: sig.headTeacherName };
+
+  return {
+    logo,
+    photo,
+    classTeacherSignature,
+    headTeacherSignature,
+    classTeacherName: classTeacher ? classTeacher.name : '',
+    headTeacherName: headTeacher ? headTeacher.name : ''
+  };
 }
 
 function addResolvedImage(doc, source, x, y, w, h) {
   if (!source) return;
   try {
-    const format = /^data:image\/jpe?g/i.test(source) ? 'JPEG' : 'PNG';
-    doc.addImage(source, format, x, y, w, h);
+    // v12 normalizes all report images to PNG before reaching this function.
+    doc.addImage(source, 'PNG', x, y, w, h);
   } catch (e) {
     console.warn('Could not add report-card image:', e);
   }
@@ -2599,6 +2743,7 @@ function stripImagesForCloud(field, value) {
   if (field === 'students' && Array.isArray(value)) {
     return value.map(s => {
       const c = Object.assign({}, s);
+      if (!c.photoUrl && c.photo) c.photoUrl = c.photo;
       delete c.photo;
       return c;
     });
