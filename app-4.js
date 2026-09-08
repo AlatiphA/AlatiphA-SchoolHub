@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v17';
+const APP_VERSION = 'v18';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -3179,21 +3179,43 @@ function generateUniqueJoinCode(triesLeft) {
 }
 
 function registerSchool(schoolName, address, email) {
+  if (!firebase.auth().currentUser || !currentUid) {
+    return Promise.reject(new Error('You must be signed in before creating a school.'));
+  }
+
   const schoolRef = firebase.firestore().collection('schools').doc();
   const schoolId = schoolRef.id;
+  const userRef = firebase.firestore().collection('users').doc(currentUid);
+  const authUser = firebase.auth().currentUser;
+
+  // IMPORTANT: the signed-in account may legitimately have no users/{uid}
+  // document (for example, if that document was deleted from Firestore).
+  // Create/restore the Head Teacher user profile before creating the public
+  // join-code document. This also prevents the old joinCodes security rule
+  // from rejecting school creation because isHeadTeacher() could not find
+  // users/{uid} yet.
   return generateUniqueJoinCode().then(joinCode => {
-    return schoolRef.set({
+    const schoolData = {
       profile: { schoolName, address, email },
       ownerUid: currentUid,
       subscription: { plan: 'free', status: 'inactive' },
       joinCode,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    })
-      .then(() => firebase.firestore().collection('joinCodes').doc(joinCode).set({ schoolId }))
-      .then(() => firebase.firestore().collection('users').doc(currentUid).set({
-        schoolId, role: 'headteacher', status: 'active',
-        email: firebase.auth().currentUser ? (firebase.auth().currentUser.email || '') : '',
-        displayName: firebase.auth().currentUser ? (firebase.auth().currentUser.displayName || '') : '',
+    };
+
+    const userData = {
+      schoolId,
+      role: 'headteacher',
+      status: 'active',
+      email: authUser.email || email || '',
+      displayName: authUser.displayName || schoolName || '',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    return schoolRef.set(schoolData)
+      .then(() => userRef.set(userData, { merge: true }))
+      .then(() => firebase.firestore().collection('joinCodes').doc(joinCode).set({
+        schoolId,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       }))
       .then(() => {
@@ -3201,6 +3223,7 @@ function registerSchool(schoolName, address, email) {
         currentSchoolId = schoolId;
         currentRole = 'headteacher';
         currentStatus = 'active';
+        currentUserData = Object.assign({}, userData);
         return joinCode;
       });
   });
