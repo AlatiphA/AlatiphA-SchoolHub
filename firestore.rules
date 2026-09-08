@@ -79,7 +79,17 @@ service cloud.firestore {
     match /joinCodes/{code} {
       allow get: if signedIn();
       allow list: if false;
-      allow create, update, delete: if signedIn()
+
+      // A school's owner must be able to create the initial join code even
+      // when users/{uid} does not exist yet. This is important for account
+      // recovery and for first-time school creation. Once the user profile
+      // exists, normal Head Teacher management still applies.
+      allow create: if signedIn()
+        && request.resource.data.schoolId != null
+        && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId))
+        && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == request.auth.uid;
+
+      allow update, delete: if signedIn()
         && request.resource.data.schoolId != null
         && isHeadTeacher(request.resource.data.schoolId);
     }
