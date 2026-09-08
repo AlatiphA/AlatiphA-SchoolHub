@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v14';
+const APP_VERSION = 'v16';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2145,13 +2145,15 @@ const RED_INK = [150, 55, 40];
 // signature images (if any) for use on the report card.
 function getStaffSignatures(classInfo, settings, resolvedAssets) {
   const staffList = DB.get(KEYS.staff, []);
-  const classTeacher = classInfo && classInfo.classTeacherId ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
-  const headTeacher = settings.headTeacherId ? staffList.find(s => s.id === settings.headTeacherId) : null;
+  const classTeacherId = classInfo && classInfo.classTeacherId ? classInfo.classTeacherId : '';
+  const headTeacherId = settings && settings.headTeacherId ? settings.headTeacherId : '';
+  const classTeacher = classTeacherId ? staffList.find(s => s.id === classTeacherId) : null;
+  const headTeacher = headTeacherId ? staffList.find(s => s.id === headTeacherId) : null;
   return {
-    classTeacherName: classTeacher ? classTeacher.name : '',
+    classTeacherName: (resolvedAssets && resolvedAssets.classTeacherName) || (classTeacher ? classTeacher.name : ''),
     classTeacherSignature: resolvedAssets && resolvedAssets.classTeacherSignature !== undefined
       ? resolvedAssets.classTeacherSignature : (classTeacher ? (classTeacher.signatureUrl || classTeacher.signature || '') : ''),
-    headTeacherName: headTeacher ? headTeacher.name : '',
+    headTeacherName: (resolvedAssets && resolvedAssets.headTeacherName) || (headTeacher ? headTeacher.name : ''),
     headTeacherSignature: resolvedAssets && resolvedAssets.headTeacherSignature !== undefined
       ? resolvedAssets.headTeacherSignature : (headTeacher ? (headTeacher.signatureUrl || headTeacher.signature || '') : '')
   };
@@ -2369,8 +2371,22 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.text('Remarks: 80-100 Highly Proficient · 54-79 Proficient · 46-53 Approaching Proficiency · 40-45 Developing · 0-39 Emerging', pageWidth / 2, y, { align: 'center' });
   doc.setTextColor(GOLD[0], GOLD[1], GOLD[2]);
   doc.setFontSize(8);
-  doc.text('Generated with AlatiphA SchoolFlow', pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
+  doc.text('Generated with AlatiphA SchoolHub', pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: 'center' });
   doc.setTextColor(0, 0, 0);
+}
+
+async function storageRefToDataUrl(ref) {
+  if (!ref) return '';
+  const meta = await ref.getMetadata();
+  const bytes = await ref.getBytes(10 * 1024 * 1024);
+  const mime = (meta && meta.contentType) || 'application/octet-stream';
+  const blob = new Blob([bytes], { type: mime });
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Could not read image bytes.'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function reportImageToDataUrl(source) {
@@ -2378,49 +2394,50 @@ async function reportImageToDataUrl(source) {
   const value = String(source);
   if (/^data:image\//i.test(value)) return value;
 
-  try {
-    // Firebase Storage SDK is the primary path for SchoolHub assets.
-    if (typeof firebase !== 'undefined' && firebase.storage && /^https?:\/\//i.test(value)) {
-      try {
-        const ref = firebase.storage().refFromURL(value);
-        const snapshot = await ref.getBytes(10 * 1024 * 1024);
-        const meta = await ref.getMetadata().catch(() => null);
-        const mime = (meta && meta.contentType) || 'image/png';
-        const blob = new Blob([snapshot], { type: mime });
-        return await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ''));
-          reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
-          reader.readAsDataURL(blob);
-        });
-      } catch (storageError) {
-        console.warn('Firebase Storage image read failed, trying URL fallback.', storageError);
-      }
+  // IMPORTANT: Firebase Storage getBytes() is used here instead of fetch().
+  // This keeps the download inside Firebase Storage Security Rules and avoids
+  // depending on the public download URL format. The bucket still needs CORS
+  // enabled because browser-side getBytes/getBlob are subject to CORS.
+  if (typeof firebase !== 'undefined' && firebase.storage) {
+    try {
+      const ref = /^https?:\/\//i.test(value)
+        ? firebase.storage().refFromURL(value)
+        : firebase.storage().ref().child(value.replace(/^\/+/, ''));
+      const data = await storageRefToDataUrl(ref);
+      if (data) return data;
+    } catch (err) {
+      console.warn('Firebase Storage image read failed:', value, err);
     }
-
-    const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
-    if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
-    const blob = await response.blob();
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
-      reader.readAsDataURL(blob);
-    });
-  } catch (err) {
-    console.warn('Report image could not be loaded:', err);
-    return '';
   }
+
+  // Local data/file values remain supported for backwards compatibility.
+  if (/^blob:/i.test(value) || /^https?:\/\//i.test(value)) {
+    try {
+      const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
+      if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
+      const blob = await response.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn('Report image URL fallback failed:', err);
+    }
+  }
+
+  return '';
 }
 
-async function findStorageAssetUrl(folderPath, prefixes) {
+async function findStorageAssetDataUrl(folderPath, prefixes) {
   if (!FIREBASE_ENABLED || !currentSchoolId || !folderPath) return '';
   try {
     const ref = firebase.storage().ref(folderPath);
     const result = await ref.listAll();
     const list = Array.isArray(prefixes) ? prefixes : [prefixes];
-    const item = result.items.find(it => list.some(prefix => String(it.name).indexOf(String(prefix)) === 0));
-    return item ? await item.getDownloadURL() : '';
+    const item = result.items.find(it => list.some(prefix => prefix && String(it.name).indexOf(String(prefix)) === 0));
+    return item ? await storageRefToDataUrl(item) : '';
   } catch (err) {
     console.warn('Report Storage lookup failed:', folderPath, err);
     return '';
@@ -2428,33 +2445,33 @@ async function findStorageAssetUrl(folderPath, prefixes) {
 }
 
 async function resolveReportAsset(primarySource, fallbackFolder, fallbackPrefixes) {
-  // First use the persisted/local value. If it is missing or cannot be read,
-  // recover the existing file directly from Firebase Storage.
   if (primarySource) {
     const data = await reportImageToDataUrl(primarySource);
     if (data) return data;
   }
-  const url = await findStorageAssetUrl(fallbackFolder, fallbackPrefixes);
-  return url ? await reportImageToDataUrl(url) : '';
+  return findStorageAssetDataUrl(fallbackFolder, fallbackPrefixes);
 }
 
 async function prepareReportAssets(result, settings, classInfo) {
   const staffList = DB.get(KEYS.staff, []);
   const classId = classInfo ? classInfo.id : (result && result.student ? result.student.classId : '');
 
-  // Prefer the explicit class/head-teacher assignment, then fall back to the
-  // staff records themselves. This makes reports resilient to older Phase 3
-  // records where the assignment field was not copied into the local cache.
   let classTeacher = classInfo && classInfo.classTeacherId
     ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
   if (!classTeacher && classId) {
-    classTeacher = staffList.find(s => s.role === 'Teacher' && Array.isArray(s.assignedClassIds) && s.assignedClassIds.indexOf(classId) !== -1) || null;
+    classTeacher = staffList.find(s => {
+      const role = String(s.role || '').toLowerCase();
+      return (role === 'teacher' || role === 'class teacher') && Array.isArray(s.assignedClassIds) && s.assignedClassIds.indexOf(classId) !== -1;
+    }) || null;
   }
 
   let headTeacher = settings && settings.headTeacherId
     ? staffList.find(s => s.id === settings.headTeacherId) : null;
   if (!headTeacher) {
-    headTeacher = staffList.find(s => s.role === 'Head Teacher' || String(s.role || '').toLowerCase() === 'headteacher') || null;
+    headTeacher = staffList.find(s => {
+      const role = String(s.role || '').toLowerCase().replace(/\s+/g, '');
+      return role === 'headteacher';
+    }) || null;
   }
 
   const logoSource = settings ? (settings.logoUrl || settings.logo || '') : '';
@@ -2462,31 +2479,28 @@ async function prepareReportAssets(result, settings, classInfo) {
   const classSigSource = classTeacher ? (classTeacher.signatureUrl || classTeacher.signature || '') : '';
   const headSigSource = headTeacher ? (headTeacher.signatureUrl || headTeacher.signature || '') : '';
 
-  const logo = await resolveReportAsset(
-    logoSource,
-    `schools/${currentSchoolId}/logos`,
-    ['school-logo_']
-  );
+  // IMPORTANT: each asset is resolved independently. One missing/denied image
+  // must never cause the other three assets to disappear from the report.
+  const resolveSafe = async (source, folder, prefixes) => {
+    try { return await resolveReportAsset(source, folder, prefixes); }
+    catch (e) { console.warn('Report asset failed:', folder, e); return ''; }
+  };
 
-  const photo = await resolveReportAsset(
-    photoSource,
-    `schools/${currentSchoolId}/student-photos/${classId}`,
-    result && result.student ? [`${result.student.id}_`] : []
-  );
+  const [logo, photo, classTeacherSignature, headTeacherSignature] = await Promise.all([
+    resolveSafe(logoSource, `schools/${currentSchoolId}/logos`, ['school-logo_', 'school-logo.']),
+    resolveSafe(photoSource, `schools/${currentSchoolId}/student-photos/${classId}`, result && result.student ? [`${result.student.id}_`, `${result.student.id}.`] : []),
+    resolveSafe(classSigSource, `schools/${currentSchoolId}/signatures`, classTeacher ? [`${classTeacher.id}_`, `${classTeacher.id}.`] : []),
+    resolveSafe(headSigSource, `schools/${currentSchoolId}/signatures`, headTeacher ? [`${headTeacher.id}_`, `${headTeacher.id}.`] : [])
+  ]);
 
-  const classTeacherSignature = await resolveReportAsset(
-    classSigSource,
-    `schools/${currentSchoolId}/signatures`,
-    classTeacher ? [`${classTeacher.id}_`, `${classTeacher.id}.`] : []
-  );
-
-  const headTeacherSignature = await resolveReportAsset(
-    headSigSource,
-    `schools/${currentSchoolId}/signatures`,
-    headTeacher ? [`${headTeacher.id}_`, `${headTeacher.id}.`] : []
-  );
-
-  return { logo, photo, classTeacherSignature, headTeacherSignature };
+  return {
+    logo,
+    photo,
+    classTeacherSignature,
+    headTeacherSignature,
+    classTeacherName: classTeacher ? classTeacher.name : '',
+    headTeacherName: headTeacher ? headTeacher.name : ''
+  };
 }
 
 async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
@@ -2499,7 +2513,7 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
     assets = await prepareReportAssets(result, settings, classInfo);
   } catch (assetError) {
     console.warn('Report image preparation failed:', assetError);
-    assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '' };
+    assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
   }
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
   doc.save(`${result.student.name.replace(/\s+/g, '_')}_report.pdf`);
@@ -2519,7 +2533,7 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
       assets = await prepareReportAssets(r, settings, classInfo);
     } catch (assetError) {
       console.warn('Report image preparation failed:', assetError);
-      assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '' };
+      assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
     }
     drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, assets);
   }
