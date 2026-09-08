@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v16';
+const APP_VERSION = 'v17';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -1153,8 +1153,10 @@ function renderStaff() {
       </div>`;
     } else {
       const sigThumb = st.signature ? `<img src="${st.signature}" alt="" class="staff-signature-thumb">` : '';
+      const linkedTeacher = st.userUid ? `<div class="meta">SchoolHub Teacher: ${escapeHtml(st.email || st.userUid)}</div>` : '';
       li.innerHTML = `<div><strong>${escapeHtml(st.name)}</strong>
           <div class="meta">${escapeHtml(st.role || 'Staff')}${st.rank ? ' · ' + escapeHtml(st.rank) : ''}${st.staffId ? ' · ID ' + escapeHtml(st.staffId) : ''}</div>
+          ${linkedTeacher}
           ${sigThumb}
         </div>
         <div class="actions">
@@ -3190,6 +3192,8 @@ function registerSchool(schoolName, address, email) {
       .then(() => firebase.firestore().collection('joinCodes').doc(joinCode).set({ schoolId }))
       .then(() => firebase.firestore().collection('users').doc(currentUid).set({
         schoolId, role: 'headteacher', status: 'active',
+        email: firebase.auth().currentUser ? (firebase.auth().currentUser.email || '') : '',
+        displayName: firebase.auth().currentUser ? (firebase.auth().currentUser.displayName || '') : '',
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       }))
       .then(() => {
@@ -3209,6 +3213,8 @@ function joinSchoolWithCode(code) {
     const schoolId = doc.data().schoolId;
     return firebase.firestore().collection('users').doc(currentUid).set({
       schoolId, role: 'teacher', status: 'pending', assignedClassIds: [], assignedSubjectIds: [],
+      email: firebase.auth().currentUser ? (firebase.auth().currentUser.email || '') : '',
+      displayName: firebase.auth().currentUser ? (firebase.auth().currentUser.displayName || '') : '',
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(() => {
       currentSchoolId = null; // stays null until a Head Teacher approves — no data namespace touched yet
@@ -3219,10 +3225,19 @@ function joinSchoolWithCode(code) {
 }
 
 /* ---------- Manage Teachers (Head Teacher only) ---------- */
-// Recording assignedClassIds here just captures which classes a
-// teacher will get once approved — it does not yet restrict what an
-// active teacher can see or edit day-to-day (that enforcement is a
-// later phase).
+// Teacher accounts and Staff records are intentionally separate collections,
+// but every approved teacher must now have a linked Staff record.
+//
+// users/{uid}
+//   = authentication, school membership, status and class/subject access
+//
+// schools/{schoolId}/staff/{staffId}
+//   = personnel/report-card information, including rank, staff number and signature
+//
+// The relationship is stored in both directions:
+//   users/{uid}.staffId -> staff/{staffId}
+//   staff/{staffId}.userUid -> users/{uid}
+
 function fetchSchoolMembers() {
   return firebase.firestore().collection('users').where('schoolId', '==', currentSchoolId).get()
     .then(snap => {
@@ -3230,6 +3245,135 @@ function fetchSchoolMembers() {
       snap.forEach(doc => members.push(Object.assign({ uid: doc.id }, doc.data())));
       return members;
     });
+}
+
+function getStaffForUserUid(userUid) {
+  if (!userUid) return null;
+  const staff = DB.get(KEYS.staff, []);
+  return staff.find(s => s.userUid === userUid) || null;
+}
+
+function getStaffById(staffId) {
+  if (!staffId) return null;
+  return DB.get(KEYS.staff, []).find(s => s.id === staffId) || null;
+}
+
+function staffNameFromMember(member) {
+  const email = String(member && member.email || '').trim();
+  if (!email) return '';
+  const localPart = email.split('@')[0] || '';
+  return localPart.replace(/[._-]+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()).trim();
+}
+
+function createLinkedStaffRecord(member, name) {
+  if (!isHeadTeacher()) return Promise.reject(new Error('Only the Head Teacher can create staff records.'));
+  if (!member || !member.uid) return Promise.reject(new Error('Teacher account could not be identified.'));
+
+  const existing = getStaffForUserUid(member.uid);
+  if (existing) return Promise.resolve(existing);
+
+  const cleanName = String(name || '').trim();
+  if (!cleanName) return Promise.reject(new Error('Enter the teacher\'s full name for the Staff record.'));
+
+  const staffId = uid();
+  const record = {
+    id: staffId,
+    userUid: member.uid,
+    email: String(member.email || '').trim(),
+    name: cleanName,
+    role: 'Teacher',
+    dob: '',
+    staffId: '',
+    registeredNo: '',
+    licenseNo: '',
+    ssnitNo: '',
+    ghanaCardId: '',
+    dateOfAppointment: '',
+    rank: '',
+    phone: '',
+    signature: '',
+    signatureUrl: '',
+    createdAt: new Date().toISOString()
+  };
+
+  const staffList = DB.get(KEYS.staff, []);
+  staffList.push(record);
+  DB.set(KEYS.staff, staffList);
+
+  // Keep the relationship in the teacher account as well. The Head Teacher
+  // is allowed to update teacher membership records by Firestore rules.
+  return staffRef(staffId).set(stripImagesForCloud('staff', record))
+    .then(() => firebase.firestore().collection('users').doc(member.uid).update({
+      staffId,
+      staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }))
+    .then(() => record)
+    .catch(err => {
+      // Do not leave a misleading local record if the cloud relationship failed.
+      DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== staffId));
+      throw err;
+    });
+}
+
+function linkExistingStaffToTeacher(member, staffId) {
+  if (!isHeadTeacher()) return Promise.reject(new Error('Only the Head Teacher can link staff records.'));
+  if (!member || !member.uid) return Promise.reject(new Error('Teacher account could not be identified.'));
+  const staff = getStaffById(staffId);
+  if (!staff) return Promise.reject(new Error('Selected Staff record was not found.'));
+
+  const otherTeacher = DB.get(KEYS.staff, []).find(s => s.id !== staff.id && s.userUid === member.uid);
+  if (otherTeacher) return Promise.reject(new Error('This teacher is already linked to another Staff record.'));
+
+  const previousUserUid = staff.userUid || '';
+  staff.userUid = member.uid;
+  staff.email = String(member.email || staff.email || '').trim();
+  staff.role = 'Teacher';
+  DB.set(KEYS.staff, DB.get(KEYS.staff, []));
+
+  const userRef = firebase.firestore().collection('users').doc(member.uid);
+  const staffWrite = staffRef(staff.id).set(stripImagesForCloud('staff', staff), { merge: true });
+  const userWrite = userRef.update({
+    staffId: staff.id,
+    staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  // If this Staff record used to belong to another account, clear that old
+  // account's link so the relationship remains one-to-one.
+  let oldUserWrite = Promise.resolve();
+  if (previousUserUid && previousUserUid !== member.uid) {
+    oldUserWrite = firebase.firestore().collection('users').doc(previousUserUid).update({
+      staffId: firebase.firestore.FieldValue.delete(),
+      staffLinkedAt: firebase.firestore.FieldValue.delete()
+    }).catch(() => {});
+  }
+
+  return Promise.all([staffWrite, userWrite, oldUserWrite]).then(() => staff);
+}
+
+function unlinkTeacherStaff(member) {
+  if (!isHeadTeacher()) return Promise.reject(new Error('Only the Head Teacher can unlink staff records.'));
+  if (!member || !member.uid) return Promise.resolve();
+  const staff = getStaffForUserUid(member.uid);
+  const userRef = firebase.firestore().collection('users').doc(member.uid);
+
+  if (!staff) {
+    return userRef.update({
+      staffId: firebase.firestore.FieldValue.delete(),
+      staffLinkedAt: firebase.firestore.FieldValue.delete()
+    });
+  }
+
+  staff.userUid = '';
+  staff.email = staff.email || String(member.email || '').trim();
+  DB.set(KEYS.staff, DB.get(KEYS.staff, []));
+
+  return Promise.all([
+    staffRef(staff.id).set(stripImagesForCloud('staff', staff), { merge: true }),
+    userRef.update({
+      staffId: firebase.firestore.FieldValue.delete(),
+      staffLinkedAt: firebase.firestore.FieldValue.delete()
+    })
+  ]);
 }
 
 function renderManageTeachers() {
@@ -3241,6 +3385,7 @@ function renderManageTeachers() {
   list.innerHTML = '<li class="empty">Loading…</li>';
   const classes = DB.get(KEYS.classes, []);
   const subjects = DB.get(KEYS.subjects, []);
+  const staff = DB.get(KEYS.staff, []);
 
   fetchSchoolMembers().then(members => {
     members.sort((a, b) => {
@@ -3248,6 +3393,7 @@ function renderManageTeachers() {
       if (a.role !== 'headteacher' && b.role === 'headteacher') return 1;
       return (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1);
     });
+
     list.innerHTML = '';
     const teachers = members.filter(m => m.role === 'teacher');
     if (!teachers.length) {
@@ -3259,7 +3405,14 @@ function renderManageTeachers() {
       const li = document.createElement('li');
       const assignedClasses = Array.isArray(m.assignedClassIds) ? m.assignedClassIds : [];
       const assignedSubjects = Array.isArray(m.assignedSubjectIds) ? m.assignedSubjectIds : [];
+      const linkedStaff = m.staffId ? getStaffById(m.staffId) : getStaffForUserUid(m.uid);
       const statusText = m.status === 'pending' ? ' · Pending approval' : m.status === 'disabled' ? ' · Disabled' : ' · Active';
+      const displayEmail = String(m.email || '').trim();
+      const displayName = String(m.displayName || '').trim();
+      const accountLabel = displayName && displayEmail
+        ? `${displayName} · ${displayEmail}`
+        : (displayEmail || displayName || m.uid);
+      const suggestedName = linkedStaff ? linkedStaff.name : (displayName || staffNameFromMember(m));
 
       const classChecks = classes.map(c =>
         `<label class="checkbox-row"><input type="checkbox" class="assign-class-cb" value="${escapeHtml(c.id)}" ${assignedClasses.indexOf(c.id) !== -1 ? 'checked' : ''}> ${escapeHtml(c.name)}</label>`
@@ -3269,69 +3422,160 @@ function renderManageTeachers() {
         `<label class="checkbox-row"><input type="checkbox" class="assign-subject-cb" value="${escapeHtml(sub.id)}" ${assignedSubjects.indexOf(sub.id) !== -1 ? 'checked' : ''}> ${escapeHtml(sub.name)}</label>`
       ).join('') || '<p class="hint">Create subjects first.</p>';
 
-      const actionLabel = m.status === 'pending' ? 'Approve & Assign' : 'Save Assignments';
+      const staffOptions = ['<option value="">— Create new Staff record —</option>']
+        .concat(staff.map(s => `<option value="${escapeHtml(s.id)}" ${linkedStaff && linkedStaff.id === s.id ? 'selected' : ''}>${escapeHtml(s.name || 'Unnamed Staff')}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}${s.userUid && s.userUid !== m.uid ? ' · Linked' : ''}</option>`))
+        .join('');
+
+      const actionLabel = m.status === 'pending' ? 'Approve & Save' : 'Save Teacher';
       const disableButton = m.status === 'disabled'
         ? `<button class="edit-student reactivate-teacher-btn" data-uid="${m.uid}">Reactivate</button>`
         : `<button class="del-student disable-teacher-btn" data-uid="${m.uid}">Disable</button>`;
 
       li.innerHTML = `<div class="edit-row">
-        <strong>${escapeHtml(m.email || m.uid)}</strong>
-        <div class="meta">Teacher${statusText}</div>
-        <p class="hint">Assign the class(es) and subject(s) this teacher is allowed to work with.</p>
+        <strong>${escapeHtml(accountLabel)}</strong>
+        <div class="meta">Teacher${statusText}${linkedStaff ? ' · Staff: ' + escapeHtml(linkedStaff.name) : ' · No Staff record linked'}</div>
+        <label>Staff name
+          <input type="text" class="teacher-staff-name" value="${escapeHtml(suggestedName)}" placeholder="Full name for Staff record">
+        </label>
+        <label>Staff record
+          <select class="teacher-staff-select">${staffOptions}</select>
+        </label>
+        <p class="hint">An approved teacher must have one linked Staff record. The Staff record stores the person's personnel details and report-card signature. The teacher account stores access and assignments.</p>
         <strong>Classes</strong>
         ${classChecks}
         <strong>Subjects</strong>
         ${subjectChecks}
         <div class="edit-actions">
           <button class="save-btn save-teacher-assignment" data-uid="${m.uid}">${actionLabel}</button>
+          ${linkedStaff ? '<button class="cancel-btn unlink-teacher-staff" data-uid="' + m.uid + '">Unlink Staff</button>' : ''}
           ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton}
         </div>
       </div>`;
       list.appendChild(li);
     });
 
+    list.querySelectorAll('.teacher-staff-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const li = sel.closest('li');
+        const nameInput = li.querySelector('.teacher-staff-name');
+        if (sel.value) {
+          const selected = staff.find(s => s.id === sel.value);
+          if (selected && selected.name) nameInput.value = selected.name;
+        }
+      });
+    });
+
     list.querySelectorAll('.save-teacher-assignment').forEach(btn => {
       btn.addEventListener('click', () => {
         const li = btn.closest('li');
+        const member = teachers.find(t => t.uid === btn.dataset.uid);
+        if (!member) return;
+
         const assignedClassIds = Array.from(li.querySelectorAll('.assign-class-cb:checked')).map(cb => cb.value);
         const assignedSubjectIds = Array.from(li.querySelectorAll('.assign-subject-cb:checked')).map(cb => cb.value);
+        const staffSelect = li.querySelector('.teacher-staff-select');
+        const staffName = li.querySelector('.teacher-staff-name').value.trim();
+        const selectedStaffId = staffSelect.value;
+
         if (!assignedClassIds.length) {
           alert('Assign at least one class before approving or activating a teacher.');
           return;
         }
-        const isPending = li.querySelector('.meta').textContent.indexOf('Pending') !== -1;
-        const updates = {
-          assignedClassIds,
-          assignedSubjectIds,
-          status: isPending ? 'active' : 'active',
-          assignmentsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        firebase.firestore().collection('users').doc(btn.dataset.uid).update(updates)
-          .then(() => renderManageTeachers())
-          .catch(err => alert('Could not save teacher assignment: ' + err.message));
+        if (!selectedStaffId && !staffName) {
+          alert('Enter the teacher\'s full name for the Staff record, or select an existing Staff record.');
+          return;
+        }
+
+        const existingLinked = member.staffId ? getStaffById(member.staffId) : getStaffForUserUid(member.uid);
+        let staffPromise;
+
+        if (selectedStaffId) {
+          const selectedStaff = getStaffById(selectedStaffId);
+          if (!selectedStaff) {
+            alert('The selected Staff record could not be found.');
+            return;
+          }
+          if (selectedStaff.userUid && selectedStaff.userUid !== member.uid) {
+            const ok = confirm('This Staff record is already linked to another teacher account. Reassign it to this teacher?');
+            if (!ok) return;
+          }
+          staffPromise = linkExistingStaffToTeacher(member, selectedStaffId);
+        } else if (existingLinked) {
+          existingLinked.name = staffName;
+          existingLinked.email = String(member.email || existingLinked.email || '').trim();
+          existingLinked.role = 'Teacher';
+          DB.set(KEYS.staff, DB.get(KEYS.staff, []));
+          staffPromise = staffRef(existingLinked.id).set(stripImagesForCloud('staff', existingLinked), { merge: true }).then(() => existingLinked);
+        } else {
+          staffPromise = createLinkedStaffRecord(member, staffName);
+        }
+
+        staffPromise.then(staffRecord => {
+          return firebase.firestore().collection('users').doc(member.uid).update({
+            assignedClassIds,
+            assignedSubjectIds,
+            status: 'active',
+            staffId: staffRecord.id,
+            staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            assignmentsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }).then(() => {
+          return pullCloudData();
+        }).then(() => {
+          renderManageTeachers();
+          renderStaff();
+          renderClasses();
+        }).catch(err => alert('Could not save teacher and Staff relationship: ' + err.message));
+      });
+    });
+
+    list.querySelectorAll('.unlink-teacher-staff').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const member = teachers.find(t => t.uid === btn.dataset.uid);
+        if (!member) return;
+        if (!confirm('Unlink this teacher from the Staff record? The Staff record will remain in the school.')) return;
+        unlinkTeacherStaff(member).then(() => pullCloudData()).then(() => {
+          renderManageTeachers();
+          renderStaff();
+          renderClasses();
+        }).catch(err => alert('Could not unlink Staff: ' + err.message));
       });
     });
 
     list.querySelectorAll('.reject-teacher-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         if (!confirm('Reject this request? The teacher will need to join again with a school code.')) return;
-        firebase.firestore().collection('users').doc(btn.dataset.uid).update({
+        const member = teachers.find(t => t.uid === btn.dataset.uid);
+        const linkedStaff = member ? getStaffForUserUid(member.uid) : null;
+        const updates = {
           schoolId: firebase.firestore.FieldValue.delete(),
           role: firebase.firestore.FieldValue.delete(),
           status: 'rejected',
           assignedClassIds: firebase.firestore.FieldValue.delete(),
-          assignedSubjectIds: firebase.firestore.FieldValue.delete()
-        }).then(() => renderManageTeachers())
+          assignedSubjectIds: firebase.firestore.FieldValue.delete(),
+          staffId: firebase.firestore.FieldValue.delete(),
+          staffLinkedAt: firebase.firestore.FieldValue.delete()
+        };
+        firebase.firestore().collection('users').doc(btn.dataset.uid).update(updates)
+          .then(() => {
+            // A pending teacher should not have a Staff record, but clean up a
+            // partial relationship if one was created before rejection.
+            if (!linkedStaff) return null;
+            linkedStaff.userUid = '';
+            DB.set(KEYS.staff, DB.get(KEYS.staff, []));
+            return staffRef(linkedStaff.id).set(stripImagesForCloud('staff', linkedStaff), { merge: true });
+          })
+          .then(() => renderManageTeachers())
           .catch(err => alert('Could not reject: ' + err.message));
       });
     });
 
     list.querySelectorAll('.disable-teacher-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        if (!confirm('Disable this teacher? Their school data will remain safe, but access will be blocked.')) return;
+        if (!confirm('Disable this teacher? Their Staff record and school data will remain safe, but account access will be blocked.')) return;
         firebase.firestore().collection('users').doc(btn.dataset.uid).update({ status: 'disabled' })
           .then(() => renderManageTeachers())
-          .catch(err => alert('Could not disable: ' + err.message));
+          .catch(err => alert('Could not disable teacher: ' + err.message));
       });
     });
 
@@ -3339,11 +3583,20 @@ function renderManageTeachers() {
       btn.addEventListener('click', () => {
         const teacher = members.find(m => m.uid === btn.dataset.uid);
         const ids = Array.isArray(teacher && teacher.assignedClassIds) ? teacher.assignedClassIds : [];
+        const linked = teacher && (teacher.staffId ? getStaffById(teacher.staffId) : getStaffForUserUid(teacher.uid));
         if (!ids.length) {
           alert('Assign at least one class before reactivating this teacher.');
           return;
         }
-        firebase.firestore().collection('users').doc(btn.dataset.uid).update({ status: 'active' })
+        if (!linked) {
+          alert('Link or create a Staff record before reactivating this teacher.');
+          return;
+        }
+        firebase.firestore().collection('users').doc(btn.dataset.uid).update({
+          status: 'active',
+          staffId: linked.id,
+          staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
+        })
           .then(() => renderManageTeachers())
           .catch(err => alert('Could not reactivate: ' + err.message));
       });
@@ -3448,6 +3701,19 @@ function initAuth() {
       firebase.firestore().collection('users').doc(currentUid).get().then(userDoc => {
         const data = userDoc.exists ? userDoc.data() : null;
         currentUserData = data || null;
+        // Keep the account directory useful to the Head Teacher. Firebase Auth
+        // knows the signed-in user's email, while Firestore stores the school
+        // membership record. Older accounts created before v17 may not have
+        // email/displayName in users/{uid}; repair those fields from Auth.
+        const authProfileUpdates = {};
+        if (data && data.schoolId && firebase.auth().currentUser) {
+          const authUser = firebase.auth().currentUser;
+          if (!data.email && authUser.email) authProfileUpdates.email = authUser.email;
+          if (!data.displayName && authUser.displayName) authProfileUpdates.displayName = authUser.displayName;
+        }
+        const repairAccountProfile = Object.keys(authProfileUpdates).length
+          ? firebase.firestore().collection('users').doc(currentUid).set(authProfileUpdates, { merge: true })
+          : Promise.resolve();
         currentAssignedClassIds = data && Array.isArray(data.assignedClassIds) ? data.assignedClassIds : [];
         currentAssignedSubjectIds = data && Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds : [];
 

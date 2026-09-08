@@ -70,7 +70,7 @@ service cloud.firestore {
         (
           signedIn()
           && request.auth.uid == uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email'])
         );
 
       allow delete: if false;

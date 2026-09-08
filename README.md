@@ -29,3 +29,8 @@ Firebase Storage is used for school logos, signatures, and student photographs.
    Firebase Console. New default buckets normally use `PROJECT_ID.firebasestorage.app`;
    legacy buckets may use `PROJECT_ID.appspot.com`.
 5. Deploy `firestore.rules` and `storage.rules`.
+
+
+## v17 Teacher ↔ Staff relationship
+
+Approved SchoolHub teacher accounts in `users/{uid}` are now linked one-to-one with personnel records in `schools/{schoolId}/staff/{staffId}`. The relationship is stored as `users.staffId` and `staff.userUid`. Manage Teachers can create or link the Staff record while approving or managing a teacher. Staff records remain independent of account status so disabling a teacher does not delete report-card personnel history or signatures.
