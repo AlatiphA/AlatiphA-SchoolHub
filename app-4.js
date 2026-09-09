@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v19a';
+const APP_VERSION = 'v19';
 
 /* ---------- storage helpers ---------- */
 const DB = {
