@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v19';
+const APP_VERSION = 'v22';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -454,6 +454,54 @@ document.getElementById('profileTourBtn').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
   showTour();
 });
+
+// About dialog / version information. Keeping the version visible in-app
+// makes PWA/service-worker troubleshooting possible without relying on
+// browser developer tools.
+function showAboutDialog() {
+  const dialog = document.getElementById('aboutDialog');
+  if (!dialog) return;
+  document.getElementById('aboutVersion').textContent = APP_VERSION;
+  document.getElementById('aboutDeveloper').textContent = 'AlatiphA Multimedia';
+  const cacheStatus = document.getElementById('aboutImageCacheStatus');
+  if (cacheStatus) {
+    cacheStatus.textContent = 'Checking local image cache…';
+    getImageCacheCount().then(count => {
+      cacheStatus.textContent = count === null ? 'Unavailable in this browser' : `${count} local image${count === 1 ? '' : 's'} cached`;
+    });
+  }
+  dialog.classList.remove('hidden');
+}
+
+function hideAboutDialog() {
+  const dialog = document.getElementById('aboutDialog');
+  if (dialog) dialog.classList.add('hidden');
+}
+
+document.getElementById('profileAboutBtn').addEventListener('click', () => {
+  document.getElementById('profileDropdown').classList.add('hidden');
+  showAboutDialog();
+});
+document.getElementById('aboutCloseBtn').addEventListener('click', hideAboutDialog);
+document.getElementById('aboutDialog').addEventListener('click', e => {
+  if (e.target.id === 'aboutDialog') hideAboutDialog();
+});
+
+document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async () => {
+  const status = document.getElementById('aboutUpdateStatus');
+  status.textContent = 'Checking for an update…';
+  try {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.update()));
+      status.textContent = 'Update check completed. Reload the app if a newer version is available.';
+    } else {
+      status.textContent = 'Service workers are not available in this browser.';
+    }
+  } catch (err) {
+    status.textContent = 'Could not check for an update.';
+  }
+});
 document.addEventListener('click', e => {
   const dropdown = document.getElementById('profileDropdown');
   const menu = document.querySelector('.profile-menu');
@@ -485,11 +533,12 @@ document.getElementById('schoolLogo').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
   const assetPath = schoolAssetPath(file, 'logos', 'school-logo');
-  uploadSchoolAsset(file, 'logos', 'school-logo').then(url => {
+  Promise.all([uploadSchoolAsset(file, 'logos', 'school-logo'), fileToDataUrl(file)]).then(([url, dataUrl]) => {
     const s = DB.get(KEYS.settings, {});
-    s.logo = url;
+    s.logo = dataUrl;
     s.logoUrl = url;
     s.logoStoragePath = assetPath;
+    cacheLocalImage(imageCacheKey('logo', 'school'), dataUrl);
     DB.set(KEYS.settings, s);
     // Persist the authoritative logo reference in the cloud. The binary stays
     // in Firebase Storage; Firestore stores only the URL/path metadata.
@@ -514,6 +563,7 @@ document.getElementById('removeLogo').addEventListener('click', () => {
   s.logo = '';
   s.logoUrl = '';
   s.logoStoragePath = '';
+  try { localStorage.removeItem(`schoolhub_image__${imageCacheKey('logo', 'school')}`); } catch (e) {}
   DB.set(KEYS.settings, s);
   const cloud = (FIREBASE_ENABLED && currentSchoolId)
     ? schoolRef().set({ profile: { logoUrl: '', logoStoragePath: '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true })
@@ -797,10 +847,12 @@ function renderStudents() {
       const st = students.find(x => x.id === input.dataset.student);
       if (!st || !requireClassAccess(st.classId)) return;
       const assetPath = schoolAssetPath(file, 'student-photos', st.classId + '/' + st.id);
-      uploadSchoolAsset(file, 'student-photos', st.classId + '/' + st.id).then(url => {
+      const oldUrl = st.photoUrl || '';
+      Promise.all([uploadSchoolAsset(file, 'student-photos', st.classId + '/' + st.id), fileToDataUrl(file)]).then(([url, dataUrl]) => {
         const currentStudents = DB.get(KEYS.students, []);
         const current = currentStudents.find(x => x.id === input.dataset.student);
-        if (current) { current.photo = url; current.photoUrl = url; current.photoStoragePath = assetPath; }
+        if (current) { current.photo = dataUrl; current.photoUrl = url; current.photoStoragePath = assetPath; }
+        cacheLocalImage(imageCacheKey('student', st.id), dataUrl);
         DB.set(KEYS.students, currentStudents);
         // Persist the image reference immediately. Do not wait for a later
         // general students sync, because the report generator needs the
@@ -809,7 +861,11 @@ function renderStudents() {
           photoUrl: url,
           photoStoragePath: assetPath,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true }).then(() => renderStudents());
+        }, { merge: true }).then(() => {
+          // Remove the old random-name object created by v20 or earlier.
+          if (oldUrl && oldUrl !== url) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStudents());
+          renderStudents();
+        });
       }).catch(err => alert('Could not upload the student photo: ' + err.message));
     });
   });
@@ -817,7 +873,7 @@ function renderStudents() {
     btn.addEventListener('click', () => {
       const students = DB.get(KEYS.students, []);
       const st = students.find(x => x.id === btn.dataset.id);
-      if (st) st.photo = '';
+      if (st) { st.photo = ''; removeCachedLocalImage(imageCacheKey('student', st.id)); }
       DB.set(KEYS.students, students);
       renderStudents();
     });
@@ -1207,16 +1263,21 @@ function renderStaff() {
       if (!file) return;
       const staffId = input.dataset.staff;
       const assetPath = schoolAssetPath(file, 'signatures', staffId);
-      uploadSchoolAsset(file, 'signatures', staffId).then(url => {
+      const existingStaff = DB.get(KEYS.staff, []).find(x => x.id === staffId);
+      const oldUrl = existingStaff ? (existingStaff.signatureUrl || '') : '';
+      Promise.all([uploadSchoolAsset(file, 'signatures', staffId), fileToDataUrl(file)]).then(([url, dataUrl]) => {
         const staffList = DB.get(KEYS.staff, []);
         const st = staffList.find(x => x.id === staffId);
         if (!st) throw new Error('Staff record not found.');
-        st.signature = url;
+        st.signature = dataUrl;
         st.signatureUrl = url;
         st.signatureStoragePath = assetPath;
+        cacheLocalImage(imageCacheKey('staff', staffId), dataUrl);
         DB.set(KEYS.staff, staffList);
         return persistStaffSignature(staffId, url, assetPath);
       }).then(() => {
+        // Remove a legacy random-name signature after the replacement is safely stored.
+        if (oldUrl) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStaff());
         renderStaff(); // stays in edit mode — editingStaffId is untouched
       }).catch(err => alert('Could not save the signature: ' + err.message));
     });
@@ -1229,6 +1290,8 @@ function renderStaff() {
       const oldUrl = st.signatureUrl || st.signature || '';
       st.signature = '';
       st.signatureUrl = '';
+      st.signatureStoragePath = '';
+      removeCachedLocalImage(imageCacheKey('staff', st.id));
       DB.set(KEYS.staff, staffList);
       Promise.all([
         removeStorageFile(oldUrl),
@@ -1290,12 +1353,12 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
       name,
       role,
       signature: signatureDataUrl || '',
-      signatureUrl: signatureDataUrl || '',
+      signatureUrl: '',
       signatureStoragePath: signaturePath
     }, values);
     staffList.push(record);
     DB.set(KEYS.staff, staffList);
-    const cloudSave = signatureDataUrl ? persistStaffSignature(staffId, signatureDataUrl, signaturePath) : Promise.resolve();
+    const cloudSave = Promise.resolve();
     return cloudSave.then(() => {
       nameInput.value = '';
       STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; });
@@ -1305,7 +1368,11 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
   };
 
   if (file) {
-    uploadSchoolAsset(file, 'signatures', staffId).then(url => commit(url))
+    Promise.all([uploadSchoolAsset(file, 'signatures', staffId), fileToDataUrl(file)])
+      .then(([url, dataUrl]) => {
+        cacheLocalImage(imageCacheKey('staff', staffId), dataUrl);
+        return commit(dataUrl).then(() => persistStaffSignature(staffId, url, signaturePath));
+      })
       .catch(err => alert('Could not upload the signature: ' + err.message));
   } else {
     commit('').catch(err => alert('Could not save the staff member: ' + err.message));
@@ -2533,37 +2600,17 @@ async function resolveReportAsset(primarySource, fallbackFolder, fallbackPrefixe
 
 async function prepareReportAssets(result, settings, classInfo) {
   const staffList = DB.get(KEYS.staff, []);
+  const studentList = DB.get(KEYS.students, []);
   const classId = classInfo ? classInfo.id : (result && result.student ? result.student.classId : '');
 
-  // First choice remains the explicit classTeacherId assigned to the class.
-  // If older data has no Staff ID here, use the v17/v18 Teacher -> Staff link
-  // by looking up an active teacher assigned to this class.
   let classTeacher = classInfo && classInfo.classTeacherId
     ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
 
-  if (!classTeacher && classId && FIREBASE_ENABLED && currentSchoolId) {
-    try {
-      const snap = await firebase.firestore().collection('users')
-        .where('schoolId', '==', currentSchoolId)
-        .where('role', '==', 'teacher')
-        .where('status', '==', 'active')
-        .get();
-      const assigned = [];
-      snap.forEach(d => {
-        const m = d.data() || {};
-        if (Array.isArray(m.assignedClassIds) && m.assignedClassIds.indexOf(classId) !== -1) {
-          assigned.push(Object.assign({ uid: d.id }, m));
-        }
-      });
-      // Prefer a linked Staff record. If more than one teacher is assigned
-      // to the class, use the first linked active teacher rather than failing.
-      for (const member of assigned) {
-        const linked = member.staffId ? staffList.find(s => s.id === member.staffId) : getStaffForUserUid(member.uid);
-        if (linked) { classTeacher = linked; break; }
-      }
-    } catch (err) {
-      console.warn('Could not resolve class teacher through user/Staff relationship:', err);
-    }
+  // Keep the existing role-based fallback for schools whose class assignment
+  // was created before classTeacherId was stored.
+  if (!classTeacher && classId) {
+    const cls = DB.get(KEYS.classes, []).find(c => c.id === classId);
+    if (cls && cls.classTeacherId) classTeacher = staffList.find(s => s.id === cls.classTeacherId) || null;
   }
 
   let headTeacher = settings && settings.headTeacherId
@@ -2575,32 +2622,15 @@ async function prepareReportAssets(result, settings, classInfo) {
     }) || null;
   }
 
-  const logoSource = settings ? (settings.logoUrl || settings.logo || '') : '';
-  const photoSource = result && result.student ? (result.student.photoUrl || result.student.photo || '') : '';
-  const classSigSource = classTeacher ? (classTeacher.signatureUrl || classTeacher.signature || '') : '';
-  const headSigSource = headTeacher ? (headTeacher.signatureUrl || headTeacher.signature || '') : '';
+  // Never trust the stale student object captured by an earlier render.
+  // Resolve the current local record by ID immediately before printing.
+  const studentId = result && result.student ? result.student.id : '';
+  const student = studentList.find(s => s.id === studentId) || (result && result.student ? result.student : null);
 
-  const resolveSafe = async (source, folder, prefixes, storagePath) => {
-    try {
-      // Prefer the exact Storage object path when available. This removes all
-      // ambiguity caused by old/changed download URLs or filenames.
-      if (storagePath) {
-        const exact = await reportImageToDataUrl(storagePath);
-        if (exact) return exact;
-      }
-      return await resolveReportAsset(source, folder, prefixes);
-    } catch (e) {
-      console.warn('Report asset failed:', folder, e);
-      return '';
-    }
-  };
-
-  const [logo, photo, classTeacherSignature, headTeacherSignature] = await Promise.all([
-    resolveSafe(logoSource, `schools/${currentSchoolId}/logos`, ['school-logo_', 'school-logo.'], settings && settings.logoStoragePath ? settings.logoStoragePath : ''),
-    resolveSafe(photoSource, `schools/${currentSchoolId}/student-photos/${classId}`, result && result.student ? [`${result.student.id}_`, `${result.student.id}.`] : [], result && result.student ? result.student.photoStoragePath : ''),
-    resolveSafe(classSigSource, `schools/${currentSchoolId}/signatures`, classTeacher ? [`${classTeacher.id}_`, `${classTeacher.id}.`] : [], classTeacher ? classTeacher.signatureStoragePath : ''),
-    resolveSafe(headSigSource, `schools/${currentSchoolId}/signatures`, headTeacher ? [`${headTeacher.id}_`, `${headTeacher.id}.`] : [], headTeacher ? headTeacher.signatureStoragePath : '')
-  ]);
+  const logo = settings ? (isDataImage(settings.logo) ? settings.logo : await getCachedLocalImageAsync(imageCacheKey('logo', 'school'))) : '';
+  const photo = student ? (isDataImage(student.photo) ? student.photo : await getCachedLocalImageAsync(imageCacheKey('student', student.id))) : '';
+  const classTeacherSignature = classTeacher ? (isDataImage(classTeacher.signature) ? classTeacher.signature : await getCachedLocalImageAsync(imageCacheKey('staff', classTeacher.id))) : '';
+  const headTeacherSignature = headTeacher ? (isDataImage(headTeacher.signature) ? headTeacher.signature : await getCachedLocalImageAsync(imageCacheKey('staff', headTeacher.id))) : '';
 
   return {
     logo,
@@ -2743,12 +2773,182 @@ function storageRef(path) {
 }
 
 function schoolAssetPath(file, kind, id) {
-  const safeName = String(file && file.name || 'image').replace(/[^a-zA-Z0-9._-]/g, '_');
+  // v21: one deterministic Storage object per asset. Re-uploading the same
+  // student's photo, staff signature, or school logo replaces the old object
+  // instead of creating another file with a different name.
+  if (!currentSchoolId) return '';
   if (kind === 'student-photos' && id && String(id).indexOf('/') !== -1) {
     const parts = String(id).split('/');
-    return `schools/${currentSchoolId}/student-photos/${parts[0]}/${parts[1]}_${safeName}`;
+    return `schools/${currentSchoolId}/student-photos/${parts[0]}/${parts[1]}`;
   }
-  return `schools/${currentSchoolId}/${kind}/${id || uid()}_${safeName}`;
+  return `schools/${currentSchoolId}/${kind}/${id || uid()}`;
+}
+
+function fileToDataUrl(file) {
+  if (!file) return Promise.resolve('');
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Could not read image file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Local image cache: report generation uses these local data URLs first.
+// Firestore/Storage keep the cloud copy and metadata for synchronization.
+// v21 image cache. IndexedDB is the primary local image store because
+// localStorage is small and can silently fail once several photos/signatures
+// are cached. localStorage remains a compatibility fallback.
+const IMAGE_DB_NAME = 'AlatiphA-SchoolHub-Images';
+const IMAGE_DB_VERSION = 1;
+const IMAGE_DB_STORE = 'images';
+let imageDbPromise = null;
+
+function openImageDB() {
+  if (imageDbPromise) return imageDbPromise;
+  imageDbPromise = new Promise(resolve => {
+    try {
+      if (!window.indexedDB) return resolve(null);
+      const req = indexedDB.open(IMAGE_DB_NAME, IMAGE_DB_VERSION);
+      req.onupgradeneeded = () => {
+        try {
+          if (!req.result.objectStoreNames.contains(IMAGE_DB_STORE)) req.result.createObjectStore(IMAGE_DB_STORE);
+        } catch (e) {}
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch (e) { resolve(null); }
+  });
+  return imageDbPromise;
+}
+
+function cacheLocalImage(cacheKey, dataUrl) {
+  if (!cacheKey || !dataUrl) return;
+  const value = String(dataUrl);
+  try { localStorage.setItem(`schoolhub_image__${cacheKey}`, value); }
+  catch (e) { console.warn('Could not cache image in localStorage:', e); }
+  openImageDB().then(db => {
+    if (!db) return;
+    try {
+      const tx = db.transaction(IMAGE_DB_STORE, 'readwrite');
+      tx.objectStore(IMAGE_DB_STORE).put(value, cacheKey);
+    } catch (e) { console.warn('Could not cache image in IndexedDB:', e); }
+  });
+}
+
+function getCachedLocalImage(cacheKey) {
+  if (!cacheKey) return '';
+  try { return localStorage.getItem(`schoolhub_image__${cacheKey}`) || ''; }
+  catch (e) { return ''; }
+}
+
+function getCachedLocalImageAsync(cacheKey) {
+  const fast = getCachedLocalImage(cacheKey);
+  if (fast) return Promise.resolve(fast);
+  return openImageDB().then(db => new Promise(resolve => {
+    if (!db) return resolve('');
+    try {
+      const tx = db.transaction(IMAGE_DB_STORE, 'readonly');
+      const req = tx.objectStore(IMAGE_DB_STORE).get(cacheKey);
+      req.onsuccess = () => {
+        const value = String(req.result || '');
+        if (value) {
+          try { localStorage.setItem(`schoolhub_image__${cacheKey}`, value); } catch (e) {}
+        }
+        resolve(value);
+      };
+      req.onerror = () => resolve('');
+    } catch (e) { resolve(''); }
+  }));
+}
+
+function getImageCacheCount() {
+  return openImageDB().then(db => new Promise(resolve => {
+    if (!db) return resolve(null);
+    try {
+      const tx = db.transaction(IMAGE_DB_STORE, 'readonly');
+      const req = tx.objectStore(IMAGE_DB_STORE).count();
+      req.onsuccess = () => resolve(Number(req.result || 0));
+      req.onerror = () => resolve(null);
+    } catch (e) { resolve(null); }
+  })).catch(() => null);
+}
+
+function removeCachedLocalImage(cacheKey) {
+  if (!cacheKey) return;
+  try { localStorage.removeItem(`schoolhub_image__${cacheKey}`); } catch (e) {}
+  openImageDB().then(db => {
+    if (!db) return;
+    try { db.transaction(IMAGE_DB_STORE, 'readwrite').objectStore(IMAGE_DB_STORE).delete(cacheKey); } catch (e) {}
+  });
+}
+
+function isDataImage(value) {
+  return /^data:image\//i.test(String(value || ''));
+}
+
+function imageCacheKey(kind, id) {
+  return `${currentSchoolId || 'local'}__${kind}__${id || 'default'}`;
+}
+
+async function hydrateImageCacheFromStorage(kind, id, storagePath, url) {
+  const key = imageCacheKey(kind, id);
+  const existing = await getCachedLocalImageAsync(key);
+  if (existing) return existing;
+  const source = storagePath || url || '';
+  if (!source || !FIREBASE_ENABLED || !firebase.storage) return '';
+  try {
+    const data = await reportImageToDataUrl(source);
+    if (data) {
+      cacheLocalImage(key, data);
+      return data;
+    }
+  } catch (e) {
+    console.warn('Could not hydrate local image cache:', kind, id, e);
+  }
+  return '';
+}
+
+async function hydrateLocalImageCaches(profile, students, staff) {
+  const jobs = [];
+  if (profile) {
+    const logoPath = profile.logoStoragePath || '';
+    const logoUrl = profile.logoUrl || '';
+    if (logoPath || logoUrl) {
+      jobs.push(hydrateImageCacheFromStorage('logo', 'school', logoPath, logoUrl).then(data => {
+        if (data) {
+          const settings = DB.get(KEYS.settings, {});
+          settings.logo = data;
+          settings.logoUrl = logoUrl || settings.logoUrl || '';
+          settings.logoStoragePath = logoPath || settings.logoStoragePath || '';
+          DB.set(KEYS.settings, settings);
+        }
+      }));
+    }
+  }
+  (students || []).forEach(st => {
+    if (st.photoUrl || st.photoStoragePath) {
+      jobs.push(hydrateImageCacheFromStorage('student', st.id, st.photoStoragePath, st.photoUrl).then(data => {
+        if (data) {
+          const list = DB.get(KEYS.students, []);
+          const current = list.find(x => x.id === st.id);
+          if (current) { current.photo = data; current.photoUrl = st.photoUrl || current.photoUrl || ''; current.photoStoragePath = st.photoStoragePath || current.photoStoragePath || ''; DB.set(KEYS.students, list); }
+        }
+      }));
+    }
+  });
+  (staff || []).forEach(st => {
+    if (st.signatureUrl || st.signatureStoragePath) {
+      jobs.push(hydrateImageCacheFromStorage('staff', st.id, st.signatureStoragePath, st.signatureUrl).then(data => {
+        if (data) {
+          const list = DB.get(KEYS.staff, []);
+          const current = list.find(x => x.id === st.id);
+          if (current) { current.signature = data; current.signatureUrl = st.signatureUrl || current.signatureUrl || ''; current.signatureStoragePath = st.signatureStoragePath || current.signatureStoragePath || ''; DB.set(KEYS.staff, list); }
+        }
+      }));
+    }
+  });
+  await Promise.all(jobs);
 }
 
 function uploadSchoolAsset(file, kind, id) {
@@ -2822,11 +3022,13 @@ function stripImagesForCloud(field, value) {
 function mergeLocalImage(field, cloudValue, id) {
   if (field === 'students') {
     const local = DB.get(KEYS.students, []).find(s => s.id === id);
-    return Object.assign({}, cloudValue, { photo: cloudValue.photoUrl || (local ? (local.photo || '') : '') });
+    const cached = getCachedLocalImage(imageCacheKey('student', id));
+    return Object.assign({}, cloudValue, { photo: (local && isDataImage(local.photo) ? local.photo : '') || cached || '' });
   }
   if (field === 'staff') {
     const local = DB.get(KEYS.staff, []).find(s => s.id === id);
-    return Object.assign({}, cloudValue, { signature: cloudValue.signatureUrl || (local ? (local.signatureUrl || local.signature || '') : '') });
+    const cached = getCachedLocalImage(imageCacheKey('staff', id));
+    return Object.assign({}, cloudValue, { signature: (local && isDataImage(local.signature) ? local.signature : '') || cached || '' });
   }
   return cloudValue;
 }
@@ -2954,7 +3156,7 @@ function pullCloudData() {
       pullSubcollection('staff', null),
       pullGradesForAccess(all, classIds),
       pullRemarksForAccess(all, classIds)
-    ]).then(results => {
+    ]).then(async results => {
       const schoolDoc = results[0];
       const classSnap = results[1];
       const subjectSnap = results[2];
@@ -2963,11 +3165,14 @@ function pullCloudData() {
       const gradeSnap = results[5];
       const remarkSnap = results[6];
 
+      const schoolProfile = schoolDoc.exists ? (schoolDoc.data().profile || {}) : {};
       if (schoolDoc.exists) {
-        const p = schoolDoc.data().profile || {};
+        const p = schoolProfile;
         const localSettings = DB.get(KEYS.settings, {});
         const mergedProfile = Object.assign({}, localSettings, p);
-        if (p.logoUrl) mergedProfile.logo = p.logoUrl;
+        // Keep an existing local image. Cloud URL/path are metadata only.
+        const cachedLogo = getCachedLocalImage(imageCacheKey('logo', 'school'));
+        if (cachedLogo) mergedProfile.logo = cachedLogo;
         DB.set(KEYS.settings, mergedProfile);
       }
 
@@ -2999,6 +3204,10 @@ function pullCloudData() {
       const staff = [];
       staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
       DB.set(KEYS.staff, staff);
+
+      // Hydrate missing local image copies once from Firebase. Reports never
+      // depend on Firebase Storage at generation time after this completes.
+      await hydrateLocalImageCaches(schoolProfile, students, staff);
 
       const grades = {};
       gradeSnap.forEach(d => {

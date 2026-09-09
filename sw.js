@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — service worker
 // Keep CACHE_NAME's version in sync with APP_VERSION in app-4.js
-const CACHE_NAME = 'schoolhub-cache-v20';
+const CACHE_NAME = 'schoolhub-cache-v22';
 
 const APP_SHELL = [
   './',
@@ -21,6 +21,10 @@ const APP_SHELL = [
   'https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js',
   'https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap'
 ];
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
 
 self.addEventListener('install', event => {
   event.waitUntil(

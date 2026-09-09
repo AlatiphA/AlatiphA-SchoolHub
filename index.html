@@ -130,6 +130,7 @@
         <div id="profileAccountLine" class="profile-account-line">—</div>
         <button type="button" id="profileSetupLink" class="profile-link">Go to Setup</button>
         <button type="button" id="profileTourBtn" class="profile-link">Show Guided Tour</button>
+        <button type="button" id="profileAboutBtn" class="profile-link">About SchoolHub</button>
         <button type="button" id="profileLoginBtn" class="profile-link hidden">Log In</button>
         <button type="button" id="logoutBtn" class="profile-link profile-link-danger hidden">Log Out</button>
       </div>
@@ -415,6 +416,25 @@
   </section>
 
 </main>
+
+<!-- ABOUT -->
+<div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div class="about-box">
+    <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
+    <h2 id="aboutTitle">AlatiphA SchoolHub</h2>
+    <p class="about-version">Version <strong id="aboutVersion">v22</strong></p>
+    <div class="about-details">
+      <div><span>Developer</span><strong id="aboutDeveloper">AlatiphA Multimedia</strong></div>
+      <div><span>Image storage</span><strong id="aboutImageCacheStatus">Checking local image cache…</strong></div>
+    </div>
+    <p id="aboutUpdateStatus" class="hint about-status">Use “Check for Updates” after deploying a new version.</p>
+    <div class="about-actions">
+      <button type="button" id="aboutCheckUpdateBtn" class="btn-primary">Check for Updates</button>
+      <button type="button" id="aboutCloseBtn" class="btn-text">Close</button>
+    </div>
+    <p class="about-copyright">© 2026 AlatiphA Multimedia</p>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
