@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v18';
+const APP_VERSION = 'v19';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -776,12 +776,20 @@ function renderStudents() {
       const students = DB.get(KEYS.students, []);
       const st = students.find(x => x.id === input.dataset.student);
       if (!st || !requireClassAccess(st.classId)) return;
+      const assetPath = schoolAssetPath(file, 'student-photos', st.classId + '/' + st.id);
       uploadSchoolAsset(file, 'student-photos', st.classId + '/' + st.id).then(url => {
         const currentStudents = DB.get(KEYS.students, []);
         const current = currentStudents.find(x => x.id === input.dataset.student);
-        if (current) { current.photo = url; current.photoUrl = url; }
+        if (current) { current.photo = url; current.photoUrl = url; current.photoStoragePath = assetPath; }
         DB.set(KEYS.students, currentStudents);
-        renderStudents(); // stays in edit mode — editingStudentId is untouched
+        // Persist the image reference immediately. Do not wait for a later
+        // general students sync, because the report generator needs the
+        // cloud record to contain the authoritative image reference.
+        return studentRef(st.id).set({
+          photoUrl: url,
+          photoStoragePath: assetPath,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true }).then(() => renderStudents());
       }).catch(err => alert('Could not upload the student photo: ' + err.message));
     });
   });
@@ -1178,14 +1186,16 @@ function renderStaff() {
       const file = e.target.files[0];
       if (!file) return;
       const staffId = input.dataset.staff;
+      const assetPath = schoolAssetPath(file, 'signatures', staffId);
       uploadSchoolAsset(file, 'signatures', staffId).then(url => {
         const staffList = DB.get(KEYS.staff, []);
         const st = staffList.find(x => x.id === staffId);
         if (!st) throw new Error('Staff record not found.');
         st.signature = url;
         st.signatureUrl = url;
+        st.signatureStoragePath = assetPath;
         DB.set(KEYS.staff, staffList);
-        return persistStaffSignature(staffId, url);
+        return persistStaffSignature(staffId, url, assetPath);
       }).then(() => {
         renderStaff(); // stays in edit mode — editingStaffId is untouched
       }).catch(err => alert('Could not save the signature: ' + err.message));
@@ -1252,6 +1262,7 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
   const file = document.getElementById('newStaffSignature').files[0];
 
   const staffId = uid();
+  const signaturePath = file ? schoolAssetPath(file, 'signatures', staffId) : '';
   const commit = signatureDataUrl => {
     const staffList = DB.get(KEYS.staff, []);
     const record = Object.assign({
@@ -1259,11 +1270,12 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
       name,
       role,
       signature: signatureDataUrl || '',
-      signatureUrl: signatureDataUrl || ''
+      signatureUrl: signatureDataUrl || '',
+      signatureStoragePath: signaturePath
     }, values);
     staffList.push(record);
     DB.set(KEYS.staff, staffList);
-    const cloudSave = signatureDataUrl ? persistStaffSignature(staffId, signatureDataUrl) : Promise.resolve();
+    const cloudSave = signatureDataUrl ? persistStaffSignature(staffId, signatureDataUrl, signaturePath) : Promise.resolve();
     return cloudSave.then(() => {
       nameInput.value = '';
       STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; });
@@ -2458,13 +2470,35 @@ async function prepareReportAssets(result, settings, classInfo) {
   const staffList = DB.get(KEYS.staff, []);
   const classId = classInfo ? classInfo.id : (result && result.student ? result.student.classId : '');
 
+  // First choice remains the explicit classTeacherId assigned to the class.
+  // If older data has no Staff ID here, use the v17/v18 Teacher -> Staff link
+  // by looking up an active teacher assigned to this class.
   let classTeacher = classInfo && classInfo.classTeacherId
     ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
-  if (!classTeacher && classId) {
-    classTeacher = staffList.find(s => {
-      const role = String(s.role || '').toLowerCase();
-      return (role === 'teacher' || role === 'class teacher') && Array.isArray(s.assignedClassIds) && s.assignedClassIds.indexOf(classId) !== -1;
-    }) || null;
+
+  if (!classTeacher && classId && FIREBASE_ENABLED && currentSchoolId) {
+    try {
+      const snap = await firebase.firestore().collection('users')
+        .where('schoolId', '==', currentSchoolId)
+        .where('role', '==', 'teacher')
+        .where('status', '==', 'active')
+        .get();
+      const assigned = [];
+      snap.forEach(d => {
+        const m = d.data() || {};
+        if (Array.isArray(m.assignedClassIds) && m.assignedClassIds.indexOf(classId) !== -1) {
+          assigned.push(Object.assign({ uid: d.id }, m));
+        }
+      });
+      // Prefer a linked Staff record. If more than one teacher is assigned
+      // to the class, use the first linked active teacher rather than failing.
+      for (const member of assigned) {
+        const linked = member.staffId ? staffList.find(s => s.id === member.staffId) : getStaffForUserUid(member.uid);
+        if (linked) { classTeacher = linked; break; }
+      }
+    } catch (err) {
+      console.warn('Could not resolve class teacher through user/Staff relationship:', err);
+    }
   }
 
   let headTeacher = settings && settings.headTeacherId
@@ -2481,18 +2515,26 @@ async function prepareReportAssets(result, settings, classInfo) {
   const classSigSource = classTeacher ? (classTeacher.signatureUrl || classTeacher.signature || '') : '';
   const headSigSource = headTeacher ? (headTeacher.signatureUrl || headTeacher.signature || '') : '';
 
-  // IMPORTANT: each asset is resolved independently. One missing/denied image
-  // must never cause the other three assets to disappear from the report.
-  const resolveSafe = async (source, folder, prefixes) => {
-    try { return await resolveReportAsset(source, folder, prefixes); }
-    catch (e) { console.warn('Report asset failed:', folder, e); return ''; }
+  const resolveSafe = async (source, folder, prefixes, storagePath) => {
+    try {
+      // Prefer the exact Storage object path when available. This removes all
+      // ambiguity caused by old/changed download URLs or filenames.
+      if (storagePath) {
+        const exact = await reportImageToDataUrl(storagePath);
+        if (exact) return exact;
+      }
+      return await resolveReportAsset(source, folder, prefixes);
+    } catch (e) {
+      console.warn('Report asset failed:', folder, e);
+      return '';
+    }
   };
 
   const [logo, photo, classTeacherSignature, headTeacherSignature] = await Promise.all([
-    resolveSafe(logoSource, `schools/${currentSchoolId}/logos`, ['school-logo_', 'school-logo.']),
-    resolveSafe(photoSource, `schools/${currentSchoolId}/student-photos/${classId}`, result && result.student ? [`${result.student.id}_`, `${result.student.id}.`] : []),
-    resolveSafe(classSigSource, `schools/${currentSchoolId}/signatures`, classTeacher ? [`${classTeacher.id}_`, `${classTeacher.id}.`] : []),
-    resolveSafe(headSigSource, `schools/${currentSchoolId}/signatures`, headTeacher ? [`${headTeacher.id}_`, `${headTeacher.id}.`] : [])
+    resolveSafe(logoSource, `schools/${currentSchoolId}/logos`, ['school-logo_', 'school-logo.'], ''),
+    resolveSafe(photoSource, `schools/${currentSchoolId}/student-photos/${classId}`, result && result.student ? [`${result.student.id}_`, `${result.student.id}.`] : [], result && result.student ? result.student.photoStoragePath : ''),
+    resolveSafe(classSigSource, `schools/${currentSchoolId}/signatures`, classTeacher ? [`${classTeacher.id}_`, `${classTeacher.id}.`] : [], classTeacher ? classTeacher.signatureStoragePath : ''),
+    resolveSafe(headSigSource, `schools/${currentSchoolId}/signatures`, headTeacher ? [`${headTeacher.id}_`, `${headTeacher.id}.`] : [], headTeacher ? headTeacher.signatureStoragePath : '')
   ]);
 
   return {
@@ -2635,27 +2677,31 @@ function storageRef(path) {
   return firebase.storage().ref().child(path);
 }
 
-function uploadSchoolAsset(file, kind, id) {
-  if (!FIREBASE_ENABLED || !currentSchoolId || !file) return Promise.resolve('');
-  const safeName = String(file.name || 'image').replace(/[^a-zA-Z0-9._-]/g, '_');
-  let path;
+function schoolAssetPath(file, kind, id) {
+  const safeName = String(file && file.name || 'image').replace(/[^a-zA-Z0-9._-]/g, '_');
   if (kind === 'student-photos' && id && String(id).indexOf('/') !== -1) {
     const parts = String(id).split('/');
-    path = `schools/${currentSchoolId}/student-photos/${parts[0]}/${parts[1]}_${safeName}`;
-  } else {
-    path = `schools/${currentSchoolId}/${kind}/${id || uid()}_${safeName}`;
+    return `schools/${currentSchoolId}/student-photos/${parts[0]}/${parts[1]}_${safeName}`;
   }
+  return `schools/${currentSchoolId}/${kind}/${id || uid()}_${safeName}`;
+}
+
+function uploadSchoolAsset(file, kind, id) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !file) return Promise.resolve('');
+  const path = schoolAssetPath(file, kind, id);
   return storageRef(path).put(file, { contentType: file.type || 'application/octet-stream' })
     .then(snapshot => snapshot.ref.getDownloadURL());
 }
 
-function persistStaffSignature(staffId, url) {
+function persistStaffSignature(staffId, url, storagePath) {
   if (!FIREBASE_ENABLED || !currentSchoolId || !staffId) return Promise.resolve();
   if (!isHeadTeacher()) return Promise.resolve();
-  return staffRef(staffId).set({
+  const data = {
     signatureUrl: url || '',
     signatureUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
-  }, { merge: true });
+  };
+  if (storagePath !== undefined) data.signatureStoragePath = storagePath || '';
+  return staffRef(staffId).set(data, { merge: true });
 }
 
 function removeStorageFile(url) {
