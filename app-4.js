@@ -484,21 +484,41 @@ document.getElementById('schoolLogo').addEventListener('change', e => {
   if (!requireHeadTeacher('upload the school logo')) return;
   const file = e.target.files[0];
   if (!file) return;
+  const assetPath = schoolAssetPath(file, 'logos', 'school-logo');
   uploadSchoolAsset(file, 'logos', 'school-logo').then(url => {
     const s = DB.get(KEYS.settings, {});
     s.logo = url;
     s.logoUrl = url;
+    s.logoStoragePath = assetPath;
     DB.set(KEYS.settings, s);
+    // Persist the authoritative logo reference in the cloud. The binary stays
+    // in Firebase Storage; Firestore stores only the URL/path metadata.
+    if (FIREBASE_ENABLED && currentSchoolId) {
+      return schoolRef().set({
+        profile: {
+          logoUrl: url,
+          logoStoragePath: assetPath,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }
+      }, { merge: true });
+    }
+  }).then(() => {
     loadSettingsForm();
   }).catch(err => alert('Could not upload the school logo: ' + err.message));
-});;
+});
 
 document.getElementById('removeLogo').addEventListener('click', () => {
   if (!requireHeadTeacher('change school settings')) return;
   const s = DB.get(KEYS.settings, {});
+  const oldUrl = s.logoUrl || s.logo || '';
   s.logo = '';
+  s.logoUrl = '';
+  s.logoStoragePath = '';
   DB.set(KEYS.settings, s);
-  loadSettingsForm();
+  const cloud = (FIREBASE_ENABLED && currentSchoolId)
+    ? schoolRef().set({ profile: { logoUrl: '', logoStoragePath: '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true })
+    : Promise.resolve();
+  cloud.then(() => removeStorageFile(oldUrl)).then(() => loadSettingsForm());
 });
 
 document.getElementById('saveSettings').addEventListener('click', () => {
@@ -2403,39 +2423,84 @@ async function storageRefToDataUrl(ref) {
   });
 }
 
+// jsPDF is deliberately fed PNG data URLs. Firebase Storage may contain JPG,
+// JPEG, WEBP, GIF, HEIC-derived browser formats, or other image MIME types.
+// Returning the original data URL and then forcing addImage(..., 'PNG') is not
+// safe because the declared MIME type and the jsPDF decoder can disagree.
+// Normalize the already-downloaded image through a browser Image + canvas.
+async function normalizeReportImage(dataUrl) {
+  if (!dataUrl || !/^data:image\//i.test(String(dataUrl))) return '';
+  const value = String(dataUrl);
+
+  // PNG is already exactly what the report renderer expects.
+  if (/^data:image\/png[;,]/i.test(value)) return value;
+
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const width = img.naturalWidth || img.width;
+        const height = img.naturalHeight || img.height;
+        if (!width || !height) throw new Error('Image has no usable dimensions.');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Could not create image canvas.');
+        ctx.drawImage(img, 0, 0, width, height);
+        const png = canvas.toDataURL('image/png');
+        if (!png || png === 'data:,') throw new Error('Could not convert image to PNG.');
+        resolve(png);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => reject(new Error('Browser could not decode the report image.'));
+    img.src = value;
+  });
+}
+
 async function reportImageToDataUrl(source) {
   if (!source) return '';
   const value = String(source);
-  if (/^data:image\//i.test(value)) return value;
 
-  // IMPORTANT: Firebase Storage getBytes() is used here instead of fetch().
-  // This keeps the download inside Firebase Storage Security Rules and avoids
-  // depending on the public download URL format. The bucket still needs CORS
-  // enabled because browser-side getBytes/getBlob are subject to CORS.
+  if (/^data:image\//i.test(value)) {
+    try {
+      return await normalizeReportImage(value);
+    } catch (err) {
+      console.warn('Report data image normalization failed:', err);
+      return '';
+    }
+  }
+
+  // IMPORTANT: Firebase Storage getBytes() is used here instead of relying on
+  // a public download URL. The browser therefore reads the object through the
+  // authenticated Firebase Storage SDK and then normalizes it locally.
   if (typeof firebase !== 'undefined' && firebase.storage) {
     try {
       const ref = /^https?:\/\//i.test(value)
         ? firebase.storage().refFromURL(value)
         : firebase.storage().ref().child(value.replace(/^\/+/, ''));
       const data = await storageRefToDataUrl(ref);
-      if (data) return data;
+      if (data) return await normalizeReportImage(data);
     } catch (err) {
-      console.warn('Firebase Storage image read failed:', value, err);
+      console.warn('Firebase Storage report image read/normalize failed:', value, err);
     }
   }
 
-  // Local data/file values remain supported for backwards compatibility.
+  // Backwards-compatible fallback for old blob/download URLs.
   if (/^blob:/i.test(value) || /^https?:\/\//i.test(value)) {
     try {
       const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
       if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
       const blob = await response.blob();
-      return await new Promise((resolve, reject) => {
+      const raw = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result || ''));
         reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
         reader.readAsDataURL(blob);
       });
+      return await normalizeReportImage(raw);
     } catch (err) {
       console.warn('Report image URL fallback failed:', err);
     }
@@ -2531,7 +2596,7 @@ async function prepareReportAssets(result, settings, classInfo) {
   };
 
   const [logo, photo, classTeacherSignature, headTeacherSignature] = await Promise.all([
-    resolveSafe(logoSource, `schools/${currentSchoolId}/logos`, ['school-logo_', 'school-logo.'], ''),
+    resolveSafe(logoSource, `schools/${currentSchoolId}/logos`, ['school-logo_', 'school-logo.'], settings && settings.logoStoragePath ? settings.logoStoragePath : ''),
     resolveSafe(photoSource, `schools/${currentSchoolId}/student-photos/${classId}`, result && result.student ? [`${result.student.id}_`, `${result.student.id}.`] : [], result && result.student ? result.student.photoStoragePath : ''),
     resolveSafe(classSigSource, `schools/${currentSchoolId}/signatures`, classTeacher ? [`${classTeacher.id}_`, `${classTeacher.id}.`] : [], classTeacher ? classTeacher.signatureStoragePath : ''),
     resolveSafe(headSigSource, `schools/${currentSchoolId}/signatures`, headTeacher ? [`${headTeacher.id}_`, `${headTeacher.id}.`] : [], headTeacher ? headTeacher.signatureStoragePath : '')

@@ -36,6 +36,6 @@ Firebase Storage is used for school logos, signatures, and student photographs.
 Approved SchoolHub teacher accounts in `users/{uid}` are now linked one-to-one with personnel records in `schools/{schoolId}/staff/{staffId}`. The relationship is stored as `users.staffId` and `staff.userUid`. Manage Teachers can create or link the Staff record while approving or managing a teacher. Staff records remain independent of account status so disabling a teacher does not delete report-card personnel history or signatures.
 
 
-## v19 report image and teacher-link fixes / school creation
+## v20 report image and teacher-link fixes / school creation
 - School creation now restores users/{uid} when a signed-in account has lost its Firestore user profile.
 - The initial join code can be created by the authenticated school owner without requiring users/{uid} to exist first.
