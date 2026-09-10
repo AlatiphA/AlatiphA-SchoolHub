@@ -1,16 +1,30 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v22';
+const APP_VERSION = 'v23';
 
 /* ---------- storage helpers ---------- */
 const DB = {
   get(key, fallback) {
     try {
-      const v = JSON.parse(localStorage.getItem(key));
-      return v === null || v === undefined ? fallback : v;
+      const raw = localStorage.getItem(key);
+      const v = JSON.parse(raw);
+      if (v === null || v === undefined) return fallback;
+      return restoreLocalImagesForDbKey(key, v);
     } catch (e) { return fallback; }
   },
   set(key, val) {
-    localStorage.setItem(key, JSON.stringify(val));
+    const clean = stripImagesForLocalStorage(key, val);
+    const payload = JSON.stringify(clean);
+    try {
+      localStorage.setItem(key, payload);
+    } catch (e) {
+      try {
+        localStorage.removeItem(key);
+        localStorage.setItem(key, payload);
+      } catch (retryError) {
+        console.error('Could not save local data:', key, retryError);
+        throw retryError;
+      }
+    }
     if (typeof scheduleCloudPush === 'function') scheduleCloudPush(key);
   }
 };
@@ -464,11 +478,26 @@ function showAboutDialog() {
   document.getElementById('aboutVersion').textContent = APP_VERSION;
   document.getElementById('aboutDeveloper').textContent = 'AlatiphA Multimedia';
   const cacheStatus = document.getElementById('aboutImageCacheStatus');
+  const browserStatus = document.getElementById('aboutBrowserStatus');
+  const localStorageStatus = document.getElementById('aboutLocalStorageStatus');
+  const swStatus = document.getElementById('aboutSwStatus');
   if (cacheStatus) {
     cacheStatus.textContent = 'Checking local image cache…';
     getImageCacheCount().then(count => {
-      cacheStatus.textContent = count === null ? 'Unavailable in this browser' : `${count} local image${count === 1 ? '' : 's'} cached`;
+      cacheStatus.textContent = count === null ? 'Unavailable in this browser' : `${count} local image${count === 1 ? '' : 's'} cached (IndexedDB)`;
     });
+  }
+  if (browserStatus) browserStatus.textContent = /SamsungBrowser/i.test(navigator.userAgent) ? 'Samsung Internet' : /Chrome/i.test(navigator.userAgent) ? 'Chrome' : 'Other';
+  if (localStorageStatus) {
+    try {
+      let chars = 0;
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ''; chars += k.length + String(localStorage.getItem(k) || '').length; }
+      localStorageStatus.textContent = `${Math.round(chars / 1024)} KB structured data`;
+    } catch (e) { localStorageStatus.textContent = 'Unavailable'; }
+  }
+  if (swStatus) {
+    if (!('serviceWorker' in navigator)) swStatus.textContent = 'Unavailable';
+    else navigator.serviceWorker.getRegistration('./').then(r => { swStatus.textContent = r ? (r.active ? 'Active' : r.installing ? 'Installing' : r.waiting ? 'Waiting' : 'Registered') : 'Not registered'; }).catch(() => { swStatus.textContent = 'Unavailable'; });
   }
   dialog.classList.remove('hidden');
 }
@@ -491,15 +520,21 @@ document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async (
   const status = document.getElementById('aboutUpdateStatus');
   status.textContent = 'Checking for an update…';
   try {
-    if ('serviceWorker' in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map(r => r.update()));
-      status.textContent = 'Update check completed. Reload the app if a newer version is available.';
-    } else {
+    if (!('serviceWorker' in navigator)) {
       status.textContent = 'Service workers are not available in this browser.';
+      return;
     }
+    const registration = await navigator.serviceWorker.getRegistration('./');
+    if (!registration) {
+      status.textContent = 'No SchoolHub service worker is registered in this browser.';
+      return;
+    }
+    await registration.update();
+    status.textContent = 'Update check completed. Reload SchoolHub if a newer version was found.';
   } catch (err) {
-    status.textContent = 'Could not check for an update.';
+    const detail = err && err.message ? err.message : String(err || 'Unknown error');
+    status.textContent = 'Update check failed: ' + detail;
+    console.warn('SchoolHub update check failed:', err);
   }
 });
 document.addEventListener('click', e => {
@@ -538,19 +573,22 @@ document.getElementById('schoolLogo').addEventListener('change', e => {
     s.logo = dataUrl;
     s.logoUrl = url;
     s.logoStoragePath = assetPath;
-    cacheLocalImage(imageCacheKey('logo', 'school'), dataUrl);
-    DB.set(KEYS.settings, s);
-    // Persist the authoritative logo reference in the cloud. The binary stays
-    // in Firebase Storage; Firestore stores only the URL/path metadata.
-    if (FIREBASE_ENABLED && currentSchoolId) {
-      return schoolRef().set({
-        profile: {
-          logoUrl: url,
-          logoStoragePath: assetPath,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }
-      }, { merge: true });
-    }
+    return cacheLocalImage(imageCacheKey('logo', 'school'), dataUrl).then(() => {
+      DB.set(KEYS.settings, s);
+      // Persist the authoritative logo reference in the cloud. The binary stays
+      // in Firebase Storage; Firestore stores only the URL/path metadata.
+      if (FIREBASE_ENABLED && currentSchoolId) {
+        return schoolRef().set({
+          profile: {
+            logoUrl: url,
+            logoStoragePath: assetPath,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }
+        }, { merge: true });
+      }
+    });
+    /* cloud persistence is handled above */
+    /* DB.set is intentionally image-free in v23 */
   }).then(() => {
     loadSettingsForm();
   }).catch(err => alert('Could not upload the school logo: ' + err.message));
@@ -563,7 +601,7 @@ document.getElementById('removeLogo').addEventListener('click', () => {
   s.logo = '';
   s.logoUrl = '';
   s.logoStoragePath = '';
-  try { localStorage.removeItem(`schoolhub_image__${imageCacheKey('logo', 'school')}`); } catch (e) {}
+  removeCachedLocalImage(imageCacheKey('logo', 'school'));
   DB.set(KEYS.settings, s);
   const cloud = (FIREBASE_ENABLED && currentSchoolId)
     ? schoolRef().set({ profile: { logoUrl: '', logoStoragePath: '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true })
@@ -852,19 +890,16 @@ function renderStudents() {
         const currentStudents = DB.get(KEYS.students, []);
         const current = currentStudents.find(x => x.id === input.dataset.student);
         if (current) { current.photo = dataUrl; current.photoUrl = url; current.photoStoragePath = assetPath; }
-        cacheLocalImage(imageCacheKey('student', st.id), dataUrl);
-        DB.set(KEYS.students, currentStudents);
-        // Persist the image reference immediately. Do not wait for a later
-        // general students sync, because the report generator needs the
-        // cloud record to contain the authoritative image reference.
-        return studentRef(st.id).set({
-          photoUrl: url,
-          photoStoragePath: assetPath,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true }).then(() => {
-          // Remove the old random-name object created by v20 or earlier.
-          if (oldUrl && oldUrl !== url) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStudents());
-          renderStudents();
+        return cacheLocalImage(imageCacheKey('student', st.id), dataUrl).then(() => {
+          DB.set(KEYS.students, currentStudents);
+          return studentRef(st.id).set({
+            photoUrl: url,
+            photoStoragePath: assetPath,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true }).then(() => {
+            if (oldUrl && oldUrl !== url) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStudents());
+            renderStudents();
+          });
         });
       }).catch(err => alert('Could not upload the student photo: ' + err.message));
     });
@@ -1272,9 +1307,10 @@ function renderStaff() {
         st.signature = dataUrl;
         st.signatureUrl = url;
         st.signatureStoragePath = assetPath;
-        cacheLocalImage(imageCacheKey('staff', staffId), dataUrl);
-        DB.set(KEYS.staff, staffList);
-        return persistStaffSignature(staffId, url, assetPath);
+        return cacheLocalImage(imageCacheKey('staff', staffId), dataUrl).then(() => {
+          DB.set(KEYS.staff, staffList);
+          return persistStaffSignature(staffId, url, assetPath);
+        });
       }).then(() => {
         // Remove a legacy random-name signature after the replacement is safely stored.
         if (oldUrl) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStaff());
@@ -1370,8 +1406,9 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
   if (file) {
     Promise.all([uploadSchoolAsset(file, 'signatures', staffId), fileToDataUrl(file)])
       .then(([url, dataUrl]) => {
-        cacheLocalImage(imageCacheKey('staff', staffId), dataUrl);
-        return commit(dataUrl).then(() => persistStaffSignature(staffId, url, signaturePath));
+        return cacheLocalImage(imageCacheKey('staff', staffId), dataUrl)
+          .then(() => commit(dataUrl))
+          .then(() => persistStaffSignature(staffId, url, signaturePath));
       })
       .catch(err => alert('Could not upload the signature: ' + err.message));
   } else {
@@ -2794,15 +2831,49 @@ function fileToDataUrl(file) {
   });
 }
 
-// Local image cache: report generation uses these local data URLs first.
-// Firestore/Storage keep the cloud copy and metadata for synchronization.
-// v21 image cache. IndexedDB is the primary local image store because
-// localStorage is small and can silently fail once several photos/signatures
-// are cached. localStorage remains a compatibility fallback.
+// v23 local image architecture:
+// localStorage contains structured application data only.
+// IndexedDB contains image data. Firebase Storage remains the cloud backup.
 const IMAGE_DB_NAME = 'AlatiphA-SchoolHub-Images';
-const IMAGE_DB_VERSION = 1;
+const IMAGE_DB_VERSION = 2;
 const IMAGE_DB_STORE = 'images';
 let imageDbPromise = null;
+const imageMemoryCache = new Map();
+
+function stripImagesForLocalStorage(key, value) {
+  if (key === KEYS.settings && value && typeof value === 'object') {
+    const c = Object.assign({}, value);
+    delete c.logo;
+    return c;
+  }
+  if (key === KEYS.students && Array.isArray(value)) {
+    return value.map(s => { const c = Object.assign({}, s); delete c.photo; return c; });
+  }
+  if (key === KEYS.staff && Array.isArray(value)) {
+    return value.map(s => { const c = Object.assign({}, s); delete c.signature; return c; });
+  }
+  return value;
+}
+
+function restoreLocalImagesForDbKey(key, value) {
+  if (key === KEYS.settings && value && typeof value === 'object') {
+    const logo = imageMemoryCache.get(imageCacheKey('logo', 'school')) || '';
+    return logo ? Object.assign({}, value, { logo }) : value;
+  }
+  if (key === KEYS.students && Array.isArray(value)) {
+    return value.map(s => {
+      const photo = imageMemoryCache.get(imageCacheKey('student', s.id)) || '';
+      return photo ? Object.assign({}, s, { photo }) : s;
+    });
+  }
+  if (key === KEYS.staff && Array.isArray(value)) {
+    return value.map(s => {
+      const signature = imageMemoryCache.get(imageCacheKey('staff', s.id)) || '';
+      return signature ? Object.assign({}, s, { signature }) : s;
+    });
+  }
+  return value;
+}
 
 function openImageDB() {
   if (imageDbPromise) return imageDbPromise;
@@ -2823,23 +2894,25 @@ function openImageDB() {
 }
 
 function cacheLocalImage(cacheKey, dataUrl) {
-  if (!cacheKey || !dataUrl) return;
+  if (!cacheKey || !dataUrl) return Promise.resolve('');
   const value = String(dataUrl);
-  try { localStorage.setItem(`schoolhub_image__${cacheKey}`, value); }
-  catch (e) { console.warn('Could not cache image in localStorage:', e); }
-  openImageDB().then(db => {
-    if (!db) return;
-    try {
-      const tx = db.transaction(IMAGE_DB_STORE, 'readwrite');
-      tx.objectStore(IMAGE_DB_STORE).put(value, cacheKey);
-    } catch (e) { console.warn('Could not cache image in IndexedDB:', e); }
+  imageMemoryCache.set(cacheKey, value);
+  return openImageDB().then(db => {
+    if (!db) return value;
+    return new Promise(resolve => {
+      try {
+        const tx = db.transaction(IMAGE_DB_STORE, 'readwrite');
+        tx.objectStore(IMAGE_DB_STORE).put(value, cacheKey);
+        tx.oncomplete = () => resolve(value);
+        tx.onerror = () => { console.warn('Could not cache image in IndexedDB:', cacheKey, tx.error); resolve(value); };
+        tx.onabort = () => resolve(value);
+      } catch (e) { console.warn('Could not cache image in IndexedDB:', cacheKey, e); resolve(value); }
+    });
   });
 }
 
 function getCachedLocalImage(cacheKey) {
-  if (!cacheKey) return '';
-  try { return localStorage.getItem(`schoolhub_image__${cacheKey}`) || ''; }
-  catch (e) { return ''; }
+  return cacheKey ? (imageMemoryCache.get(cacheKey) || '') : '';
 }
 
 function getCachedLocalImageAsync(cacheKey) {
@@ -2852,9 +2925,7 @@ function getCachedLocalImageAsync(cacheKey) {
       const req = tx.objectStore(IMAGE_DB_STORE).get(cacheKey);
       req.onsuccess = () => {
         const value = String(req.result || '');
-        if (value) {
-          try { localStorage.setItem(`schoolhub_image__${cacheKey}`, value); } catch (e) {}
-        }
+        if (value) imageMemoryCache.set(cacheKey, value);
         resolve(value);
       };
       req.onerror = () => resolve('');
@@ -2876,11 +2947,80 @@ function getImageCacheCount() {
 
 function removeCachedLocalImage(cacheKey) {
   if (!cacheKey) return;
-  try { localStorage.removeItem(`schoolhub_image__${cacheKey}`); } catch (e) {}
+  imageMemoryCache.delete(cacheKey);
   openImageDB().then(db => {
     if (!db) return;
     try { db.transaction(IMAGE_DB_STORE, 'readwrite').objectStore(IMAGE_DB_STORE).delete(cacheKey); } catch (e) {}
   });
+}
+
+async function migrateLegacyImageLocalStorage() {
+  const legacy = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.indexOf('schoolhub_image__') === 0) legacy.push(key);
+    }
+  } catch (e) {}
+  for (const fullKey of legacy) {
+    try {
+      const cacheKey = fullKey.substring('schoolhub_image__'.length);
+      const value = localStorage.getItem(fullKey) || '';
+      if (cacheKey && isDataImage(value)) await cacheLocalImage(cacheKey, value);
+      localStorage.removeItem(fullKey);
+    } catch (e) { console.warn('Could not migrate legacy image cache:', fullKey, e); }
+  }
+}
+
+async function migrateInlineImagesFromLocalRecords() {
+  // v21/v22 could still have Base64 images embedded in the structured records.
+  // Move those images into IndexedDB before replacing the records with the
+  // small metadata-only versions. This is especially important for Chrome
+  // installations that have already hit localStorage quota.
+  const records = [
+    { key: KEYS.settings, kind: 'logo', id: 'school', field: 'logo' },
+    { key: KEYS.students, kind: 'student', idField: 'id', field: 'photo' },
+    { key: KEYS.staff, kind: 'staff', idField: 'id', field: 'signature' }
+  ];
+
+  for (const item of records) {
+    let parsed;
+    try {
+      const raw = localStorage.getItem(item.key);
+      if (!raw) continue;
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      continue;
+    }
+
+    let changed = false;
+    if (item.kind === 'logo') {
+      if (parsed && isDataImage(parsed[item.field])) {
+        await cacheLocalImage(imageCacheKey('logo', 'school'), parsed[item.field]);
+        changed = true;
+      }
+    } else if (Array.isArray(parsed)) {
+      for (const record of parsed) {
+        const image = record && record[item.field];
+        const id = record && record[item.idField];
+        if (id && isDataImage(image)) {
+          await cacheLocalImage(imageCacheKey(item.kind, id), image);
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      const clean = stripImagesForLocalStorage(item.key, parsed);
+      const payload = JSON.stringify(clean);
+      try {
+        localStorage.removeItem(item.key);
+        localStorage.setItem(item.key, payload);
+      } catch (e) {
+        console.warn('Could not compact legacy image-bearing record:', item.key, e);
+      }
+    }
+  }
 }
 
 function isDataImage(value) {
@@ -2900,7 +3040,7 @@ async function hydrateImageCacheFromStorage(kind, id, storagePath, url) {
   try {
     const data = await reportImageToDataUrl(source);
     if (data) {
-      cacheLocalImage(key, data);
+      await cacheLocalImage(key, data);
       return data;
     }
   } catch (e) {
@@ -3143,7 +3283,10 @@ function pullRemarksForAccess(all, classIds) {
 function pullCloudData() {
   if (!FIREBASE_ENABLED || !currentSchoolId) return Promise.resolve();
 
-  return migrateLegacySchoolDocument().then(() => {
+  return migrateLegacyImageLocalStorage()
+    .then(() => migrateInlineImagesFromLocalRecords())
+    .then(() => migrateLegacySchoolDocument())
+    .then(() => {
     const all = isHeadTeacher();
     const classIds = all ? null : classIdsForCloudSync();
     const subjectIds = all ? null : new Set(currentAssignedSubjectIds || []);

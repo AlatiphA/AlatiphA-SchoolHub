@@ -39,3 +39,13 @@ Approved SchoolHub teacher accounts in `users/{uid}` are now linked one-to-one w
 ## v21 report image and teacher-link fixes / school creation
 - School creation now restores users/{uid} when a signed-in account has lost its Firestore user profile.
 - The initial join code can be created by the authenticated school owner without requiring users/{uid} to exist first.
+
+
+## v23 local-first image architecture
+- Structured application data stays in localStorage.
+- Logo, student photos, and staff signatures are stored in IndexedDB only.
+- Firebase Storage remains the cloud binary backup.
+- Existing v21/v22 localStorage image-cache entries are migrated to IndexedDB and removed.
+- Deterministic Storage paths prevent repeated uploads for the same asset from creating new objects.
+- About shows version, browser, image-cache count, local-storage usage, and service-worker state.
+- Check for Updates now reports the actual service-worker update failure when available.
