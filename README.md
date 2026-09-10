@@ -49,3 +49,11 @@ Approved SchoolHub teacher accounts in `users/{uid}` are now linked one-to-one w
 - Deterministic Storage paths prevent repeated uploads for the same asset from creating new objects.
 - About shows version, browser, image-cache count, local-storage usage, and service-worker state.
 - Check for Updates now reports the actual service-worker update failure when available.
+
+
+## v24
+- Reliable cloud-to-browser image reconciliation through IndexedDB.
+- Image inventory and explicit Sync Images action.
+- About reports cloud image count and last image-sync time.
+- Service worker cache advanced to v24.
+- Structured application data remains in localStorage; image binaries remain in IndexedDB.

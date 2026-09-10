@@ -574,7 +574,7 @@ html.disabledAccess #disabledGate{
 .about-details span{color:var(--muted);}
 .about-details strong{font-weight:600;text-align:right;}
 .about-status{font-size:12px;line-height:1.5;margin:0 0 14px;}
-.about-actions{display:flex;gap:10px;align-items:center;}
-.about-actions .btn-primary{flex:1;margin:0;}
+.about-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.about-actions .btn-primary{flex:1 1 180px;margin:0;}
 .about-actions .btn-text{width:auto;flex:none;margin:0;}
 .about-copyright{margin:18px 0 0;color:var(--muted);font-size:10px;}

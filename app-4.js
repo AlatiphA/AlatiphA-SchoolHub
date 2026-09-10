@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v23';
+const APP_VERSION = 'v24';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -481,11 +481,27 @@ function showAboutDialog() {
   const browserStatus = document.getElementById('aboutBrowserStatus');
   const localStorageStatus = document.getElementById('aboutLocalStorageStatus');
   const swStatus = document.getElementById('aboutSwStatus');
+  const cloudImageStatus = document.getElementById('aboutCloudImageStatus');
+  const imageSyncStatus = document.getElementById('aboutImageSyncStatus');
   if (cacheStatus) {
     cacheStatus.textContent = 'Checking local image cache…';
     getImageCacheCount().then(count => {
       cacheStatus.textContent = count === null ? 'Unavailable in this browser' : `${count} local image${count === 1 ? '' : 's'} cached (IndexedDB)`;
     });
+  }
+  if (cloudImageStatus || imageSyncStatus) {
+    if (!FIREBASE_ENABLED || !currentSchoolId) {
+      if (cloudImageStatus) cloudImageStatus.textContent = 'Cloud sync unavailable';
+      if (imageSyncStatus) imageSyncStatus.textContent = 'Not signed in';
+    } else {
+      getCloudImageInventory().then(items => {
+        if (cloudImageStatus) cloudImageStatus.textContent = `${items.length} cloud image${items.length === 1 ? '' : 's'}`;
+        if (imageSyncStatus) imageSyncStatus.textContent = `Last image sync: ${getLastImageSyncText()}`;
+      }).catch(() => {
+        if (cloudImageStatus) cloudImageStatus.textContent = 'Unable to read cloud images';
+        if (imageSyncStatus) imageSyncStatus.textContent = `Last image sync: ${getLastImageSyncText()}`;
+      });
+    }
   }
   if (browserStatus) browserStatus.textContent = /SamsungBrowser/i.test(navigator.userAgent) ? 'Samsung Internet' : /Chrome/i.test(navigator.userAgent) ? 'Chrome' : 'Other';
   if (localStorageStatus) {
@@ -530,13 +546,32 @@ document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async (
       return;
     }
     await registration.update();
-    status.textContent = 'Update check completed. Reload SchoolHub if a newer version was found.';
+    const active = registration.active ? 'active' : registration.installing ? 'installing' : registration.waiting ? 'waiting' : 'registered';
+    status.textContent = `Update check completed. Service worker is ${active}. Reload SchoolHub to apply a new version.`;
   } catch (err) {
     const detail = err && err.message ? err.message : String(err || 'Unknown error');
     status.textContent = 'Update check failed: ' + detail;
     console.warn('SchoolHub update check failed:', err);
   }
 });
+const aboutSyncImagesBtn = document.getElementById('aboutSyncImagesBtn');
+if (aboutSyncImagesBtn) {
+  aboutSyncImagesBtn.addEventListener('click', async () => {
+    const status = document.getElementById('aboutImageSyncStatus');
+    aboutSyncImagesBtn.disabled = true;
+    if (status) status.textContent = 'Synchronizing images…';
+    try {
+      const result = await syncImagesFromCloud({ force: false });
+      if (status) status.textContent = `Sync complete: ${result.local}/${result.total} local, ${result.downloaded} downloaded`;
+      showAboutDialog();
+    } catch (err) {
+      if (status) status.textContent = 'Image sync failed: ' + (err && err.message ? err.message : String(err));
+    } finally {
+      aboutSyncImagesBtn.disabled = false;
+    }
+  });
+}
+
 document.addEventListener('click', e => {
   const dropdown = document.getElementById('profileDropdown');
   const menu = document.querySelector('.profile-menu');
@@ -2835,7 +2870,7 @@ function fileToDataUrl(file) {
 // localStorage contains structured application data only.
 // IndexedDB contains image data. Firebase Storage remains the cloud backup.
 const IMAGE_DB_NAME = 'AlatiphA-SchoolHub-Images';
-const IMAGE_DB_VERSION = 2;
+const IMAGE_DB_VERSION = 3;
 const IMAGE_DB_STORE = 'images';
 let imageDbPromise = null;
 const imageMemoryCache = new Map();
@@ -2894,21 +2929,7 @@ function openImageDB() {
 }
 
 function cacheLocalImage(cacheKey, dataUrl) {
-  if (!cacheKey || !dataUrl) return Promise.resolve('');
-  const value = String(dataUrl);
-  imageMemoryCache.set(cacheKey, value);
-  return openImageDB().then(db => {
-    if (!db) return value;
-    return new Promise(resolve => {
-      try {
-        const tx = db.transaction(IMAGE_DB_STORE, 'readwrite');
-        tx.objectStore(IMAGE_DB_STORE).put(value, cacheKey);
-        tx.oncomplete = () => resolve(value);
-        tx.onerror = () => { console.warn('Could not cache image in IndexedDB:', cacheKey, tx.error); resolve(value); };
-        tx.onabort = () => resolve(value);
-      } catch (e) { console.warn('Could not cache image in IndexedDB:', cacheKey, e); resolve(value); }
-    });
-  });
+  return cacheLocalImageWithMeta(cacheKey, dataUrl, null);
 }
 
 function getCachedLocalImage(cacheKey) {
@@ -2924,7 +2945,8 @@ function getCachedLocalImageAsync(cacheKey) {
       const tx = db.transaction(IMAGE_DB_STORE, 'readonly');
       const req = tx.objectStore(IMAGE_DB_STORE).get(cacheKey);
       req.onsuccess = () => {
-        const value = String(req.result || '');
+        const raw = req.result;
+        const value = raw && typeof raw === 'object' && raw.dataUrl ? String(raw.dataUrl) : String(raw || '');
         if (value) imageMemoryCache.set(cacheKey, value);
         resolve(value);
       };
@@ -3089,6 +3111,151 @@ async function hydrateLocalImageCaches(profile, students, staff) {
     }
   });
   await Promise.all(jobs);
+}
+
+
+const LAST_IMAGE_SYNC_KEY = 'arc_last_image_sync';
+
+function imageMetaKey(kind, id) {
+  return imageCacheKey(kind, id) + '__meta';
+}
+
+function cacheLocalImageWithMeta(cacheKey, dataUrl, meta) {
+  if (!cacheKey || !dataUrl) return Promise.resolve('');
+  const value = String(dataUrl);
+  imageMemoryCache.set(cacheKey, value);
+  return openImageDB().then(db => {
+    if (!db) return value;
+    return new Promise(resolve => {
+      try {
+        const tx = db.transaction(IMAGE_DB_STORE, 'readwrite');
+        tx.objectStore(IMAGE_DB_STORE).put({
+          dataUrl: value,
+          storagePath: meta && meta.storagePath ? String(meta.storagePath) : '',
+          sourceUrl: meta && meta.sourceUrl ? String(meta.sourceUrl) : '',
+          updatedAt: meta && meta.updatedAt ? String(meta.updatedAt) : '',
+          cachedAt: Date.now()
+        }, cacheKey);
+        tx.oncomplete = () => resolve(value);
+        tx.onerror = () => { console.warn('Could not cache image metadata:', cacheKey, tx.error); resolve(value); };
+        tx.onabort = () => resolve(value);
+      } catch (e) { console.warn('Could not cache image metadata:', cacheKey, e); resolve(value); }
+    });
+  });
+}
+
+function getCachedImageRecordAsync(cacheKey) {
+  return openImageDB().then(db => new Promise(resolve => {
+    if (!db) return resolve(null);
+    try {
+      const tx = db.transaction(IMAGE_DB_STORE, 'readonly');
+      const req = tx.objectStore(IMAGE_DB_STORE).get(cacheKey);
+      req.onsuccess = () => {
+        const v = req.result;
+        if (!v) return resolve(null);
+        if (typeof v === 'string') return resolve({ dataUrl: v, storagePath: '', sourceUrl: '', updatedAt: '', cachedAt: 0 });
+        resolve(v && typeof v === 'object' ? v : null);
+      };
+      req.onerror = () => resolve(null);
+    } catch (e) { resolve(null); }
+  }));
+}
+
+async function cloudImageDescriptor(kind, id, storagePath, sourceUrl) {
+  if (!storagePath && !sourceUrl) return null;
+  let updatedAt = '';
+  try {
+    const ref = storagePath ? storageRef(storagePath) : firebase.storage().refFromURL(sourceUrl);
+    const meta = await ref.getMetadata();
+    updatedAt = meta && meta.updated ? String(meta.updated) : '';
+    return { storagePath: storagePath || (meta && meta.fullPath ? meta.fullPath : ''), sourceUrl: sourceUrl || '', updatedAt };
+  } catch (e) {
+    return { storagePath: storagePath || '', sourceUrl: sourceUrl || '', updatedAt: '' };
+  }
+}
+
+async function syncOneCloudImage(kind, id, storagePath, sourceUrl, force) {
+  const key = imageCacheKey(kind, id);
+  const descriptor = await cloudImageDescriptor(kind, id, storagePath, sourceUrl);
+  if (!descriptor) return { ok: false, skipped: true };
+
+  const existing = await getCachedImageRecordAsync(key);
+  const existingUrl = existing && existing.dataUrl ? existing.dataUrl : (getCachedLocalImage(key) || '');
+  const samePath = existing && descriptor.storagePath && existing.storagePath === descriptor.storagePath;
+  const sameVersion = samePath && descriptor.updatedAt && existing.updatedAt && descriptor.updatedAt === existing.updatedAt;
+  if (!force && existingUrl && (sameVersion || (samePath && !descriptor.updatedAt))) {
+    imageMemoryCache.set(key, existingUrl);
+    return { ok: true, downloaded: false, key };
+  }
+
+  try {
+    const data = await reportImageToDataUrl(descriptor.storagePath || descriptor.sourceUrl);
+    if (!data) return { ok: false, skipped: false, key };
+    await cacheLocalImageWithMeta(key, data, descriptor);
+    return { ok: true, downloaded: true, key };
+  } catch (e) {
+    console.warn('Image sync failed:', kind, id, e);
+    return { ok: false, skipped: false, key, error: e };
+  }
+}
+
+async function getCloudImageInventory() {
+  const inventory = [];
+  if (!FIREBASE_ENABLED || !currentSchoolId) return inventory;
+
+  try {
+    const schoolDoc = await schoolRef().get();
+    const profile = schoolDoc.exists ? (schoolDoc.data().profile || {}) : {};
+    if (profile.logoStoragePath || profile.logoUrl) {
+      inventory.push({ kind: 'logo', id: 'school', storagePath: profile.logoStoragePath || '', sourceUrl: profile.logoUrl || '' });
+    }
+  } catch (e) { console.warn('Could not read school image metadata:', e); }
+
+  try {
+    const all = isHeadTeacher();
+    const classIds = all ? null : classIdsForCloudSync();
+    const studentsSnap = await pullStudentsForAccess(all, classIds);
+    studentsSnap.forEach(d => {
+      const s = d.data() || {};
+      if (s.photoStoragePath || s.photoUrl) inventory.push({ kind: 'student', id: d.id, storagePath: s.photoStoragePath || '', sourceUrl: s.photoUrl || '' });
+    });
+  } catch (e) { console.warn('Could not read student image metadata:', e); }
+
+  try {
+    const staffSnap = await pullSubcollection('staff', null);
+    staffSnap.forEach(d => {
+      const s = d.data() || {};
+      if (s.signatureStoragePath || s.signatureUrl) inventory.push({ kind: 'staff', id: d.id, storagePath: s.signatureStoragePath || '', sourceUrl: s.signatureUrl || '' });
+    });
+  } catch (e) { console.warn('Could not read staff image metadata:', e); }
+
+  return inventory;
+}
+
+async function syncImagesFromCloud(options) {
+  const opts = options || {};
+  if (!FIREBASE_ENABLED || !currentSchoolId) return { total: 0, local: 0, downloaded: 0, failed: 0, skipped: 0 };
+  const inventory = await getCloudImageInventory();
+  let downloaded = 0, failed = 0, skipped = 0, local = 0;
+
+  // Sequential downloads are deliberate. They reduce memory pressure on mobile
+  // browsers and prevent several large images from being decoded simultaneously.
+  for (const item of inventory) {
+    const result = await syncOneCloudImage(item.kind, item.id, item.storagePath, item.sourceUrl, !!opts.force);
+    if (result.ok) {
+      local++;
+      if (result.downloaded) downloaded++;
+      else skipped++;
+    } else if (!result.skipped) failed++;
+  }
+
+  localStorage.setItem(LAST_IMAGE_SYNC_KEY, String(Date.now()));
+  return { total: inventory.length, local, downloaded, failed, skipped };
+}
+
+function getLastImageSyncText() {
+  const raw = localStorage.getItem(LAST_IMAGE_SYNC_KEY);
+  return raw ? new Date(Number(raw)).toLocaleString() : 'never';
 }
 
 function uploadSchoolAsset(file, kind, id) {
@@ -3348,8 +3515,9 @@ function pullCloudData() {
       staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
       DB.set(KEYS.staff, staff);
 
-      // Hydrate missing local image copies once from Firebase. Reports never
-      // depend on Firebase Storage at generation time after this completes.
+      // Reconcile the browser's IndexedDB image cache with cloud metadata.
+      // This is the authoritative image sync step. Reports remain local-first.
+      await syncImagesFromCloud();
       await hydrateLocalImageCaches(schoolProfile, students, staff);
 
       const grades = {};
@@ -3581,7 +3749,9 @@ document.getElementById('syncNowBtn').addEventListener('click', () => {
     renderStudents();
     renderSubjects();
     renderStaff();
-    alert('Synced.');
+    return syncImagesFromCloud({ force: false });
+  }).then(result => {
+    alert(`Sync complete.\n\nCloud images: ${result.total}\nLocal images ready: ${result.local}\nDownloaded: ${result.downloaded}\nFailed: ${result.failed}`);
   }).catch(err => alert('Sync failed: ' + err.message));
 });
 
