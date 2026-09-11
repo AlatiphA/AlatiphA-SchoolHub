@@ -75,3 +75,12 @@ Ratio calculation:
 - Attendance cannot be recorded on Holiday or Midterm days.
 - Calendar syncs to Firestore `schools/{schoolId}/schoolCalendar`.
 - Backup and restore includes school calendar.
+
+
+## v38.3.1 Attendance bugfix
+- Restored the teacher-staff filter used by Teacher Attendance.
+- Setup now reloads saved Term Opens and Term Closes values correctly.
+- Legacy `termStartDate` / `termEndDate` values are accepted when present.
+- Student and teacher ratios use calculated Times Open.
+- Teacher Excused and On Leave days are excluded from the individual ratio denominator.
+- Service-worker cache version bumped to force the corrected attendance code to load.

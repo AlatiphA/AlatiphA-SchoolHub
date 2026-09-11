@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.3';
+const APP_VERSION = 'v38.3.1';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -1050,7 +1050,11 @@ function loadSettingsForm() {
   document.getElementById('schoolEmail').value = s.email || '';
   document.getElementById('currentTerm').value = s.currentTerm || 'Term 1';
   document.getElementById('currentYear').value = s.currentYear || '';
-  document.getElementById('attendanceOutOf').value = calculateTimesOpen(s.currentTerm || 'Term 1', s.currentYear || '') || s.attendanceOutOf || '';
+  const activeTermKey = termYearKey(s.currentTerm || 'Term 1', s.currentYear || '');
+  const savedTermDates = s.termDates && typeof s.termDates === 'object' ? s.termDates[activeTermKey] : null;
+  document.getElementById('termStartDate').value = (savedTermDates && savedTermDates.start) || s.termStartDate || '';
+  document.getElementById('termEndDate').value = (savedTermDates && savedTermDates.end) || s.termEndDate || '';
+  document.getElementById('attendanceOutOf').value = calculateTimesOpen(s.currentTerm || 'Term 1', s.currentYear || '') || '';
   document.getElementById('nextTermBegins').value = s.nextTermBegins || '';
   document.getElementById('reportLayout').value = s.reportLayout || 'standard';
   const wrap = document.getElementById('logoPreviewWrap');
@@ -2113,7 +2117,7 @@ function getTermDates(term, year) {
   const item = map[key];
   if (item && item.start && item.end) return { start: item.start, end: item.end };
   // Backward-compatible support for optional single-term fields.
-  if (settings.termStartDate && settings.termEndDate && key === termYearKey(settings.currentTerm, settings.currentYear)) {
+  if (settings.termStartDate && settings.termEndDate) {
     return { start: settings.termStartDate, end: settings.termEndDate };
   }
   return null;
@@ -2233,6 +2237,11 @@ function teacherAttendanceRecordsForTerm(term, year) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function isTeacherStaffRecord(st) {
+  const role = String(st && st.role || '').toLowerCase().replace(/\s+/g, '');
+  return role === 'teacher' || (role.includes('teacher') && role !== 'headteacher');
+}
+
 function teacherAttendanceSummary(term, year) {
   const staff = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
   const records = teacherAttendanceRecordsForTerm(term, year);
@@ -2256,15 +2265,23 @@ function teacherAttendanceSummary(term, year) {
   return { records, summary };
 }
 
-function attendanceRatio(summary, timesOpen) {
+function attendanceRatio(summary, timesOpen, isTeacher) {
   const attended = Number(summary && summary.total || 0);
-  const denominator = Number(timesOpen || 0);
+  let denominator = Number(timesOpen || 0);
+
+  // For teachers, approved Excused and On Leave days are not days they were
+  // expected to attend, so remove them from the individual denominator.
+  if (isTeacher && summary) {
+    denominator -= Number(summary.excused || 0) + Number(summary.leave || 0);
+  }
+
   return denominator > 0 ? Math.min(100, (attended / denominator) * 100) : null;
 }
 
-function averageAttendanceRatio(summary, timesOpen) {
+
+function averageAttendanceRatio(summary, timesOpen, isTeacher) {
   const ratios = Object.values(summary || {})
-    .map(s => attendanceRatio(s, timesOpen))
+    .map(s => attendanceRatio(s, timesOpen, isTeacher))
     .filter(v => Number.isFinite(v));
   if (!ratios.length) return null;
   return ratios.reduce((sum, value) => sum + value, 0) / ratios.length;
@@ -2384,7 +2401,7 @@ function renderTeacherAttendanceForm() {
   const record = DB.get(KEYS.teacherAttendance, {})[key] || {};
   const entries = record.entries || record;
   const summary = teacherAttendanceSummary(settings.currentTerm, settings.currentYear).summary;
-  const averageRatio = averageAttendanceRatio(summary, timesOpen);
+  const averageRatio = averageAttendanceRatio(summary, timesOpen, true);
   let html = attendanceSummaryHeader('Average Teacher Attendance Ratio', timesOpen, averageRatio);
   html += `<div class="attendance-toolbar"><button type="button" id="teacherAttendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="teacherAttendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
   html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Attendance Ratio</th></tr></thead><tbody>';
@@ -2398,7 +2415,7 @@ function renderTeacherAttendanceForm() {
       <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
       <option value="E" ${status === 'E' ? 'selected' : ''}>Excused</option>
       <option value="O" ${status === 'O' ? 'selected' : ''}>On Leave</option>
-    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm, timesOpen))}</strong></td></tr>`;
+    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm, timesOpen, true))}</strong></td></tr>`;
   });
   html += '</tbody></table></div>';
   html += `<p class="hint">${teacherAttendanceRecordsForTerm(settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school teacher attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays and midterm.</p>`;
