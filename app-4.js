@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v24';
+const APP_VERSION = 'v25';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -495,7 +495,7 @@ function showAboutDialog() {
       if (imageSyncStatus) imageSyncStatus.textContent = 'Not signed in';
     } else {
       getCloudImageInventory().then(items => {
-        if (cloudImageStatus) cloudImageStatus.textContent = `${items.length} cloud image${items.length === 1 ? '' : 's'}`;
+        if (cloudImageStatus) cloudImageStatus.textContent = `${items.length} cloud image${items.length === 1 ? '' : 's'} (Storage + Firestore)`;
         if (imageSyncStatus) imageSyncStatus.textContent = `Last image sync: ${getLastImageSyncText()}`;
       }).catch(() => {
         if (cloudImageStatus) cloudImageStatus.textContent = 'Unable to read cloud images';
@@ -562,7 +562,7 @@ if (aboutSyncImagesBtn) {
     if (status) status.textContent = 'Synchronizing images…';
     try {
       const result = await syncImagesFromCloud({ force: false });
-      if (status) status.textContent = `Sync complete: ${result.local}/${result.total} local, ${result.downloaded} downloaded`;
+      if (status) status.textContent = `Sync complete: ${result.local}/${result.total} local, ${result.downloaded} downloaded, ${result.repaired} metadata repaired`;
       showAboutDialog();
     } catch (err) {
       if (status) status.textContent = 'Image sync failed: ' + (err && err.message ? err.message : String(err));
@@ -3199,15 +3199,157 @@ async function syncOneCloudImage(kind, id, storagePath, sourceUrl, force) {
   }
 }
 
+async function storageItemDescriptor(item) {
+  if (!item) return null;
+  try {
+    const meta = await item.getMetadata();
+    const sourceUrl = await item.getDownloadURL();
+    return {
+      storagePath: (meta && meta.fullPath) ? String(meta.fullPath) : String(item.fullPath || ''),
+      sourceUrl: sourceUrl || '',
+      updatedAt: meta && meta.updated ? String(meta.updated) : ''
+    };
+  } catch (e) {
+    console.warn('Could not read Storage image metadata:', item && item.fullPath, e);
+    return null;
+  }
+}
+
+async function discoverStorageImageInventory() {
+  const found = [];
+  if (!FIREBASE_ENABLED || !currentSchoolId || !firebase.storage) return found;
+
+  const schoolBase = `schools/${currentSchoolId}`;
+
+  // Logo: deterministic v21+ location. Check Storage directly rather than
+  // depending on Firestore logo metadata being present.
+  try {
+    const item = storageRef(`${schoolBase}/logos/school-logo`);
+    const d = await storageItemDescriptor(item);
+    if (d) found.push(Object.assign({ kind: 'logo', id: 'school', storageSource: 'storage' }, d));
+  } catch (e) {}
+
+  // Staff signatures: deterministic filename is the Staff ID.
+  try {
+    const knownStaffIds = new Set(DB.get(KEYS.staff, []).map(s => String(s.id || '').trim()).filter(Boolean));
+    const result = await storageRef(`${schoolBase}/signatures`).listAll();
+    for (const item of (result.items || [])) {
+      const staffId = String(item.name || '').trim();
+      if (!staffId || !knownStaffIds.has(staffId)) continue;
+      const d = await storageItemDescriptor(item);
+      if (d) found.push(Object.assign({ kind: 'staff', id: staffId, storageSource: 'storage' }, d));
+    }
+  } catch (e) {
+    console.warn('Could not discover staff signatures in Storage:', e);
+  }
+
+  // Student photos: list only classes this account can read. The deterministic
+  // filename is the Student ID, allowing Storage to repair missing Firestore
+  // photo metadata.
+  const classIds = Array.from(accessibleClassIds());
+  const knownStudents = DB.get(KEYS.students, []);
+  for (const classId of classIds) {
+    const studentIds = new Set(knownStudents.filter(s => String(s.classId || '') === String(classId)).map(s => String(s.id || '').trim()).filter(Boolean));
+    try {
+      const result = await storageRef(`${schoolBase}/student-photos/${classId}`).listAll();
+      for (const item of (result.items || [])) {
+        const studentId = String(item.name || '').trim();
+        // Ignore legacy/randomly named duplicate Storage objects. Only a
+        // deterministic Student ID can be safely mapped back to a student.
+        if (!studentId || !studentIds.has(studentId)) continue;
+        const d = await storageItemDescriptor(item);
+        if (d) found.push(Object.assign({ kind: 'student', id: studentId, classId: String(classId), storageSource: 'storage' }, d));
+      }
+    } catch (e) {
+      console.warn('Could not discover student photos for class:', classId, e);
+    }
+  }
+
+  return found;
+}
+
+function mergeImageInventoryItems(baseItems, storageItems) {
+  const map = new Map();
+  (baseItems || []).forEach(item => {
+    if (!item || !item.kind || !item.id) return;
+    map.set(`${item.kind}__${item.id}`, Object.assign({}, item));
+  });
+
+  // Storage is authoritative for the actual binary. If Storage discovery finds
+  // an asset, prefer that exact path over stale or missing Firestore metadata.
+  (storageItems || []).forEach(item => {
+    if (!item || !item.kind || !item.id) return;
+    const key = `${item.kind}__${item.id}`;
+    const existing = map.get(key) || {};
+    map.set(key, Object.assign({}, existing, item, { storageSource: 'storage' }));
+  });
+  return Array.from(map.values());
+}
+
+async function repairCloudImageMetadata(inventory) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !isHeadTeacher()) return 0;
+  let repaired = 0;
+
+  for (const item of (inventory || [])) {
+    if (!item || item.storageSource !== 'storage' || !item.storagePath || !item.sourceUrl) continue;
+    try {
+      if (item.kind === 'logo') {
+        const snap = await schoolRef().get();
+        const profile = snap.exists ? (snap.data().profile || {}) : {};
+        if (profile.logoStoragePath !== item.storagePath || profile.logoUrl !== item.sourceUrl) {
+          await schoolRef().set({
+            profile: {
+              logoStoragePath: item.storagePath,
+              logoUrl: item.sourceUrl,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }
+          }, { merge: true });
+          repaired++;
+        }
+      } else if (item.kind === 'staff') {
+        const ref = staffRef(item.id);
+        const snap = await ref.get();
+        if (!snap.exists) continue;
+        const current = snap.data() || {};
+        if (current.signatureStoragePath !== item.storagePath || current.signatureUrl !== item.sourceUrl) {
+          await ref.set({
+            signatureStoragePath: item.storagePath,
+            signatureUrl: item.sourceUrl,
+            signatureUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          repaired++;
+        }
+      } else if (item.kind === 'student') {
+        const ref = studentRef(item.id);
+        const snap = await ref.get();
+        if (!snap.exists) continue;
+        const current = snap.data() || {};
+        if (item.classId && current.classId && String(current.classId) !== String(item.classId)) continue;
+        if (current.photoStoragePath !== item.storagePath || current.photoUrl !== item.sourceUrl) {
+          await ref.set({
+            photoStoragePath: item.storagePath,
+            photoUrl: item.sourceUrl,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+          repaired++;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not repair cloud image metadata:', item.kind, item.id, e);
+    }
+  }
+  return repaired;
+}
+
 async function getCloudImageInventory() {
-  const inventory = [];
-  if (!FIREBASE_ENABLED || !currentSchoolId) return inventory;
+  const firestoreItems = [];
+  if (!FIREBASE_ENABLED || !currentSchoolId) return firestoreItems;
 
   try {
     const schoolDoc = await schoolRef().get();
     const profile = schoolDoc.exists ? (schoolDoc.data().profile || {}) : {};
     if (profile.logoStoragePath || profile.logoUrl) {
-      inventory.push({ kind: 'logo', id: 'school', storagePath: profile.logoStoragePath || '', sourceUrl: profile.logoUrl || '' });
+      firestoreItems.push({ kind: 'logo', id: 'school', storagePath: profile.logoStoragePath || '', sourceUrl: profile.logoUrl || '', storageSource: 'firestore' });
     }
   } catch (e) { console.warn('Could not read school image metadata:', e); }
 
@@ -3217,7 +3359,7 @@ async function getCloudImageInventory() {
     const studentsSnap = await pullStudentsForAccess(all, classIds);
     studentsSnap.forEach(d => {
       const s = d.data() || {};
-      if (s.photoStoragePath || s.photoUrl) inventory.push({ kind: 'student', id: d.id, storagePath: s.photoStoragePath || '', sourceUrl: s.photoUrl || '' });
+      if (s.photoStoragePath || s.photoUrl) firestoreItems.push({ kind: 'student', id: d.id, storagePath: s.photoStoragePath || '', sourceUrl: s.photoUrl || '', classId: s.classId || '', storageSource: 'firestore' });
     });
   } catch (e) { console.warn('Could not read student image metadata:', e); }
 
@@ -3225,17 +3367,24 @@ async function getCloudImageInventory() {
     const staffSnap = await pullSubcollection('staff', null);
     staffSnap.forEach(d => {
       const s = d.data() || {};
-      if (s.signatureStoragePath || s.signatureUrl) inventory.push({ kind: 'staff', id: d.id, storagePath: s.signatureStoragePath || '', sourceUrl: s.signatureUrl || '' });
+      if (s.signatureStoragePath || s.signatureUrl) firestoreItems.push({ kind: 'staff', id: d.id, storagePath: s.signatureStoragePath || '', sourceUrl: s.signatureUrl || '', storageSource: 'firestore' });
     });
   } catch (e) { console.warn('Could not read staff image metadata:', e); }
 
-  return inventory;
+  // v25: Firebase Storage itself is also inspected. This handles the case
+  // where an image exists in Storage but Firestore metadata is missing.
+  let storageItems = [];
+  try { storageItems = await discoverStorageImageInventory(); }
+  catch (e) { console.warn('Could not discover Storage image inventory:', e); }
+
+  return mergeImageInventoryItems(firestoreItems, storageItems);
 }
 
 async function syncImagesFromCloud(options) {
   const opts = options || {};
   if (!FIREBASE_ENABLED || !currentSchoolId) return { total: 0, local: 0, downloaded: 0, failed: 0, skipped: 0 };
   const inventory = await getCloudImageInventory();
+  const repaired = await repairCloudImageMetadata(inventory);
   let downloaded = 0, failed = 0, skipped = 0, local = 0;
 
   // Sequential downloads are deliberate. They reduce memory pressure on mobile
@@ -3250,7 +3399,7 @@ async function syncImagesFromCloud(options) {
   }
 
   localStorage.setItem(LAST_IMAGE_SYNC_KEY, String(Date.now()));
-  return { total: inventory.length, local, downloaded, failed, skipped };
+  return { total: inventory.length, local, downloaded, failed, skipped, repaired };
 }
 
 function getLastImageSyncText() {
@@ -3751,7 +3900,7 @@ document.getElementById('syncNowBtn').addEventListener('click', () => {
     renderStaff();
     return syncImagesFromCloud({ force: false });
   }).then(result => {
-    alert(`Sync complete.\n\nCloud images: ${result.total}\nLocal images ready: ${result.local}\nDownloaded: ${result.downloaded}\nFailed: ${result.failed}`);
+    alert(`Sync complete.\n\nCloud images: ${result.total}\nLocal images ready: ${result.local}\nDownloaded: ${result.downloaded}\nMetadata repaired: ${result.repaired}\nFailed: ${result.failed}`);
   }).catch(err => alert('Sync failed: ' + err.message));
 });
 

@@ -57,3 +57,12 @@ Approved SchoolHub teacher accounts in `users/{uid}` are now linked one-to-one w
 - About reports cloud image count and last image-sync time.
 - Service worker cache advanced to v24.
 - Structured application data remains in localStorage; image binaries remain in IndexedDB.
+
+
+## v25
+- Firebase Storage-aware image discovery in addition to Firestore image metadata.
+- Deterministic student photo and staff signature paths are discovered directly from Storage.
+- Missing Firestore photo/signature metadata can be repaired from Storage by the Head Teacher.
+- Cloud image inventory now merges Firestore metadata with actual Storage objects.
+- Sync Images reports metadata repairs as well as downloads.
+- Reports remain local-first through IndexedDB.
