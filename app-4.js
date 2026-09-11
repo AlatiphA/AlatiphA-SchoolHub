@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.2';
+const APP_VERSION = 'v38.3';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -230,6 +230,8 @@ const KEYS = {
   get students() { return ns('arc_students'); },
   get grades() { return ns('arc_grades'); },
   get attendance() { return ns('arc_attendance'); },
+  get teacherAttendance() { return ns('arc_teacher_attendance'); },
+  get schoolCalendar() { return ns('arc_school_calendar'); },
   get remarks() { return ns('arc_remarks'); },
   get staff() { return ns('arc_staff'); },
   get activity() { return ns('arc_activity'); }
@@ -302,7 +304,7 @@ function ensureDefaults() {
     DB.set(KEYS.settings, {
       teacherName: '', schoolName: '', address: '', email: '', logo: '',
       currentTerm: 'Term 1', currentYear: '', attendanceOutOf: '', nextTermBegins: '',
-      reportLayout: 'standard', headTeacherId: ''
+      reportLayout: 'standard', headTeacherId: '', termDates: {}
     });
   }
   if (DB.get(KEYS.classes, null) === null) DB.set(KEYS.classes, []);
@@ -310,6 +312,7 @@ function ensureDefaults() {
   if (DB.get(KEYS.grades, null) === null) DB.set(KEYS.grades, {});
   if (DB.get(KEYS.attendance, null) === null) DB.set(KEYS.attendance, {});
   if (DB.get(KEYS.teacherAttendance, null) === null) DB.set(KEYS.teacherAttendance, {});
+  if (DB.get(KEYS.schoolCalendar, null) === null) DB.set(KEYS.schoolCalendar, {});
   if (DB.get(KEYS.remarks, null) === null) DB.set(KEYS.remarks, {});
   if (DB.get(KEYS.staff, null) === null) DB.set(KEYS.staff, []);
 }
@@ -1047,7 +1050,7 @@ function loadSettingsForm() {
   document.getElementById('schoolEmail').value = s.email || '';
   document.getElementById('currentTerm').value = s.currentTerm || 'Term 1';
   document.getElementById('currentYear').value = s.currentYear || '';
-  document.getElementById('attendanceOutOf').value = s.attendanceOutOf || '';
+  document.getElementById('attendanceOutOf').value = calculateTimesOpen(s.currentTerm || 'Term 1', s.currentYear || '') || s.attendanceOutOf || '';
   document.getElementById('nextTermBegins').value = s.nextTermBegins || '';
   document.getElementById('reportLayout').value = s.reportLayout || 'standard';
   const wrap = document.getElementById('logoPreviewWrap');
@@ -1128,7 +1131,13 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   s.email = document.getElementById('schoolEmail').value.trim();
   s.currentTerm = document.getElementById('currentTerm').value;
   s.currentYear = document.getElementById('currentYear').value.trim();
-  s.attendanceOutOf = document.getElementById('attendanceOutOf').value.trim();
+  s.termDates = (s.termDates && typeof s.termDates === 'object') ? s.termDates : {};
+  const termDateKey = termYearKey(s.currentTerm, s.currentYear);
+  const termStart = document.getElementById('termStartDate').value;
+  const termEnd = document.getElementById('termEndDate').value;
+  if (termDateKey && termStart && termEnd) s.termDates[termDateKey] = { start: termStart, end: termEnd };
+  else if (termDateKey && (!termStart || !termEnd)) delete s.termDates[termDateKey];
+  s.attendanceOutOf = String(calculateTimesOpen(s.currentTerm, s.currentYear) || '');
   s.nextTermBegins = document.getElementById('nextTermBegins').value;
   s.reportLayout = document.getElementById('reportLayout').value;
   s.headTeacherId = document.getElementById('headTeacherSelect').value;
@@ -1151,6 +1160,7 @@ document.getElementById('exportBackupBtn').addEventListener('click', () => {
       grades: DB.get(KEYS.grades, {}),
       attendance: DB.get(KEYS.attendance, {}),
       teacherAttendance: DB.get(KEYS.teacherAttendance, {}),
+      schoolCalendar: DB.get(KEYS.schoolCalendar, {}),
       remarks: DB.get(KEYS.remarks, {}),
       staff: DB.get(KEYS.staff, [])
     }
@@ -1196,6 +1206,7 @@ document.getElementById('importBackupInput').addEventListener('change', e => {
     if (d.grades) DB.set(KEYS.grades, d.grades);
     if (d.attendance) DB.set(KEYS.attendance, d.attendance);
     if (d.teacherAttendance) DB.set(KEYS.teacherAttendance, d.teacherAttendance);
+    if (d.schoolCalendar) DB.set(KEYS.schoolCalendar, d.schoolCalendar);
     if (d.remarks) DB.set(KEYS.remarks, d.remarks);
     if (d.staff) DB.set(KEYS.staff, d.staff);
     auditAction('restore', 'backup', 'local', 'Restored a local backup');
@@ -2078,7 +2089,7 @@ document.getElementById('addStaffBtn').addEventListener('click', async () => {
   }
 });
 
-/* ---------- Attendance: Students + Teachers ---------- */
+/* ---------- Attendance: Students + Teachers + School Calendar ---------- */
 function attendanceKey(classId, term, year, date) {
   return `${classId}__${term}__${year}__${date}`;
 }
@@ -2087,12 +2098,103 @@ function teacherAttendanceKey(term, year, date) {
   return `${term}__${year}__${date}`;
 }
 
+function calendarKey(term, year, date) {
+  return `${term}__${year}__${date}`;
+}
+
+function termYearKey(term, year) {
+  return term && year ? `${term}__${year}` : '';
+}
+
+function getTermDates(term, year) {
+  const settings = DB.get(KEYS.settings, {});
+  const key = termYearKey(term || settings.currentTerm, year || settings.currentYear);
+  const map = settings.termDates && typeof settings.termDates === 'object' ? settings.termDates : {};
+  const item = map[key];
+  if (item && item.start && item.end) return { start: item.start, end: item.end };
+  // Backward-compatible support for optional single-term fields.
+  if (settings.termStartDate && settings.termEndDate && key === termYearKey(settings.currentTerm, settings.currentYear)) {
+    return { start: settings.termStartDate, end: settings.termEndDate };
+  }
+  return null;
+}
+
+function parseDateOnly(value) {
+  if (!value) return null;
+  const parts = String(value).split('-').map(Number);
+  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return null;
+  return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+
+function dateOnlyString(d) {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function addDaysDateOnly(d, days) {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() + days);
+  return x;
+}
+
+function isWeekdayDate(d) {
+  const day = d.getDay();
+  return day !== 0 && day !== 6;
+}
+
+function schoolCalendarRecordsForTerm(term, year) {
+  const all = DB.get(KEYS.schoolCalendar, {});
+  const prefix = `${term}__${year}__`;
+  return Object.keys(all).filter(k => k.startsWith(prefix)).map(key => ({ key, date: key.slice(prefix.length), record: all[key] || {} }))
+    .sort((a,b) => a.date.localeCompare(b.date));
+}
+
+function calendarRecord(term, year, date) {
+  return DB.get(KEYS.schoolCalendar, {})[calendarKey(term, year, date)] || null;
+}
+
+function calculateTimesOpen(term, year, throughDate) {
+  const dates = getTermDates(term, year);
+  if (!dates) return 0;
+  const start = parseDateOnly(dates.start);
+  const end = parseDateOnly(dates.end);
+  if (!start || !end || start > end) return 0;
+  let limit = end;
+  if (throughDate) {
+    const t = parseDateOnly(throughDate) || new Date();
+    if (t < limit) limit = t;
+  } else {
+    const today = new Date();
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    if (todayOnly < limit && todayOnly >= start) limit = todayOnly;
+    if (todayOnly < start) return 0;
+  }
+  if (limit < start) return 0;
+  const exceptions = new Map(schoolCalendarRecordsForTerm(term, year).map(x => [x.date, String(x.record.type || '').toLowerCase()]));
+  let count = 0;
+  for (let d = new Date(start); d <= limit; d = addDaysDateOnly(d, 1)) {
+    if (!isWeekdayDate(d)) continue;
+    const type = exceptions.get(dateOnlyString(d));
+    if (type === 'holiday' || type === 'midterm') continue;
+    count++;
+  }
+  return count;
+}
+
+function calendarLabel(type) {
+  if (type === 'holiday') return 'Holiday';
+  if (type === 'midterm') return 'Midterm';
+  return 'School Open';
+}
+
+function attendanceDayType(term, year, date) {
+  const rec = calendarRecord(term, year, date);
+  return rec && rec.type ? String(rec.type).toLowerCase() : 'open';
+}
+
 function attendanceDateToday() {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return dateOnlyString(d);
 }
 
 function attendanceRecordsForTerm(classId, term, year) {
@@ -2107,7 +2209,8 @@ function attendanceSummary(classId, term, year) {
   const records = attendanceRecordsForTerm(classId, term, year);
   const summary = {};
   students.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, total: 0, recorded: 0 });
-  records.forEach(({ record }) => {
+  records.forEach(({ record, date }) => {
+    if (attendanceDayType(term, year, date) !== 'open') return;
     const entries = record.entries || record;
     students.forEach(st => {
       const status = entries && entries[st.id] ? String(entries[st.id]).toUpperCase() : '';
@@ -2135,7 +2238,8 @@ function teacherAttendanceSummary(term, year) {
   const records = teacherAttendanceRecordsForTerm(term, year);
   const summary = {};
   staff.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, total: 0, excused: 0, leave: 0, recorded: 0 });
-  records.forEach(({ record }) => {
+  records.forEach(({ record, date }) => {
+    if (attendanceDayType(term, year, date) !== 'open') return;
     const entries = record.entries || record;
     staff.forEach(st => {
       const status = entries && entries[st.id] ? String(entries[st.id]).toUpperCase() : '';
@@ -2152,16 +2256,15 @@ function teacherAttendanceSummary(term, year) {
   return { records, summary };
 }
 
-function attendanceRatio(summary) {
+function attendanceRatio(summary, timesOpen) {
   const attended = Number(summary && summary.total || 0);
-  const absent = Number(summary && summary.absent || 0);
-  const denominator = attended + absent;
-  return denominator > 0 ? (attended / denominator) * 100 : null;
+  const denominator = Number(timesOpen || 0);
+  return denominator > 0 ? Math.min(100, (attended / denominator) * 100) : null;
 }
 
-function averageAttendanceRatio(summary) {
+function averageAttendanceRatio(summary, timesOpen) {
   const ratios = Object.values(summary || {})
-    .map(attendanceRatio)
+    .map(s => attendanceRatio(s, timesOpen))
     .filter(v => Number.isFinite(v));
   if (!ratios.length) return null;
   return ratios.reduce((sum, value) => sum + value, 0) / ratios.length;
@@ -2171,15 +2274,11 @@ function formatAttendanceRatio(value) {
   return Number.isFinite(value) ? `${value.toFixed(1)}%` : '—';
 }
 
-function isTeacherStaffRecord(st) {
-  const role = String(st && st.role || '').toLowerCase().replace(/\s+/g, '');
-  return role === 'teacher' || (role.includes('teacher') && role !== 'headteacher');
-}
-
 function renderAttendanceView() {
   const studentOption = document.getElementById('attendanceStudentOption');
   const teacherOption = document.getElementById('attendanceTeacherOption');
-  if (!studentOption || !teacherOption) return;
+  const calendarOption = document.getElementById('attendanceCalendarOption');
+  if (!studentOption || !teacherOption || !calendarOption) return;
   teacherOption.classList.toggle('hidden', !isHeadTeacher());
   const active = document.querySelector('#attendanceModeBar .attendance-mode.active');
   const mode = (active && active.dataset.mode) || 'students';
@@ -2192,10 +2291,13 @@ function setAttendanceMode(mode) {
   document.querySelectorAll('#attendanceModeBar .attendance-mode').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
   const studentPanel = document.getElementById('studentAttendancePanel');
   const teacherPanel = document.getElementById('teacherAttendancePanel');
+  const calendarPanel = document.getElementById('schoolCalendarPanel');
   if (studentPanel) studentPanel.classList.toggle('hidden', mode !== 'students');
   if (teacherPanel) teacherPanel.classList.toggle('hidden', mode !== 'teachers');
+  if (calendarPanel) calendarPanel.classList.toggle('hidden', mode !== 'calendar');
   if (mode === 'students') renderAttendanceClassSelect();
-  else renderTeacherAttendanceForm();
+  else if (mode === 'teachers') renderTeacherAttendanceForm();
+  else renderSchoolCalendar();
 }
 
 function renderAttendanceClassSelect() {
@@ -2205,26 +2307,40 @@ function renderAttendanceClassSelect() {
   renderAttendanceForm();
 }
 
+function attendanceSummaryHeader(label, timesOpen, averageRatio) {
+  return `<div class="attendance-summary-pills"><div class="attendance-summary-pill"><span>Times Open</span><strong>${timesOpen || 0} day${timesOpen === 1 ? '' : 's'}</strong></div><div class="attendance-summary-pill"><span>${label}</span><strong>${formatAttendanceRatio(averageRatio)}</strong></div></div>`;
+}
+
 function renderAttendanceForm() {
   const wrap = document.getElementById('attendanceFormWrap');
+  const saveBtn = document.getElementById('saveAttendanceBtn');
   if (!wrap) return;
   const classId = document.getElementById('attendanceClassSelect').value;
-  if (classId && !canAccessClass(classId)) { wrap.innerHTML = '<p class="empty">You do not have access to this class.</p>'; return; }
-  if (!classId) { wrap.innerHTML = '<p class="empty">Add a class first.</p>'; return; }
+  if (classId && !canAccessClass(classId)) { wrap.innerHTML = '<p class="empty">You do not have access to this class.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
+  if (!classId) { wrap.innerHTML = '<p class="empty">Add a class first.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   const settings = DB.get(KEYS.settings, {});
-  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
+  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   const date = document.getElementById('attendanceDate').value || attendanceDateToday();
   document.getElementById('attendanceDate').value = date;
+  const dayType = attendanceDayType(settings.currentTerm, settings.currentYear, date);
+  const timesOpen = calculateTimesOpen(settings.currentTerm, settings.currentYear);
   const students = getAccessibleStudents().filter(s => s.classId === classId);
-  if (!students.length) { wrap.innerHTML = '<p class="empty">No students in this class.</p>'; return; }
+  if (!students.length) { wrap.innerHTML = '<p class="empty">No students in this class.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
+  if (dayType !== 'open') {
+    const rec = calendarRecord(settings.currentTerm, settings.currentYear, date) || {};
+    wrap.innerHTML = `<div class="attendance-non-school-day"><strong>${calendarLabel(dayType)}</strong><span>${escapeHtml(rec.note || 'No attendance is recorded for this date.')}</span></div>`;
+    if (saveBtn) saveBtn.disabled = true;
+    return;
+  }
+  if (saveBtn) saveBtn.disabled = false;
   const key = attendanceKey(classId, settings.currentTerm, settings.currentYear, date);
   const all = DB.get(KEYS.attendance, {});
   const record = all[key] || {};
   const entries = record.entries || record;
   const summary = attendanceSummary(classId, settings.currentTerm, settings.currentYear).summary;
-  const averageRatio = averageAttendanceRatio(summary);
+  const averageRatio = averageAttendanceRatio(summary, timesOpen);
 
-  let html = `<div class="attendance-summary-pill" aria-label="Average pupil attendance ratio"><span>Average Pupil Attendance Ratio</span><strong>${formatAttendanceRatio(averageRatio)}</strong></div>`;
+  let html = attendanceSummaryHeader('Average Pupil Attendance Ratio', timesOpen, averageRatio);
   html += `<div class="attendance-toolbar"><button type="button" id="attendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="attendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
   html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Student</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Attendance Ratio</th></tr></thead><tbody>';
   students.forEach(st => {
@@ -2235,10 +2351,10 @@ function renderAttendanceForm() {
       <option value="P" ${status === 'P' ? 'selected' : ''}>Present</option>
       <option value="A" ${status === 'A' ? 'selected' : ''}>Absent</option>
       <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
-    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm))}</strong></td></tr>`;
+    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm, timesOpen))}</strong></td></tr>`;
   });
   html += '</tbody></table></div>';
-  html += `<p class="hint">${attendanceRecordsForTerm(classId, settings.currentTerm, settings.currentYear).length} attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}.</p>`;
+  html += `<p class="hint">${attendanceRecordsForTerm(classId, settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays and midterm.</p>`;
   wrap.innerHTML = html;
   document.getElementById('attendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('attendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'A'));
@@ -2246,20 +2362,30 @@ function renderAttendanceForm() {
 
 function renderTeacherAttendanceForm() {
   const wrap = document.getElementById('teacherAttendanceFormWrap');
+  const saveBtn = document.getElementById('saveTeacherAttendanceBtn');
   if (!wrap) return;
-  if (!isHeadTeacher()) { wrap.innerHTML = '<p class="empty">Only the Head Teacher can access teacher attendance.</p>'; return; }
+  if (!isHeadTeacher()) { wrap.innerHTML = '<p class="empty">Only the Head Teacher can access teacher attendance.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   const settings = DB.get(KEYS.settings, {});
-  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
+  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   const date = document.getElementById('teacherAttendanceDate').value || attendanceDateToday();
   document.getElementById('teacherAttendanceDate').value = date;
+  const dayType = attendanceDayType(settings.currentTerm, settings.currentYear, date);
+  const timesOpen = calculateTimesOpen(settings.currentTerm, settings.currentYear);
   const teachers = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
-  if (!teachers.length) { wrap.innerHTML = '<p class="empty">No teachers have been added to Staff yet.</p>'; return; }
+  if (!teachers.length) { wrap.innerHTML = '<p class="empty">No teachers have been added to Staff yet.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
+  if (dayType !== 'open') {
+    const rec = calendarRecord(settings.currentTerm, settings.currentYear, date) || {};
+    wrap.innerHTML = `<div class="attendance-non-school-day"><strong>${calendarLabel(dayType)}</strong><span>${escapeHtml(rec.note || 'No teacher attendance is recorded for this date.')}</span></div>`;
+    if (saveBtn) saveBtn.disabled = true;
+    return;
+  }
+  if (saveBtn) saveBtn.disabled = false;
   const key = teacherAttendanceKey(settings.currentTerm, settings.currentYear, date);
   const record = DB.get(KEYS.teacherAttendance, {})[key] || {};
   const entries = record.entries || record;
   const summary = teacherAttendanceSummary(settings.currentTerm, settings.currentYear).summary;
-  const averageRatio = averageAttendanceRatio(summary);
-  let html = `<div class="attendance-summary-pill" aria-label="Average teacher attendance ratio"><span>Average Teacher Attendance Ratio</span><strong>${formatAttendanceRatio(averageRatio)}</strong></div>`;
+  const averageRatio = averageAttendanceRatio(summary, timesOpen);
+  let html = attendanceSummaryHeader('Average Teacher Attendance Ratio', timesOpen, averageRatio);
   html += `<div class="attendance-toolbar"><button type="button" id="teacherAttendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="teacherAttendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
   html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Attendance Ratio</th></tr></thead><tbody>';
   teachers.forEach(st => {
@@ -2272,13 +2398,92 @@ function renderTeacherAttendanceForm() {
       <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
       <option value="E" ${status === 'E' ? 'selected' : ''}>Excused</option>
       <option value="O" ${status === 'O' ? 'selected' : ''}>On Leave</option>
-    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm))}</strong></td></tr>`;
+    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm, timesOpen))}</strong></td></tr>`;
   });
   html += '</tbody></table></div>';
-  html += `<p class="hint">${teacherAttendanceRecordsForTerm(settings.currentTerm, settings.currentYear).length} teacher attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}.</p>`;
+  html += `<p class="hint">${teacherAttendanceRecordsForTerm(settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school teacher attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays and midterm.</p>`;
   wrap.innerHTML = html;
   document.getElementById('teacherAttendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('teacherAttendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'A'));
+}
+
+function renderSchoolCalendar() {
+  const wrap = document.getElementById('schoolCalendarWrap');
+  if (!wrap) return;
+  const settings = DB.get(KEYS.settings, {});
+  const term = settings.currentTerm || 'Term 1';
+  const year = settings.currentYear || '';
+  const dates = getTermDates(term, year);
+  const records = schoolCalendarRecordsForTerm(term, year);
+  const timesOpen = calculateTimesOpen(term, year);
+  const holidays = records.filter(x => String(x.record.type).toLowerCase() === 'holiday').length;
+  const midterms = records.filter(x => String(x.record.type).toLowerCase() === 'midterm').length;
+  let html = `<div class="attendance-summary-pills"><div class="attendance-summary-pill"><span>Times Open</span><strong>${timesOpen || 0} day${timesOpen === 1 ? '' : 's'}</strong></div><div class="attendance-summary-pill"><span>Holidays</span><strong>${holidays}</strong></div><div class="attendance-summary-pill"><span>Midterm</span><strong>${midterms}</strong></div></div>`;
+  html += `<div class="calendar-editor"><h3>School Calendar</h3><p class="hint">${dates ? `Current term: ${escapeHtml(term)} ${escapeHtml(year)} · ${escapeHtml(dates.start)} to ${escapeHtml(dates.end)}` : 'Set the Term Opens and Term Closes dates in Setup first.'}</p>`;
+  html += '<div class="row"><label>Date<input type="date" id="calendarDate"></label><label>Day Type<select id="calendarType"><option value="open">School Open</option><option value="holiday">Holiday</option><option value="midterm">Midterm</option></select></label></div>';
+  html += '<label>Note / Occasion (optional)<input type="text" id="calendarNote" placeholder="e.g. Independence Day / Midterm Break"></label>';
+  html += '<div class="attendance-toolbar"><button type="button" id="saveCalendarDay" class="btn-primary">Save Calendar Day</button><button type="button" id="clearCalendarDay" class="btn-text">Clear / Set School Open</button></div></div>';
+  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Note</th><th>Action</th></tr></thead><tbody>';
+  if (!records.length) html += '<tr><td colspan="5" class="empty">No holidays or midterm days have been added for this term.</td></tr>';
+  records.forEach(x => {
+    const d = parseDateOnly(x.date);
+    const day = d ? d.toLocaleDateString(undefined, {weekday:'short'}) : '';
+    html += `<tr><td>${escapeHtml(x.date)}</td><td>${escapeHtml(day)}</td><td>${escapeHtml(calendarLabel(String(x.record.type || '').toLowerCase()))}</td><td>${escapeHtml(x.record.note || '')}</td><td><button type="button" class="btn-text calendar-edit" data-date="${escapeHtml(x.date)}">Edit</button><button type="button" class="btn-text calendar-delete" data-date="${escapeHtml(x.date)}">Remove</button></td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  html += '<p class="hint">Only weekdays inside the term count toward Times Open. Holiday and Midterm days are excluded. Weekends are automatically excluded.</p>';
+  wrap.innerHTML = html;
+  const canEdit = isHeadTeacher();
+  ['calendarDate','calendarType','calendarNote','saveCalendarDay','clearCalendarDay'].forEach(id => { const el=document.getElementById(id); if(el) el.disabled=!canEdit; });
+  document.querySelectorAll('.calendar-edit').forEach(btn => btn.addEventListener('click', () => {
+    const rec = calendarRecord(term, year, btn.dataset.date) || {};
+    document.getElementById('calendarDate').value = btn.dataset.date;
+    document.getElementById('calendarType').value = rec.type || 'holiday';
+    document.getElementById('calendarNote').value = rec.note || '';
+  }));
+  document.querySelectorAll('.calendar-delete').forEach(btn => btn.addEventListener('click', () => {
+    if (!requireHeadTeacher('change the school calendar')) return;
+    const all = DB.get(KEYS.schoolCalendar, {});
+    const key = calendarKey(term, year, btn.dataset.date);
+    delete all[key]; DB.set(KEYS.schoolCalendar, all);
+    auditAction('delete', 'schoolCalendar', key, `Removed calendar exception for ${btn.dataset.date}`);
+    refreshAttendanceAfterCalendarChange();
+  }));
+  document.getElementById('saveCalendarDay').addEventListener('click', () => {
+    if (!requireHeadTeacher('change the school calendar')) return;
+    const date = document.getElementById('calendarDate').value;
+    const type = document.getElementById('calendarType').value;
+    const note = document.getElementById('calendarNote').value.trim();
+    if (!date) { alert('Select a calendar date.'); return; }
+    const dates = getTermDates(term, year);
+    if (dates && (date < dates.start || date > dates.end)) { alert('The calendar date must be inside the current term dates.'); return; }
+    if (!isWeekdayDate(parseDateOnly(date))) { alert('This school calendar is for weekdays. Weekends are automatically excluded from Times Open.'); return; }
+    const all = DB.get(KEYS.schoolCalendar, {});
+    const key = calendarKey(term, year, date);
+    if (type === 'open') delete all[key];
+    else all[key] = { term, year, date, type, note, updatedAt: new Date().toISOString() };
+    DB.set(KEYS.schoolCalendar, all);
+    auditAction('update', 'schoolCalendar', key, `Set ${date} as ${calendarLabel(type)}${note ? ` · ${note}` : ''}`);
+    refreshAttendanceAfterCalendarChange();
+    alert(`School calendar updated: ${date} · ${calendarLabel(type)}.`);
+  });
+  document.getElementById('clearCalendarDay').addEventListener('click', () => {
+    if (!requireHeadTeacher('change the school calendar')) return;
+    const date = document.getElementById('calendarDate').value;
+    if (!date) { alert('Select a calendar date.'); return; }
+    const all = DB.get(KEYS.schoolCalendar, {}); delete all[calendarKey(term, year, date)]; DB.set(KEYS.schoolCalendar, all);
+    auditAction('delete', 'schoolCalendar', calendarKey(term, year, date), `Set ${date} as School Open`);
+    refreshAttendanceAfterCalendarChange();
+  });
+}
+
+function refreshAttendanceAfterCalendarChange() {
+  const settings = DB.get(KEYS.settings, {});
+  settings.attendanceOutOf = String(calculateTimesOpen(settings.currentTerm, settings.currentYear) || '');
+  DB.set(KEYS.settings, settings);
+  const active = document.querySelector('#attendanceModeBar .attendance-mode.active');
+  setAttendanceMode((active && active.dataset.mode) || 'students');
+  loadSettingsForm();
 }
 
 document.getElementById('attendanceClassSelect').addEventListener('change', renderAttendanceForm);
@@ -2293,6 +2498,7 @@ document.getElementById('saveAttendanceBtn').addEventListener('click', () => {
   if (!settings.currentTerm || !settings.currentYear) { alert('Set the current Term and Academic Year in Setup first.'); return; }
   const date = document.getElementById('attendanceDate').value;
   if (!date) { alert('Select an attendance date.'); return; }
+  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Attendance cannot be recorded on a Holiday or Midterm day.'); return; }
   const statuses = {};
   document.querySelectorAll('#attendanceFormWrap .attendance-status').forEach(select => { if (select.value) statuses[select.dataset.student] = select.value; });
   const key = attendanceKey(classId, settings.currentTerm, settings.currentYear, date);
@@ -2321,6 +2527,7 @@ document.getElementById('saveTeacherAttendanceBtn').addEventListener('click', ()
   if (!settings.currentTerm || !settings.currentYear) { alert('Set the current Term and Academic Year in Setup first.'); return; }
   const date = document.getElementById('teacherAttendanceDate').value;
   if (!date) { alert('Select a teacher attendance date.'); return; }
+  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Teacher attendance cannot be recorded on a Holiday or Midterm day.'); return; }
   const entries = {};
   document.querySelectorAll('#teacherAttendanceFormWrap .teacher-attendance-status').forEach(select => { if (select.value) entries[select.dataset.staff] = select.value; });
   const key = teacherAttendanceKey(settings.currentTerm, settings.currentYear, date);
@@ -3358,7 +3565,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 
   // Attendance / roll / promotion / fees / next term
   doc.setFontSize(9.5);
-  const attOutOf = settings.attendanceOutOf || '-';
+  const attOutOf = calculateTimesOpen(settings.currentTerm, settings.currentYear) || settings.attendanceOutOf || '-';
   field('Attendance', `${studentRemarks.attendance || 0} out of ${attOutOf}`, left, y);
   field('Number on Roll', numOnRoll, right - 55, y);
   y += 6;
@@ -3699,7 +3906,7 @@ function migrateDataIntoSchool(schoolId) {
    assigned classes/subjects. Head Teachers can synchronize the whole school.
 */
 const LAST_SYNCED_KEY = 'arc_last_synced';
-const CLOUD_SCHEMA_VERSION = 3;
+const CLOUD_SCHEMA_VERSION = 4;
 
 function schoolRef() {
   return firebase.firestore().collection('schools').doc(currentSchoolId);
@@ -3744,6 +3951,9 @@ function attendanceRef(key) {
 }
 function teacherAttendanceRef(key) {
   return schoolRef().collection('teacherAttendance').doc(cloudKey(key));
+}
+function schoolCalendarRef(key) {
+  return schoolRef().collection('schoolCalendar').doc(cloudKey(key));
 }
 
 function staffRef(id) {
@@ -4858,7 +5068,7 @@ function migrateLegacySchoolDocument() {
     const data = doc.data() || {};
     if (Number(data.schemaVersion || 0) >= CLOUD_SCHEMA_VERSION) return false;
 
-    const hasLegacy = ['classes', 'subjects', 'students', 'grades', 'attendance', 'teacherAttendance', 'remarks', 'staff']
+    const hasLegacy = ['classes', 'subjects', 'students', 'grades', 'attendance', 'teacherAttendance', 'schoolCalendar', 'remarks', 'staff']
       .some(k => data[k] !== undefined);
     if (!hasLegacy) {
       return schoolRef().set({ schemaVersion: CLOUD_SCHEMA_VERSION }, { merge: true }).then(() => false);
@@ -4871,6 +5081,7 @@ function migrateLegacySchoolDocument() {
     const grades = data.grades && typeof data.grades === 'object' ? data.grades : {};
     const attendance = data.attendance && typeof data.attendance === 'object' ? data.attendance : {};
     const teacherAttendance = data.teacherAttendance && typeof data.teacherAttendance === 'object' ? data.teacherAttendance : {};
+    const schoolCalendar = data.schoolCalendar && typeof data.schoolCalendar === 'object' ? data.schoolCalendar : {};
     const remarks = data.remarks && typeof data.remarks === 'object' ? data.remarks : {};
 
     const ops = [];
@@ -4881,11 +5092,12 @@ function migrateLegacySchoolDocument() {
     Object.keys(grades).forEach(key => ops.push(batch => batch.set(gradeRef(key), { classId: key.split('__')[0], entries: grades[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() })));
     Object.keys(attendance).forEach(key => ops.push(batch => batch.set(attendanceRef(key), Object.assign({}, attendance[key], { classId: (attendance[key] && attendance[key].classId) || key.split('__')[0], entries: (attendance[key] && attendance[key].entries) || attendance[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
     Object.keys(teacherAttendance).forEach(key => ops.push(batch => batch.set(teacherAttendanceRef(key), Object.assign({}, teacherAttendance[key], { entries: (teacherAttendance[key] && teacherAttendance[key].entries) || teacherAttendance[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
+    Object.keys(schoolCalendar).forEach(key => ops.push(batch => batch.set(schoolCalendarRef(key), Object.assign({}, schoolCalendar[key], { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
     Object.keys(remarks).forEach(key => ops.push(batch => batch.set(remarkRef(key), { classId: key.split('__')[0], entries: remarks[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() })));
 
     return commitChunks(ops).then(() => {
       const remove = {};
-      ['classes', 'subjects', 'students', 'grades', 'attendance', 'teacherAttendance', 'remarks', 'staff'].forEach(k => { remove[k] = firebase.firestore.FieldValue.delete(); });
+      ['classes', 'subjects', 'students', 'grades', 'attendance', 'teacherAttendance', 'schoolCalendar', 'remarks', 'staff'].forEach(k => { remove[k] = firebase.firestore.FieldValue.delete(); });
       return schoolRef().set(Object.assign(remove, { schemaVersion: CLOUD_SCHEMA_VERSION, migratedAt: firebase.firestore.FieldValue.serverTimestamp() }), { merge: true });
     }).then(() => true);
   });
@@ -4947,6 +5159,10 @@ function pullTeacherAttendanceForAccess(all) {
   return schoolRef().collection('teacherAttendance').get();
 }
 
+function pullSchoolCalendarForAccess() {
+  return schoolRef().collection('schoolCalendar').get();
+}
+
 function pullRemarksForAccess(all, classIds) {
   if (all) return schoolRef().collection('remarks').get();
   const ids = Array.from(classIds || []);
@@ -4985,6 +5201,7 @@ function pullCloudData(sessionToken) {
       pullGradesForAccess(all, classIds),
       pullAttendanceForAccess(all, classIds),
       pullTeacherAttendanceForAccess(all),
+      pullSchoolCalendarForAccess(),
       pullRemarksForAccess(all, classIds)
     ]).then(async results => {
       if (!valid()) return;
@@ -4996,7 +5213,8 @@ function pullCloudData(sessionToken) {
       const gradeSnap = results[5];
       const attendanceSnap = results[6];
       const teacherAttendanceSnap = results[7];
-      const remarkSnap = results[8];
+      const schoolCalendarSnap = results[8];
+      const remarkSnap = results[9];
 
       const schoolProfile = schoolDoc.exists ? (schoolDoc.data().profile || {}) : {};
       if (schoolDoc.exists) {
@@ -5068,6 +5286,13 @@ function pullCloudData(sessionToken) {
         teacherAttendance[key] = Object.assign({}, data, { entries: data.entries || {} });
       });
       if (all) DB.set(KEYS.teacherAttendance, teacherAttendance);
+
+      const schoolCalendar = {};
+      schoolCalendarSnap.forEach(d => {
+        const key = localKeyFromCloudId(d.id);
+        schoolCalendar[key] = Object.assign({}, d.data(), { date: (d.data() || {}).date || key.split('__').slice(-1)[0] });
+      });
+      DB.set(KEYS.schoolCalendar, schoolCalendar);
 
       const remarks = {};
       remarkSnap.forEach(d => {
@@ -5224,6 +5449,13 @@ function pushFieldToCloud(match) {
       null).then(() => setLastSyncedNow());
   }
 
+  if (field === 'schoolCalendar') {
+    if (!isHeadTeacher()) return Promise.resolve();
+    return syncKeyedCollection(schoolRef().collection('schoolCalendar'), value,
+      (key, record) => Object.assign({}, record, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
+      null).then(() => setLastSyncedNow());
+  }
+
   if (field === 'remarks') {
     const allowed = classIdsForCloudSync();
     const filtered = {};
@@ -5248,13 +5480,14 @@ function syncableFields() {
     { field: 'grades', cloudField: 'grades', key: KEYS.grades },
     { field: 'attendance', cloudField: 'attendance', key: KEYS.attendance },
     { field: 'teacherAttendance', cloudField: 'teacherAttendance', key: KEYS.teacherAttendance },
+    { field: 'schoolCalendar', cloudField: 'schoolCalendar', key: KEYS.schoolCalendar },
     { field: 'remarks', cloudField: 'remarks', key: KEYS.remarks },
     { field: 'staff', cloudField: 'staff', key: KEYS.staff }
   ];
 }
 
 function fieldDefault(field) {
-  return (field === 'settings' || field === 'grades' || field === 'attendance' || field === 'teacherAttendance' || field === 'remarks') ? {} : [];
+  return (field === 'settings' || field === 'grades' || field === 'attendance' || field === 'teacherAttendance' || field === 'schoolCalendar' || field === 'remarks') ? {} : [];
 }
 
 function pushAllFieldsNow() {

@@ -65,3 +65,13 @@ Ratio calculation:
 - Teachers: `(Present + Late) / (Present + Late + Absent) × 100`.
 - Teacher Excused and On Leave days are excluded from the ratio denominator because they are not counted as absence.
 - The average pill is the arithmetic mean of the individual ratios with a valid denominator.
+
+
+## v38.3 School Calendar + Correct Times Open
+- Added term opening and closing dates in Setup.
+- Added Attendance > Calendar for Holidays and Midterm.
+- Times Open counts weekdays inside the term, excluding Holiday and Midterm days.
+- Student and teacher attendance ratios now use Times Open as denominator.
+- Attendance cannot be recorded on Holiday or Midterm days.
+- Calendar syncs to Firestore `schools/{schoolId}/schoolCalendar`.
+- Backup and restore includes school calendar.

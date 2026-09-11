@@ -162,6 +162,11 @@ service cloud.firestore {
         allow create, update, delete: if isHeadTeacher(schoolId);
       }
 
+      match /schoolCalendar/{calendarId} {
+        allow read: if isHeadTeacher(schoolId) || isActiveTeacher(schoolId);
+        allow create, update, delete: if isHeadTeacher(schoolId);
+      }
+
       match /remarks/{remarkId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
         allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);

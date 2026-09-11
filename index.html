@@ -201,8 +201,16 @@
       </label>
     </div>
     <div class="row">
-      <label>Attendance Out Of
-        <input type="number" min="0" id="attendanceOutOf" placeholder="e.g. 58">
+      <label>Term Opens
+        <input type="date" id="termStartDate">
+      </label>
+      <label>Term Closes
+        <input type="date" id="termEndDate">
+      </label>
+    </div>
+    <div class="row">
+      <label>Times Open (calculated)
+        <input type="number" min="0" id="attendanceOutOf" readonly placeholder="Calculated from term dates and calendar">
       </label>
       <label>Next Term Begins
         <input type="date" id="nextTermBegins">
@@ -337,6 +345,7 @@
     <div id="attendanceModeBar" class="attendance-mode-bar" role="tablist" aria-label="Attendance type">
       <button type="button" id="attendanceStudentOption" class="attendance-mode active" data-mode="students">Students</button>
       <button type="button" id="attendanceTeacherOption" class="attendance-mode hidden" data-mode="teachers">Teachers</button>
+      <button type="button" id="attendanceCalendarOption" class="attendance-mode" data-mode="calendar">Calendar</button>
     </div>
 
     <div id="studentAttendancePanel">
@@ -350,7 +359,7 @@
       </div>
       <div id="attendanceFormWrap"></div>
       <button id="saveAttendanceBtn" class="btn-primary">Save Student Attendance</button>
-      <p class="hint">Record daily student attendance as Present, Absent, or Late. Late is counted as present in the term total. The Present total is automatically reflected on report cards.</p>
+      <p class="hint">Record daily student attendance as Present, Absent, or Late. Late is counted as present in the term total. Holidays and Midterm days are excluded from attendance and Times Open. The attendance total is automatically reflected on report cards.</p>
     </div>
 
     <div id="teacherAttendancePanel" class="hidden">
@@ -361,7 +370,10 @@
       </div>
       <div id="teacherAttendanceFormWrap"></div>
       <button id="saveTeacherAttendanceBtn" class="btn-primary">Save Teacher Attendance</button>
-      <p class="hint">Head Teacher only. Record teacher attendance as Present, Absent, Late, Excused, or On Leave. Teacher attendance is separate from student attendance.</p>
+      <p class="hint">Head Teacher only. Record teacher attendance as Present, Absent, Late, Excused, or On Leave. Holidays and Midterm days are excluded from attendance and Times Open. Teacher attendance is separate from student attendance.</p>
+    </div>
+    <div id="schoolCalendarPanel" class="hidden">
+      <div id="schoolCalendarWrap"></div>
     </div>
   </section>
 

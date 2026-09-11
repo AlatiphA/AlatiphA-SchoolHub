@@ -629,3 +629,17 @@ html.disabledAccess #disabledGate{
 .attendance-summary-pill strong{font-size:.95rem;font-weight:800;color:var(--gold);white-space:nowrap;}
 .attendance-table th:last-child,.attendance-table td:last-child{white-space:nowrap;}
 @media(max-width:600px){.attendance-summary-pill{width:100%;}.attendance-summary-pill span{font-size:.82rem;}.attendance-summary-pill strong{font-size:.9rem;}}
+
+
+/* v38.3 school calendar + theme-safe attendance tabs */
+.attendance-mode.active{background:var(--gold);color:#fff;border-color:var(--gold);}
+.attendance-mode:not(.active){color:var(--text);}
+.attendance-summary-pills{display:flex;flex-wrap:wrap;gap:8px;margin:.75rem 0 1rem;}
+.attendance-summary-pills .attendance-summary-pill{margin:0;}
+.attendance-non-school-day{display:flex;flex-direction:column;gap:4px;padding:14px 16px;margin:.75rem 0 1rem;border:1px solid var(--gold);border-radius:12px;background:color-mix(in srgb,var(--gold) 10%,var(--surface));color:var(--text);}
+.attendance-non-school-day strong{color:var(--gold);font-size:1rem;}
+.calendar-editor{padding:14px;border:1px solid var(--rule);border-radius:14px;background:var(--surface-alt);margin-bottom:16px;}
+.calendar-editor h3{margin:.1rem 0 .35rem;}
+.calendar-editor input,.calendar-editor select{width:100%;box-sizing:border-box;}
+#attendanceOutOf[readonly]{opacity:.85;font-weight:700;}
+@media(max-width:600px){.attendance-mode-bar{overflow-x:auto}.attendance-mode{white-space:nowrap}.attendance-summary-pills{display:block}.attendance-summary-pills .attendance-summary-pill{margin:.4rem 0;width:100%;}}
