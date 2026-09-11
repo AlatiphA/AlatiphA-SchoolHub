@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v31';
+const APP_VERSION = 'v32';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -822,10 +822,16 @@ async function checkHealth() {
       setStatusRow('healthSchool', snap.exists ? 'ok' : 'warn', snap.exists ? `✓ School ${currentSchoolId}` : '⚠ School profile unavailable');
     } catch (e) { setStatusRow('healthFirestore', 'fail', '✗ Firestore read failed: ' + (e.message || e)); setStatusRow('healthSchool', 'fail', '✗ School profile unavailable'); }
     try {
-      const root = firebase.storage().ref(`schools/${currentSchoolId}`);
-      await root.listAll();
-      setStatusRow('healthStorage', 'ok', '✓ Storage read successful');
-    } catch (e) { setStatusRow('healthStorage', 'fail', '✗ Storage read failed: ' + (e.message || e)); }
+      const manifestSnap = await schoolRef().collection('imageAssets').limit(1).get();
+      if (manifestSnap.empty) {
+        setStatusRow('healthStorage', 'warn', '⚠ Storage reachable but no image manifest entries exist yet');
+      } else {
+        const asset = manifestSnap.docs[0].data() || {};
+        if (!asset.storagePath) throw new Error('Image manifest contains no Storage path.');
+        const meta = await storageRef(asset.storagePath).getMetadata();
+        setStatusRow('healthStorage', meta ? 'ok' : 'warn', meta ? '✓ Storage file access successful' : '⚠ Storage file metadata unavailable');
+      }
+    } catch (e) { setStatusRow('healthStorage', 'fail', '✗ Storage file access failed: ' + (e.message || e)); }
     try {
       const inventory = await getCloudImageInventory();
       const localCount = await countCachedInventoryItems(inventory);
@@ -963,13 +969,20 @@ document.getElementById('schoolLogo').addEventListener('change', e => {
       // Persist the authoritative logo reference in the cloud. The binary stays
       // in Firebase Storage; Firestore stores only the URL/path metadata.
       if (FIREBASE_ENABLED && currentSchoolId) {
-        return schoolRef().set({
-          profile: {
-            logoUrl: url,
-            logoStoragePath: assetPath,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          }
-        }, { merge: true });
+        return Promise.all([
+          schoolRef().set({
+            profile: {
+              logoUrl: url,
+              logoStoragePath: assetPath,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }
+          }, { merge: true }),
+          upsertImageManifest('logo', 'school', {
+            storagePath: assetPath,
+            sourceUrl: url,
+            storageUpdatedAt: new Date().toISOString()
+          })
+        ]);
       }
     });
     /* cloud persistence is handled above */
@@ -989,7 +1002,10 @@ document.getElementById('removeLogo').addEventListener('click', () => {
   removeCachedLocalImage(imageCacheKey('logo', 'school'));
   DB.set(KEYS.settings, s);
   const cloud = (FIREBASE_ENABLED && currentSchoolId)
-    ? schoolRef().set({ profile: { logoUrl: '', logoStoragePath: '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true })
+    ? Promise.all([
+        schoolRef().set({ profile: { logoUrl: '', logoStoragePath: '', updatedAt: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true }),
+        removeImageManifest('logo', 'school')
+      ])
     : Promise.resolve();
   cloud.then(() => removeStorageFile(oldUrl)).then(() => loadSettingsForm());
 });
@@ -1273,6 +1289,7 @@ function renderStudents() {
       if (!st || !requireClassAccess(st.classId)) return;
       const assetPath = schoolAssetPath(file, 'student-photos', st.classId + '/' + st.id);
       const oldUrl = st.photoUrl || '';
+      const oldStoragePath = st.photoStoragePath || '';
       Promise.all([uploadSchoolAsset(file, 'student-photos', st.classId + '/' + st.id), fileToDataUrl(file)]).then(([url, dataUrl]) => {
         const currentStudents = DB.get(KEYS.students, []);
         const current = currentStudents.find(x => x.id === input.dataset.student);
@@ -1283,8 +1300,22 @@ function renderStudents() {
             photoUrl: url,
             photoStoragePath: assetPath,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          }, { merge: true }).then(() => {
-            if (oldUrl && oldUrl !== url) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStudents());
+          }, { merge: true }).then(() => upsertImageManifest('student', st.id, {
+            classId: st.classId,
+            storagePath: assetPath,
+            sourceUrl: url,
+            storageUpdatedAt: new Date().toISOString()
+          })).then(() => {
+            // v32: deterministic paths are overwritten in place. Never delete
+            // oldUrl when it points to the same assetPath, because that would
+            // delete the newly uploaded replacement. Only remove a legacy
+            // object when its stored path is genuinely different.
+            if (oldUrl && oldStoragePath && oldStoragePath !== assetPath) {
+              return removeStoragePath(oldStoragePath).then(() => renderStudents());
+            }
+            if (oldUrl && !oldStoragePath && oldUrl !== url) {
+              return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStudents());
+            }
             renderStudents();
           });
         });
@@ -1297,7 +1328,10 @@ function renderStudents() {
       const st = students.find(x => x.id === btn.dataset.id);
       if (st) { st.photo = ''; removeCachedLocalImage(imageCacheKey('student', st.id)); }
       DB.set(KEYS.students, students);
-      renderStudents();
+      const cloud = (FIREBASE_ENABLED && currentSchoolId && st)
+        ? Promise.all([removeImageManifest('student', st.id), st.photoStoragePath ? removeStoragePath(st.photoStoragePath) : removeStorageFile(st.photoUrl || '')])
+        : Promise.resolve();
+      cloud.then(() => renderStudents()).catch(() => renderStudents());
     });
   });
   list.querySelectorAll('.save-student').forEach(btn => {
@@ -1689,6 +1723,7 @@ function renderStaff() {
       const assetPath = schoolAssetPath(file, 'signatures', staffId);
       const existingStaff = DB.get(KEYS.staff, []).find(x => x.id === staffId);
       const oldUrl = existingStaff ? (existingStaff.signatureUrl || '') : '';
+      const oldStoragePath = existingStaff ? (existingStaff.signatureStoragePath || '') : '';
       Promise.all([uploadSchoolAsset(file, 'signatures', staffId), fileToDataUrl(file)]).then(([url, dataUrl]) => {
         const staffList = DB.get(KEYS.staff, []);
         const st = staffList.find(x => x.id === staffId);
@@ -1698,11 +1733,17 @@ function renderStaff() {
         st.signatureStoragePath = assetPath;
         return cacheLocalImage(imageCacheKey('staff', staffId), dataUrl).then(() => {
           DB.set(KEYS.staff, staffList);
-          return persistStaffSignature(staffId, url, assetPath);
+          return persistStaffSignature(staffId, url, assetPath).then(() => upsertImageManifest('staff', staffId, {
+            storagePath: assetPath,
+            sourceUrl: url,
+            storageUpdatedAt: new Date().toISOString()
+          }));
         });
       }).then(() => {
-        // Remove a legacy random-name signature after the replacement is safely stored.
-        if (oldUrl) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStaff());
+        // Deterministic v21+ signatures are overwritten in place. Only delete
+        // an older object when its stored path is different from the new path.
+        if (oldStoragePath && oldStoragePath !== assetPath) return removeStoragePath(oldStoragePath).then(() => renderStaff());
+        if (!oldStoragePath && oldUrl) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStaff());
         renderStaff(); // stays in edit mode — editingStaffId is untouched
       }).catch(err => alert('Could not save the signature: ' + err.message));
     });
@@ -1719,8 +1760,9 @@ function renderStaff() {
       removeCachedLocalImage(imageCacheKey('staff', st.id));
       DB.set(KEYS.staff, staffList);
       Promise.all([
-        removeStorageFile(oldUrl),
-        persistStaffSignature(st.id, '')
+        st.signatureStoragePath ? removeStoragePath(st.signatureStoragePath) : removeStorageFile(oldUrl),
+        persistStaffSignature(st.id, ''),
+        removeImageManifest('staff', st.id)
       ]).then(() => renderStaff())
         .catch(err => alert('Could not remove the signature: ' + err.message));
     });
@@ -1797,7 +1839,12 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
       .then(([url, dataUrl]) => {
         return cacheLocalImage(imageCacheKey('staff', staffId), dataUrl)
           .then(() => commit(dataUrl))
-          .then(() => persistStaffSignature(staffId, url, signaturePath));
+          .then(() => persistStaffSignature(staffId, url, signaturePath))
+          .then(() => upsertImageManifest('staff', staffId, {
+            storagePath: signaturePath,
+            sourceUrl: url,
+            storageUpdatedAt: new Date().toISOString()
+          }));
       })
       .catch(err => alert('Could not upload the signature: ' + err.message));
   } else {
@@ -3214,6 +3261,33 @@ function staffRef(id) {
   return schoolRef().collection('staff').doc(id);
 }
 
+// v32: Firestore is the authoritative image manifest. Firebase Storage holds
+// the binary, while this collection tells every browser exactly which image
+// belongs to which school record. This avoids relying on Storage folder listing.
+function imageAssetDocId(kind, id) {
+  return encodeURIComponent(`${kind}__${id}`);
+}
+
+function imageAssetRef(kind, id) {
+  return schoolRef().collection('imageAssets').doc(imageAssetDocId(kind, id));
+}
+
+function upsertImageManifest(kind, id, data) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !kind || !id) return Promise.resolve();
+  const payload = Object.assign({
+    kind: String(kind),
+    recordId: String(id),
+    schoolId: String(currentSchoolId),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, data || {});
+  return imageAssetRef(kind, id).set(payload, { merge: true });
+}
+
+function removeImageManifest(kind, id) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !kind || !id) return Promise.resolve();
+  return imageAssetRef(kind, id).delete().catch(() => {});
+}
+
 
 /* ---------- Firebase Storage ---------- */
 function storageRef(path) {
@@ -3632,7 +3706,7 @@ async function repairCloudImageMetadata(inventory) {
   let repaired = 0;
 
   for (const item of (inventory || [])) {
-    if (!item || item.storageSource !== 'storage' || !item.storagePath || !item.sourceUrl) continue;
+    if (!item || !item.storagePath || !item.sourceUrl) continue;
     try {
       if (item.kind === 'logo') {
         const snap = await schoolRef().get();
@@ -3686,21 +3760,51 @@ async function getCloudImageInventory() {
   const firestoreItems = [];
   if (!FIREBASE_ENABLED || !currentSchoolId) return firestoreItems;
 
+  // v32: Firestore imageAssets is the authoritative manifest. Every browser
+  // can read the same manifest without needing permission to list Storage
+  // folders. This is the cloud-to-browser synchronization contract.
+  try {
+    const snap = await schoolRef().collection('imageAssets').get();
+    snap.forEach(doc => {
+      const a = doc.data() || {};
+      if (!a.kind || !a.recordId || !a.storagePath) return;
+      firestoreItems.push({
+        kind: String(a.kind),
+        id: String(a.recordId),
+        classId: a.classId || '',
+        storagePath: String(a.storagePath || ''),
+        sourceUrl: String(a.sourceUrl || ''),
+        storageUpdatedAt: String(a.storageUpdatedAt || ''),
+        storageSource: 'manifest'
+      });
+    });
+  } catch (e) {
+    console.warn('Could not read Firestore image manifest:', e);
+  }
+
+  // Compatibility/repair: seed the manifest from image metadata that already
+  // exists on the normal school records. This is safe because the same access
+  // rules already govern these records. It lets v32 migrate existing installs
+  // without requiring Storage folder-list permission.
+  const canRepairAll = isHeadTeacher();
   try {
     const schoolDoc = await schoolRef().get();
     const profile = schoolDoc.exists ? (schoolDoc.data().profile || {}) : {};
     if (profile.logoStoragePath || profile.logoUrl) {
-      firestoreItems.push({ kind: 'logo', id: 'school', storagePath: profile.logoStoragePath || '', sourceUrl: profile.logoUrl || '', storageSource: 'firestore' });
+      const item = { kind: 'logo', id: 'school', storagePath: profile.logoStoragePath || '', sourceUrl: profile.logoUrl || '', storageSource: 'firestore' };
+      if (!firestoreItems.some(x => x.kind === item.kind && x.id === item.id) && item.storagePath) firestoreItems.push(item);
     }
   } catch (e) { console.warn('Could not read school image metadata:', e); }
 
   try {
-    const all = isHeadTeacher();
+    const all = canRepairAll;
     const classIds = all ? null : classIdsForCloudSync();
     const studentsSnap = await pullStudentsForAccess(all, classIds);
     studentsSnap.forEach(d => {
       const s = d.data() || {};
-      if (s.photoStoragePath || s.photoUrl) firestoreItems.push({ kind: 'student', id: d.id, storagePath: s.photoStoragePath || '', sourceUrl: s.photoUrl || '', classId: s.classId || '', storageSource: 'firestore' });
+      if (!(s.photoStoragePath || s.photoUrl)) return;
+      const item = { kind: 'student', id: d.id, storagePath: s.photoStoragePath || '', sourceUrl: s.photoUrl || '', classId: s.classId || '', storageSource: 'firestore' };
+      if (!firestoreItems.some(x => x.kind === item.kind && x.id === item.id)) firestoreItems.push(item);
     });
   } catch (e) { console.warn('Could not read student image metadata:', e); }
 
@@ -3708,17 +3812,108 @@ async function getCloudImageInventory() {
     const staffSnap = await pullSubcollection('staff', null);
     staffSnap.forEach(d => {
       const s = d.data() || {};
-      if (s.signatureStoragePath || s.signatureUrl) firestoreItems.push({ kind: 'staff', id: d.id, storagePath: s.signatureStoragePath || '', sourceUrl: s.signatureUrl || '', storageSource: 'firestore' });
+      if (!(s.signatureStoragePath || s.signatureUrl)) return;
+      const item = { kind: 'staff', id: d.id, storagePath: s.signatureStoragePath || '', sourceUrl: s.signatureUrl || '', storageSource: 'firestore' };
+      if (!firestoreItems.some(x => x.kind === item.kind && x.id === item.id)) firestoreItems.push(item);
     });
   } catch (e) { console.warn('Could not read staff image metadata:', e); }
 
-  // v25: Firebase Storage itself is also inspected. This handles the case
-  // where an image exists in Storage but Firestore metadata is missing.
-  let storageItems = [];
-  try { storageItems = await discoverStorageImageInventory(); }
-  catch (e) { console.warn('Could not discover Storage image inventory:', e); }
+  // Head Teachers can repair manifest records from existing Firestore metadata.
+  // Teachers only repair assets they are allowed to manage (student photos).
+  const manifestKeys = new Set(firestoreItems.filter(x => x.storageSource === 'manifest').map(x => `${x.kind}__${x.id}`));
+  for (const item of firestoreItems.slice()) {
+    if (!item.storagePath || manifestKeys.has(`${item.kind}__${item.id}`)) continue;
+    const allowed = item.kind === 'student' ? requireImageAssetWriteAccess(item) : canRepairAll;
+    if (!allowed) continue;
+    try {
+      await upsertImageManifest(item.kind, item.id, {
+        classId: item.classId || '',
+        storagePath: item.storagePath,
+        sourceUrl: item.sourceUrl || '',
+        storageUpdatedAt: item.storageUpdatedAt || new Date().toISOString()
+      });
+    } catch (e) {
+      console.warn('Could not seed image manifest:', item.kind, item.id, e);
+    }
+  }
 
-  return mergeImageInventoryItems(firestoreItems, storageItems);
+  // v32 legacy recovery: when old versions uploaded an image using the
+  // deterministic path but failed to create its manifest entry, probe the
+  // exact known path for each authorized record. This does NOT list Storage
+  // folders and therefore does not require broad Storage list permission.
+  try {
+    const all = isHeadTeacher();
+    const classIds = all ? null : classIdsForCloudSync();
+    const students = DB.get(KEYS.students, []);
+    for (const st of students) {
+      if (!st || !st.id || !st.classId) continue;
+      if (!all && !classIds.has(st.classId)) continue;
+      const path = `schools/${currentSchoolId}/student-photos/${st.classId}/${st.id}`;
+      try {
+        const ref = storageRef(path);
+        const meta = await ref.getMetadata();
+        const url = await ref.getDownloadURL();
+        await upsertImageManifest('student', st.id, {
+          classId: st.classId, storagePath: path, sourceUrl: url,
+          storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
+        });
+      } catch (e) {}
+    }
+    const staff = DB.get(KEYS.staff, []);
+    if (all) {
+      for (const st of staff) {
+        if (!st || !st.id) continue;
+        const path = `schools/${currentSchoolId}/signatures/${st.id}`;
+        try {
+          const ref = storageRef(path);
+          const meta = await ref.getMetadata();
+          const url = await ref.getDownloadURL();
+          await upsertImageManifest('staff', st.id, {
+            storagePath: path, sourceUrl: url,
+            storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
+          });
+        } catch (e) {}
+      }
+    }
+    const logoPath = `schools/${currentSchoolId}/logos/school-logo`;
+    try {
+      const ref = storageRef(logoPath);
+      const meta = await ref.getMetadata();
+      const url = await ref.getDownloadURL();
+      await upsertImageManifest('logo', 'school', {
+        storagePath: logoPath, sourceUrl: url,
+        storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
+      });
+    } catch (e) {}
+  } catch (e) {
+    console.warn('Could not probe deterministic legacy image paths:', e);
+  }
+
+  // Re-read the manifest after seeding/probing so the returned inventory
+  // represents exactly what every browser will use for synchronization.
+  try {
+    const snap = await schoolRef().collection('imageAssets').get();
+    const manifest = [];
+    snap.forEach(doc => {
+      const a = doc.data() || {};
+      if (!a.kind || !a.recordId || !a.storagePath) return;
+      manifest.push({
+        kind: String(a.kind), id: String(a.recordId), classId: a.classId || '',
+        storagePath: String(a.storagePath), sourceUrl: String(a.sourceUrl || ''),
+        storageUpdatedAt: String(a.storageUpdatedAt || ''), storageSource: 'manifest'
+      });
+    });
+    return manifest;
+  } catch (e) {
+    // If manifest access fails, fall back to metadata-derived items rather than
+    // making reports unusable.
+    return firestoreItems.filter(x => x.storagePath);
+  }
+}
+
+function requireImageAssetWriteAccess(item) {
+  if (!item || item.kind !== 'student') return false;
+  return isHeadTeacher() || (item.classId && canAccessClass(item.classId));
 }
 
 async function syncImagesFromCloud(options) {
@@ -3797,6 +3992,15 @@ function removeStorageFile(url) {
   if (!url || !FIREBASE_ENABLED) return Promise.resolve();
   try {
     return firebase.storage().refFromURL(url).delete().catch(() => {});
+  } catch (e) {
+    return Promise.resolve();
+  }
+}
+
+function removeStoragePath(path) {
+  if (!path || !FIREBASE_ENABLED) return Promise.resolve();
+  try {
+    return storageRef(path).delete().catch(() => {});
   } catch (e) {
     return Promise.resolve();
   }

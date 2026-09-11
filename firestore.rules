@@ -161,6 +161,40 @@ service cloud.firestore {
         allow read: if isHeadTeacher(schoolId) || isActiveTeacher(schoolId);
         allow create, update, delete: if isHeadTeacher(schoolId);
       }
+
+      // v32: Firestore image manifest. Storage contains the binary files; this
+      // collection tells each browser exactly which cloud asset belongs to a
+      // school record. Teachers may manage manifests only for student photos
+      // in their assigned classes. Head Teachers may manage all school assets.
+      match /imageAssets/{assetId} {
+        allow read: if isHeadTeacher(schoolId) || isActiveTeacher(schoolId);
+
+        allow create: if isHeadTeacher(schoolId)
+          || (
+            isActiveTeacher(schoolId)
+            && request.resource.data.kind == 'student'
+            && request.resource.data.classId is string
+            && hasClass(schoolId, request.resource.data.classId)
+          );
+
+        allow update: if isHeadTeacher(schoolId)
+          || (
+            isActiveTeacher(schoolId)
+            && resource.data.kind == 'student'
+            && request.resource.data.kind == 'student'
+            && resource.data.classId is string
+            && request.resource.data.classId == resource.data.classId
+            && hasClass(schoolId, resource.data.classId)
+          );
+
+        allow delete: if isHeadTeacher(schoolId)
+          || (
+            isActiveTeacher(schoolId)
+            && resource.data.kind == 'student'
+            && resource.data.classId is string
+            && hasClass(schoolId, resource.data.classId)
+          );
+      }
     }
   }
 }
