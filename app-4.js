@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v29';
+const APP_VERSION = 'v30';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -50,6 +50,7 @@ let currentUserData = null;
 let sessionGeneration = 0;
 let sessionReady = false;
 let sessionDataReady = false; // Core school data has finished loading for this session.
+let manualSignOutInProgress = false; // Prevent Firebase auth transitions from re-blocking the login form during logout.
 
 function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}` : base; }
 
@@ -91,27 +92,38 @@ function beginSessionTransition() {
 }
 
 async function signOutAndReset() {
-  // Invalidate all old async work immediately. Once signOut() resolves we
-  // already know this application has deliberately signed out, so do not
-  // wait for Firebase's onAuthStateChanged event to release the login form.
-  // This prevents the post-logout Sign In screen from getting stuck on
-  // "Syncing…" while Auth persistence is settling.
+  // Invalidate all old async work immediately. The login form must be released
+  // locally without waiting for Firebase signOut() or onAuthStateChanged.
+  // Firebase persistence/network can be slow on mobile PWAs, and waiting here
+  // was the reason the user could be trapped on the "Syncing…" screen until
+  // a page refresh.
   const token = beginSessionTransition();
+  manualSignOutInProgress = true;
+
+  // Immediately expose a clean sign-in form. No previous session data or role
+  // is retained, and no cloud operation is allowed to block this transition.
+  resetWorkspaceState();
+  hideSyncingMessage();
+  hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
+  renderAuthForm();
+  showAuthGate();
+
   try {
     await firebase.auth().signOut();
-    if (token !== sessionGeneration) return;
-    resetWorkspaceState();
-    hideSyncingMessage();
-    hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
-    renderAuthForm();
-    showAuthGate();
   } catch (err) {
-    if (token !== sessionGeneration) return;
-    resetWorkspaceState();
-    hideSyncingMessage();
-    renderAuthForm();
-    showAuthGate();
-    setAuthError('Could not sign out: ' + err.message);
+    // Sign-out failures must not trap the user behind a loading screen. The
+    // local session has already been invalidated. Show the error on the clean
+    // sign-in screen so the user can retry or refresh if Firebase is offline.
+    if (token === sessionGeneration) setAuthError('Could not sign out: ' + err.message);
+  } finally {
+    if (token === sessionGeneration) {
+      resetWorkspaceState();
+      hideSyncingMessage();
+      hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
+      renderAuthForm();
+      showAuthGate();
+    }
+    manualSignOutInProgress = false;
   }
 }
 function isHeadTeacher() {
@@ -4647,6 +4659,11 @@ function initAuth() {
   });
 
   firebase.auth().onAuthStateChanged(user => {
+    // During an explicit logout, never let the transient persisted Firebase
+    // user state re-enter the authentication loading path. The sign-out
+    // handler has already shown a clean login form immediately.
+    if (manualSignOutInProgress && user) return;
+
     const token = ++sessionGeneration;
 
     if (user) {
