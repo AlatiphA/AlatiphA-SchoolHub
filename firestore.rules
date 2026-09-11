@@ -146,6 +146,17 @@ service cloud.firestore {
         allow delete: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
       }
 
+      match /attendance/{attendanceId} {
+        allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+        allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);
+        allow update: if isHeadTeacher(schoolId)
+          || (
+            hasClass(schoolId, resource.data.classId)
+            && request.resource.data.classId == resource.data.classId
+          );
+        allow delete: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+      }
+
       match /remarks/{remarkId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
         allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);

@@ -331,6 +331,22 @@
     <p class="hint">Leave both scores blank for a subject a student does not take — it will be skipped on their report.</p>
   </section>
 
+  <!-- ATTENDANCE -->
+  <section id="view-attendance" class="view hidden">
+    <h2>Attendance</h2>
+    <div class="row">
+      <label>Class
+        <select id="attendanceClassSelect"></select>
+      </label>
+      <label>Date
+        <input type="date" id="attendanceDate">
+      </label>
+    </div>
+    <div id="attendanceFormWrap"></div>
+    <button id="saveAttendanceBtn" class="btn-primary">Save Attendance</button>
+    <p class="hint">Record daily attendance as Present, Absent, or Late. Late is counted as present in the term total. The Present total is automatically reflected on report cards.</p>
+  </section>
+
   <!-- GRADES -->
   <section id="view-grades" class="view hidden">
     <h2>Grade Entry</h2>

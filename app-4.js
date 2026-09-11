@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v36';
+const APP_VERSION = 'v37';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -229,6 +229,7 @@ const KEYS = {
   get subjects() { return ns('arc_subjects'); },
   get students() { return ns('arc_students'); },
   get grades() { return ns('arc_grades'); },
+  get attendance() { return ns('arc_attendance'); },
   get remarks() { return ns('arc_remarks'); },
   get staff() { return ns('arc_staff'); },
   get activity() { return ns('arc_activity'); }
@@ -307,6 +308,7 @@ function ensureDefaults() {
   if (DB.get(KEYS.classes, null) === null) DB.set(KEYS.classes, []);
   if (DB.get(KEYS.students, null) === null) DB.set(KEYS.students, []);
   if (DB.get(KEYS.grades, null) === null) DB.set(KEYS.grades, {});
+  if (DB.get(KEYS.attendance, null) === null) DB.set(KEYS.attendance, {});
   if (DB.get(KEYS.remarks, null) === null) DB.set(KEYS.remarks, {});
   if (DB.get(KEYS.staff, null) === null) DB.set(KEYS.staff, []);
 }
@@ -367,7 +369,7 @@ function ordinal(n) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'grades', 'remarks', 'reports', 'history', 'manage-teachers', 'activity'];
+const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
   // Never render role-sensitive views while an authenticated session is still
   // being resolved. Guest mode explicitly marks itself ready before calling
@@ -404,6 +406,7 @@ function showView(name) {
   if (name === 'home') renderHome();
   if (name === 'setup') { refreshHeadTeacherSelect(); renderCloudSyncStatus(); }
   if (name === 'students') renderStudentClassSelect();
+  if (name === 'attendance') renderAttendanceClassSelect();
   if (name === 'grades') renderGradesClassSelect();
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
@@ -425,7 +428,7 @@ function refreshHeadTeacherSelect() {
 function sectionTitle(name) {
   const titles = {
     setup: 'Setup', staff: 'Staff', classes: 'Classes', students: 'Students', subjects: 'Subjects',
-    grades: 'Grades', remarks: 'Remarks', reports: 'Reports', history: 'Term History',
+    attendance: 'Attendance', grades: 'Grades', remarks: 'Remarks', reports: 'Reports', history: 'Term History',
     'manage-teachers': 'Manage Teachers', activity: 'Activity Log'
   };
   return titles[name] || 'AlatiphA SchoolHub';
@@ -447,6 +450,8 @@ const QUICK_ACCESS_CARDS = [
     icon: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/>' },
   { view: 'subjects', title: 'Subjects', description: 'Manage the subjects taught', headteacherOnly: true,
     icon: '<path d="M4 4h8a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H4z"/><path d="M20 4h-8a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h9z"/>' },
+  { view: 'attendance', title: 'Attendance', description: 'Record daily attendance and term totals',
+    icon: '<path d="M6 3v4M18 3v4M4 6h16"/><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 11h8M8 15h5"/>' },
   { view: 'grades', title: 'Grades', description: 'Enter class and exam scores',
     icon: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>' },
   { view: 'remarks', title: 'Remarks', description: 'Attendance, conduct, and comments',
@@ -1143,6 +1148,7 @@ document.getElementById('exportBackupBtn').addEventListener('click', () => {
       subjects: DB.get(KEYS.subjects, []),
       students: DB.get(KEYS.students, []),
       grades: DB.get(KEYS.grades, {}),
+      attendance: DB.get(KEYS.attendance, {}),
       remarks: DB.get(KEYS.remarks, {}),
       staff: DB.get(KEYS.staff, [])
     }
@@ -1186,6 +1192,7 @@ document.getElementById('importBackupInput').addEventListener('change', e => {
     if (d.subjects) DB.set(KEYS.subjects, d.subjects);
     if (d.students) DB.set(KEYS.students, d.students);
     if (d.grades) DB.set(KEYS.grades, d.grades);
+    if (d.attendance) DB.set(KEYS.attendance, d.attendance);
     if (d.remarks) DB.set(KEYS.remarks, d.remarks);
     if (d.staff) DB.set(KEYS.staff, d.staff);
     auditAction('restore', 'backup', 'local', 'Restored a local backup');
@@ -1275,6 +1282,9 @@ function renderClasses() {
       const grades = DB.get(KEYS.grades, {});
       Object.keys(grades).forEach(k => { if (k.startsWith(id + '__')) delete grades[k]; });
       DB.set(KEYS.grades, grades);
+      const attendance = DB.get(KEYS.attendance, {});
+      Object.keys(attendance).forEach(k => { if (k.startsWith(id + '__')) delete attendance[k]; });
+      DB.set(KEYS.attendance, attendance);
       const remarks = DB.get(KEYS.remarks, {});
       Object.keys(remarks).forEach(k => { if (k.startsWith(id + '__')) delete remarks[k]; });
       DB.set(KEYS.remarks, remarks);
@@ -1517,6 +1527,9 @@ function renderStudents() {
       const grades = DB.get(KEYS.grades, {});
       Object.keys(grades).forEach(k => { if (grades[k][id]) delete grades[k][id]; });
       DB.set(KEYS.grades, grades);
+      const attendance = DB.get(KEYS.attendance, {});
+      Object.keys(attendance).forEach(k => { if (attendance[k] && attendance[k].entries && attendance[k].entries[id]) delete attendance[k].entries[id]; else if (attendance[k] && attendance[k][id]) delete attendance[k][id]; });
+      DB.set(KEYS.attendance, attendance);
       const remarks = DB.get(KEYS.remarks, {});
       Object.keys(remarks).forEach(k => { if (remarks[k][id]) delete remarks[k][id]; });
       DB.set(KEYS.remarks, remarks);
@@ -2060,6 +2073,128 @@ document.getElementById('addStaffBtn').addEventListener('click', async () => {
   } catch (err) {
     alert('Could not save the staff member: ' + (err.message || err));
   }
+});
+
+/* ---------- Attendance ---------- */
+function attendanceKey(classId, term, year, date) {
+  return `${classId}__${term}__${year}__${date}`;
+}
+
+function attendanceDateToday() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function attendanceRecordsForTerm(classId, term, year) {
+  const all = DB.get(KEYS.attendance, {});
+  const prefix = `${classId}__${term}__${year}__`;
+  return Object.keys(all).filter(k => k.startsWith(prefix)).map(key => ({ key, date: key.slice(prefix.length), record: all[key] || {} }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function attendanceSummary(classId, term, year) {
+  const students = getAccessibleStudents().filter(s => s.classId === classId);
+  const records = attendanceRecordsForTerm(classId, term, year);
+  const summary = {};
+  students.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, recorded: 0 });
+  records.forEach(({ record }) => {
+    const entries = record.entries || record;
+    students.forEach(st => {
+      const status = entries && entries[st.id] ? String(entries[st.id]).toUpperCase() : '';
+      if (!status) return;
+      summary[st.id].recorded++;
+      if (status === 'P') summary[st.id].present++;
+      else if (status === 'L') { summary[st.id].late++; summary[st.id].present++; }
+      else if (status === 'A') summary[st.id].absent++;
+    });
+  });
+  return { records, summary };
+}
+
+function renderAttendanceClassSelect() {
+  const sel = document.getElementById('attendanceClassSelect');
+  if (!sel) return;
+  fillClassSelect(sel);
+  renderAttendanceForm();
+}
+
+function renderAttendanceForm() {
+  const wrap = document.getElementById('attendanceFormWrap');
+  if (!wrap) return;
+  const classId = document.getElementById('attendanceClassSelect').value;
+  if (classId && !canAccessClass(classId)) { wrap.innerHTML = '<p class="empty">You do not have access to this class.</p>'; return; }
+  if (!classId) { wrap.innerHTML = '<p class="empty">Add a class first.</p>'; return; }
+  const settings = DB.get(KEYS.settings, {});
+  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
+  const date = document.getElementById('attendanceDate').value || attendanceDateToday();
+  document.getElementById('attendanceDate').value = date;
+  const students = getAccessibleStudents().filter(s => s.classId === classId);
+  if (!students.length) { wrap.innerHTML = '<p class="empty">No students in this class.</p>'; return; }
+  const key = attendanceKey(classId, settings.currentTerm, settings.currentYear, date);
+  const all = DB.get(KEYS.attendance, {});
+  const record = all[key] || {};
+  const entries = record.entries || record;
+  const summary = attendanceSummary(classId, settings.currentTerm, settings.currentYear).summary;
+
+  let html = `<div class="attendance-toolbar"><button type="button" id="attendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="attendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
+  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Student</th><th>Status</th><th>Term Present</th><th>Absent</th><th>Late</th></tr></thead><tbody>';
+  students.forEach(st => {
+    const status = String(entries[st.id] || '').toUpperCase();
+    const sm = summary[st.id] || { present: 0, absent: 0, late: 0 };
+    html += `<tr><td class="name-col">${escapeHtml(st.name)}</td><td><select class="attendance-status" data-student="${st.id}">
+      <option value="" ${!status ? 'selected' : ''}>— Not marked —</option>
+      <option value="P" ${status === 'P' ? 'selected' : ''}>Present</option>
+      <option value="A" ${status === 'A' ? 'selected' : ''}>Absent</option>
+      <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
+    </select></td><td>${sm.present}</td><td>${sm.absent}</td><td>${sm.late}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  html += `<p class="hint">${attendanceRecordsForTerm(classId, settings.currentTerm, settings.currentYear).length} attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}.</p>`;
+  wrap.innerHTML = html;
+  document.getElementById('attendanceAllPresent').addEventListener('click', () => {
+    wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'P');
+  });
+  document.getElementById('attendanceAllAbsent').addEventListener('click', () => {
+    wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'A');
+  });
+}
+
+document.getElementById('attendanceClassSelect').addEventListener('change', renderAttendanceForm);
+document.getElementById('attendanceDate').addEventListener('change', renderAttendanceForm);
+
+document.getElementById('saveAttendanceBtn').addEventListener('click', () => {
+  const classId = document.getElementById('attendanceClassSelect').value;
+  if (!classId || !requireClassAccess(classId)) return;
+  const settings = DB.get(KEYS.settings, {});
+  if (!settings.currentTerm || !settings.currentYear) { alert('Set the current Term and Academic Year in Setup first.'); return; }
+  const date = document.getElementById('attendanceDate').value;
+  if (!date) { alert('Select an attendance date.'); return; }
+  const statuses = {};
+  document.querySelectorAll('#attendanceFormWrap .attendance-status').forEach(select => {
+    if (select.value) statuses[select.dataset.student] = select.value;
+  });
+  const key = attendanceKey(classId, settings.currentTerm, settings.currentYear, date);
+  const all = DB.get(KEYS.attendance, {});
+  all[key] = { classId, term: settings.currentTerm, year: settings.currentYear, date, entries: statuses };
+  DB.set(KEYS.attendance, all);
+
+  // Keep the report-card attendance field synchronized with the daily register.
+  const summary = attendanceSummary(classId, settings.currentTerm, settings.currentYear).summary;
+  const remarksAll = DB.get(KEYS.remarks, {});
+  const remarkKey = gradeKey(classId, settings.currentTerm, settings.currentYear);
+  const classRemarks = remarksAll[remarkKey] || {};
+  Object.keys(summary).forEach(studentId => {
+    if (!classRemarks[studentId]) classRemarks[studentId] = {};
+    classRemarks[studentId].attendance = summary[studentId].present;
+  });
+  remarksAll[remarkKey] = classRemarks;
+  DB.set(KEYS.remarks, remarksAll);
+  auditAction('update', 'attendance', key, `Saved attendance for ${date} · ${settings.currentTerm} ${settings.currentYear}`);
+  renderAttendanceForm();
+  alert('Attendance saved. Term attendance totals have been updated.');
 });
 
 /* ---------- Grades entry (Class Score /60 + Exam Score /100 per subject) ---------- */
@@ -3413,7 +3548,7 @@ function hasExistingLocalData() {
 // Never runs for "Join a school" — that would mean injecting one
 // device's old data into someone else's school.
 function migrateDataIntoSchool(schoolId) {
-  const legacyKeys = ['arc_settings', 'arc_classes', 'arc_subjects', 'arc_students', 'arc_grades', 'arc_remarks', 'arc_staff'];
+  const legacyKeys = ['arc_settings', 'arc_classes', 'arc_subjects', 'arc_students', 'arc_grades', 'arc_attendance', 'arc_remarks', 'arc_staff'];
   legacyKeys.forEach(base => {
     const schoolKey = `${base}__${schoolId}`;
     if (localStorage.getItem(schoolKey) !== null) return;
@@ -3468,6 +3603,9 @@ function gradeRef(key) {
 
 function remarkRef(key) {
   return schoolRef().collection('remarks').doc(cloudKey(key));
+}
+function attendanceRef(key) {
+  return schoolRef().collection('attendance').doc(cloudKey(key));
 }
 
 function staffRef(id) {
@@ -4582,7 +4720,7 @@ function migrateLegacySchoolDocument() {
     const data = doc.data() || {};
     if (Number(data.schemaVersion || 0) >= CLOUD_SCHEMA_VERSION) return false;
 
-    const hasLegacy = ['classes', 'subjects', 'students', 'grades', 'remarks', 'staff']
+    const hasLegacy = ['classes', 'subjects', 'students', 'grades', 'attendance', 'remarks', 'staff']
       .some(k => data[k] !== undefined);
     if (!hasLegacy) {
       return schoolRef().set({ schemaVersion: CLOUD_SCHEMA_VERSION }, { merge: true }).then(() => false);
@@ -4593,6 +4731,7 @@ function migrateLegacySchoolDocument() {
     const students = Array.isArray(data.students) ? data.students : [];
     const staff = Array.isArray(data.staff) ? data.staff : [];
     const grades = data.grades && typeof data.grades === 'object' ? data.grades : {};
+    const attendance = data.attendance && typeof data.attendance === 'object' ? data.attendance : {};
     const remarks = data.remarks && typeof data.remarks === 'object' ? data.remarks : {};
 
     const ops = [];
@@ -4601,11 +4740,12 @@ function migrateLegacySchoolDocument() {
     students.forEach(s => ops.push(batch => batch.set(studentRef(s.id), stripImagesForCloud('students', s))));
     staff.forEach(s => ops.push(batch => batch.set(staffRef(s.id), stripImagesForCloud('staff', s))));
     Object.keys(grades).forEach(key => ops.push(batch => batch.set(gradeRef(key), { classId: key.split('__')[0], entries: grades[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() })));
+    Object.keys(attendance).forEach(key => ops.push(batch => batch.set(attendanceRef(key), Object.assign({}, attendance[key], { classId: (attendance[key] && attendance[key].classId) || key.split('__')[0], entries: (attendance[key] && attendance[key].entries) || attendance[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
     Object.keys(remarks).forEach(key => ops.push(batch => batch.set(remarkRef(key), { classId: key.split('__')[0], entries: remarks[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() })));
 
     return commitChunks(ops).then(() => {
       const remove = {};
-      ['classes', 'subjects', 'students', 'grades', 'remarks', 'staff'].forEach(k => { remove[k] = firebase.firestore.FieldValue.delete(); });
+      ['classes', 'subjects', 'students', 'grades', 'attendance', 'remarks', 'staff'].forEach(k => { remove[k] = firebase.firestore.FieldValue.delete(); });
       return schoolRef().set(Object.assign(remove, { schemaVersion: CLOUD_SCHEMA_VERSION, migratedAt: firebase.firestore.FieldValue.serverTimestamp() }), { merge: true });
     }).then(() => true);
   });
@@ -4649,6 +4789,19 @@ function pullGradesForAccess(all, classIds) {
   });
 }
 
+function pullAttendanceForAccess(all, classIds) {
+  if (all) return schoolRef().collection('attendance').get();
+  const ids = Array.from(classIds || []);
+  if (!ids.length) return Promise.resolve({ empty: true, forEach: function() {} });
+  return Promise.all(ids.map(classId =>
+    schoolRef().collection('attendance').where('classId', '==', classId).get()
+  )).then(snaps => {
+    const docs = [];
+    snaps.forEach(snap => snap.forEach(d => docs.push(d)));
+    return { empty: docs.length === 0, forEach: fn => docs.forEach(fn) };
+  });
+}
+
 function pullRemarksForAccess(all, classIds) {
   if (all) return schoolRef().collection('remarks').get();
   const ids = Array.from(classIds || []);
@@ -4685,6 +4838,7 @@ function pullCloudData(sessionToken) {
       pullStudentsForAccess(all, classIds),
       pullSubcollection('staff', null),
       pullGradesForAccess(all, classIds),
+      pullAttendanceForAccess(all, classIds),
       pullRemarksForAccess(all, classIds)
     ]).then(async results => {
       if (!valid()) return;
@@ -4694,7 +4848,8 @@ function pullCloudData(sessionToken) {
       const studentSnap = results[3];
       const staffSnap = results[4];
       const gradeSnap = results[5];
-      const remarkSnap = results[6];
+      const attendanceSnap = results[6];
+      const remarkSnap = results[7];
 
       const schoolProfile = schoolDoc.exists ? (schoolDoc.data().profile || {}) : {};
       if (schoolDoc.exists) {
@@ -4749,6 +4904,15 @@ function pullCloudData(sessionToken) {
         if (all || classIds.has(classId)) grades[key] = (d.data() || {}).entries || {};
       });
       DB.set(KEYS.grades, grades);
+
+      const attendance = {};
+      attendanceSnap.forEach(d => {
+        const key = localKeyFromCloudId(d.id);
+        const data = d.data() || {};
+        const classId = data.classId || key.split('__')[0];
+        if (all || classIds.has(classId)) attendance[key] = Object.assign({}, data, { entries: data.entries || {} });
+      });
+      DB.set(KEYS.attendance, attendance);
 
       const remarks = {};
       remarkSnap.forEach(d => {
@@ -4885,6 +5049,19 @@ function pushFieldToCloud(match) {
       .then(() => setLastSyncedNow());
   }
 
+  if (field === 'attendance') {
+    const allowed = classIdsForCloudSync();
+    const filtered = {};
+    Object.keys(value).forEach(key => {
+      const classId = (value[key] && value[key].classId) || key.split('__')[0];
+      if (allowed.has(classId)) filtered[key] = value[key];
+    });
+    return syncKeyedCollection(schoolRef().collection('attendance'), filtered,
+      (key, record) => Object.assign({}, record, { classId: record.classId || key.split('__')[0], entries: record.entries || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
+      isHeadTeacher() ? null : allowed)
+      .then(() => setLastSyncedNow());
+  }
+
   if (field === 'remarks') {
     const allowed = classIdsForCloudSync();
     const filtered = {};
@@ -4907,13 +5084,14 @@ function syncableFields() {
     { field: 'subjects', cloudField: 'subjects', key: KEYS.subjects },
     { field: 'students', cloudField: 'students', key: KEYS.students },
     { field: 'grades', cloudField: 'grades', key: KEYS.grades },
+    { field: 'attendance', cloudField: 'attendance', key: KEYS.attendance },
     { field: 'remarks', cloudField: 'remarks', key: KEYS.remarks },
     { field: 'staff', cloudField: 'staff', key: KEYS.staff }
   ];
 }
 
 function fieldDefault(field) {
-  return (field === 'settings' || field === 'grades' || field === 'remarks') ? {} : [];
+  return (field === 'settings' || field === 'grades' || field === 'attendance' || field === 'remarks') ? {} : [];
 }
 
 function pushAllFieldsNow() {

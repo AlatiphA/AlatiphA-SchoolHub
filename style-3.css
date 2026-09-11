@@ -608,3 +608,9 @@ html.disabledAccess #disabledGate{
 .activity-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--surface-alt);font-weight:700;flex:0 0 26px;}
 .activity-item strong{font-size:14px;}
 .activity-item .meta{line-height:1.45;}
+
+
+/* v37 academic attendance */
+.attendance-toolbar{display:flex;gap:1rem;flex-wrap:wrap;margin:.75rem 0}
+.attendance-table select{min-width:130px}
+@media (max-width:600px){.attendance-table{font-size:.9rem}.attendance-table th,.attendance-table td{padding:.55rem .45rem}.attendance-table .name-col{min-width:150px}}
