@@ -598,3 +598,6 @@ html.disabledAccess #disabledGate{
   .diagnostic-box{max-width:390px;padding:22px 17px 18px;}
   .health-list>div{font-size:10.5px;}
 }
+
+/* v34 image synchronization diagnostics */
+.sync-diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;background:color-mix(in srgb,var(--rule) 35%,transparent);border:1px solid var(--rule);border-radius:8px;padding:10px;margin:8px 0 14px;font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--text);max-height:220px;overflow:auto;}

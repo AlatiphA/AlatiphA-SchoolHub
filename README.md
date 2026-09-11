@@ -1,6 +1,6 @@
-# AlatiphA SchoolHub Phase 3 v33
+# AlatiphA SchoolHub Phase 3 v34
 
-## v33: Firestore Image Manifest
+## v34: Image Sync Diagnostics & Browser Compatibility
 
 - Firestore `schools/{schoolId}/imageAssets` is the authoritative image manifest.
 - Firebase Storage remains the binary backup store.
@@ -19,3 +19,13 @@ v33 image recovery:
 - This publishes known local IndexedDB images to deterministic Firebase Storage paths and registers/repairs their Firestore metadata.
 - Storage folder listing is not required.
 - Existing legacy/random cloud files are not deleted.
+
+
+v34 image synchronization improvements:
+- Prefers a fresh Firebase Storage download URL followed by a normal CORS fetch.
+- Retains authenticated Storage SDK byte download as a fallback.
+- Retains the manifest's download URL as a final fallback.
+- Adds per-image diagnostics showing which asset failed and the exact error/attempts.
+- Adds a 20-second timeout for direct image fetches to prevent a browser from appearing stuck.
+- Keeps Storage rules least-privilege and does not require Storage folder listing.
+- v30 session/logout protections and v31-v33 synchronization architecture are retained.

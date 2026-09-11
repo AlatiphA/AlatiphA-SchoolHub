@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v33';
+const APP_VERSION = 'v34';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -757,6 +757,26 @@ function hideSyncCenter() {
   if (dialog) dialog.classList.add('hidden');
 }
 
+function renderImageSyncDiagnostics(result) {
+  const el = document.getElementById('syncDiagnostics');
+  if (!el) return;
+  const details = result && Array.isArray(result.details) ? result.details : [];
+  if (!details.length) {
+    el.textContent = '';
+    el.classList.add('hidden');
+    return;
+  }
+  const lines = details.map(d => {
+    const label = `${d.kind || 'image'}:${d.id || ''}`;
+    if (d.status === 'downloaded') return `✓ ${label} — downloaded${d.method ? ` via ${d.method}` : ''}`;
+    if (d.status === 'already-local') return `✓ ${label} — already local`;
+    if (d.status === 'skipped') return `⚠ ${label} — skipped${d.error ? `: ${d.error}` : ''}`;
+    return `✗ ${label} — ${d.error || 'failed'}${d.attempts && d.attempts.length ? `\n   ${d.attempts.join('\n   ')}` : ''}`;
+  });
+  el.textContent = lines.join('\n');
+  el.classList.remove('hidden');
+}
+
 async function runSyncCenterSync() {
   const btn = document.getElementById('syncCenterSyncBtn');
   const status = document.getElementById('syncCenterActionStatus');
@@ -771,6 +791,7 @@ async function runSyncCenterSync() {
     renderCloudSyncStatus();
     renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList(); renderHome();
     const result = await syncImagesFromCloud({ force: false });
+    renderImageSyncDiagnostics(result);
     if (status) status.textContent = `Sync complete: ${result.downloaded} downloaded, ${result.repaired} metadata repaired, ${result.failed} failed.`;
     await updateSyncCenter();
   } catch (e) {
@@ -3611,10 +3632,96 @@ async function cloudImageDescriptor(kind, id, storagePath, sourceUrl) {
   }
 }
 
+async function blobToDataUrlForSync(blob) {
+  if (!blob) throw new Error('Storage returned an empty response.');
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Could not convert downloaded image.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function fetchImageUrlForSync(url) {
+  if (!url) throw new Error('No download URL was available.');
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-store',
+      signal: controller ? controller.signal : undefined
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText || ''}`.trim());
+    const blob = await response.blob();
+    if (!blob || !blob.size) throw new Error('Downloaded image is empty.');
+    const raw = await blobToDataUrlForSync(blob);
+    const normalized = await normalizeReportImage(raw);
+    if (!normalized) throw new Error(`Browser could not decode image (${blob.type || 'unknown MIME'}).`);
+    return normalized;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function downloadCloudImageDataUrl(descriptor) {
+  const attempts = [];
+  const path = descriptor && descriptor.storagePath ? String(descriptor.storagePath) : '';
+  const suppliedUrl = descriptor && descriptor.sourceUrl ? String(descriptor.sourceUrl) : '';
+
+  // v34: Prefer a fresh Firebase download URL + ordinary CORS fetch. This
+  // avoids browser-specific failures in Storage getBytes(), while keeping the
+  // Storage rules unchanged. The SDK is retained as a fallback.
+  if (path && FIREBASE_ENABLED && firebase.storage) {
+    try {
+      const ref = storageRef(path);
+      const freshUrl = await ref.getDownloadURL();
+      const data = await fetchImageUrlForSync(freshUrl);
+      return { data, method: 'fresh-download-url', attempts };
+    } catch (e) {
+      attempts.push(`fresh-download-url: ${formatImageSyncError(e)}`);
+    }
+    try {
+      const ref = storageRef(path);
+      const bytes = await ref.getBytes(10 * 1024 * 1024);
+      const blob = new Blob([bytes], { type: 'application/octet-stream' });
+      const raw = await blobToDataUrlForSync(blob);
+      const data = await normalizeReportImage(raw);
+      if (!data) throw new Error('Browser could not decode Storage bytes.');
+      return { data, method: 'storage-sdk-bytes', attempts };
+    } catch (e) {
+      attempts.push(`storage-sdk-bytes: ${formatImageSyncError(e)}`);
+    }
+  }
+
+  if (suppliedUrl) {
+    try {
+      const data = await fetchImageUrlForSync(suppliedUrl);
+      return { data, method: 'manifest-download-url', attempts };
+    } catch (e) {
+      attempts.push(`manifest-download-url: ${formatImageSyncError(e)}`);
+    }
+  }
+
+  const message = attempts.length ? attempts.join(' | ') : 'No usable Storage path or download URL.';
+  const err = new Error(message);
+  err.syncAttempts = attempts;
+  throw err;
+}
+
+function formatImageSyncError(error) {
+  if (!error) return 'Unknown error';
+  const code = error.code ? String(error.code) : '';
+  const message = error.message ? String(error.message) : String(error);
+  return code ? `${code}: ${message}` : message;
+}
+
 async function syncOneCloudImage(kind, id, storagePath, sourceUrl, force) {
   const key = imageCacheKey(kind, id);
   const descriptor = await cloudImageDescriptor(kind, id, storagePath, sourceUrl);
-  if (!descriptor) return { ok: false, skipped: true };
+  if (!descriptor) return { ok: false, skipped: true, key, kind, id, errorMessage: 'No image descriptor.' };
 
   const existing = await getCachedImageRecordAsync(key);
   const existingUrl = existing && existing.dataUrl ? existing.dataUrl : (getCachedLocalImage(key) || '');
@@ -3622,17 +3729,25 @@ async function syncOneCloudImage(kind, id, storagePath, sourceUrl, force) {
   const sameVersion = samePath && descriptor.updatedAt && existing.updatedAt && descriptor.updatedAt === existing.updatedAt;
   if (!force && existingUrl && (sameVersion || (samePath && !descriptor.updatedAt))) {
     imageMemoryCache.set(key, existingUrl);
-    return { ok: true, downloaded: false, key };
+    return { ok: true, downloaded: false, key, kind, id };
   }
 
   try {
-    const data = await reportImageToDataUrl(descriptor.storagePath || descriptor.sourceUrl);
-    if (!data) return { ok: false, skipped: false, key };
-    await cacheLocalImageWithMeta(key, data, descriptor);
-    return { ok: true, downloaded: true, key };
+    const result = await downloadCloudImageDataUrl(descriptor);
+    await cacheLocalImageWithMeta(key, result.data, descriptor);
+    return { ok: true, downloaded: true, key, kind, id, method: result.method, attempts: result.attempts };
   } catch (e) {
     console.warn('Image sync failed:', kind, id, e);
-    return { ok: false, skipped: false, key, error: e };
+    return {
+      ok: false,
+      skipped: false,
+      key,
+      kind,
+      id,
+      error: e,
+      errorMessage: formatImageSyncError(e),
+      attempts: e && e.syncAttempts ? e.syncAttempts : []
+    };
   }
 }
 
@@ -4085,24 +4200,36 @@ async function publishLocalImagesToCloud() {
 
 async function syncImagesFromCloud(options) {
   const opts = options || {};
-  if (!FIREBASE_ENABLED || !currentSchoolId) return { total: 0, local: 0, downloaded: 0, failed: 0, skipped: 0 };
+  if (!FIREBASE_ENABLED || !currentSchoolId) return { total: 0, local: 0, downloaded: 0, failed: 0, skipped: 0, repaired: 0, details: [] };
   const inventory = await getCloudImageInventory();
   const repaired = await repairCloudImageMetadata(inventory);
   let downloaded = 0, failed = 0, skipped = 0, local = 0;
+  const details = [];
 
   // Sequential downloads are deliberate. They reduce memory pressure on mobile
   // browsers and prevent several large images from being decoded simultaneously.
   for (const item of inventory) {
     const result = await syncOneCloudImage(item.kind, item.id, item.storagePath, item.sourceUrl, !!opts.force);
+    const label = `${item.kind}:${item.id}`;
     if (result.ok) {
       local++;
-      if (result.downloaded) downloaded++;
-      else skipped++;
-    } else if (!result.skipped) failed++;
+      if (result.downloaded) {
+        downloaded++;
+        details.push({ kind: item.kind, id: item.id, status: 'downloaded', method: result.method || '' });
+      } else {
+        skipped++;
+        details.push({ kind: item.kind, id: item.id, status: 'already-local', method: '' });
+      }
+    } else if (!result.skipped) {
+      failed++;
+      details.push({ kind: item.kind, id: item.id, status: 'failed', error: result.errorMessage || 'Unknown error', attempts: result.attempts || [] });
+    } else {
+      details.push({ kind: item.kind, id: item.id, status: 'skipped', error: result.errorMessage || '' });
+    }
   }
 
   localStorage.setItem(LAST_IMAGE_SYNC_KEY, String(Date.now()));
-  return { total: inventory.length, local, downloaded, failed, skipped, repaired };
+  return { total: inventory.length, local, downloaded, failed, skipped, repaired, details };
 }
 
 function startBackgroundImageSync(token, uid, schoolId) {

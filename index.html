@@ -424,7 +424,7 @@
   <div class="about-box diagnostic-box">
     <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
     <h2 id="syncCenterTitle">Sync Center</h2>
-    <p class="about-version">Cloud ↔ browser synchronization via Firestore image manifest</p>
+    <p class="about-version">Cloud ↔ browser synchronization via Firestore image manifest + diagnostic recovery</p>
     <div class="about-details diagnostic-details">
       <div><span>Cloud images (manifest)</span><strong id="syncCloudImages">Checking…</strong></div>
       <div><span>Local images</span><strong id="syncLocalImages">Checking…</strong></div>
@@ -433,6 +433,7 @@
     </div>
     <div id="syncOverallState" class="diagnostic-state">Checking…</div>
     <p id="syncDetail" class="hint about-status"></p>
+    <pre id="syncDiagnostics" class="sync-diagnostics hidden" aria-live="polite"></pre>
     <p id="syncCenterActionStatus" class="hint about-status"></p>
     <div class="about-actions">
       <button type="button" id="syncCenterSyncBtn" class="btn-primary">Sync Everything</button>
