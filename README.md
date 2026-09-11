@@ -29,3 +29,12 @@ v34 image synchronization improvements:
 - Adds a 20-second timeout for direct image fetches to prevent a browser from appearing stuck.
 - Keeps Storage rules least-privilege and does not require Storage folder listing.
 - v30 session/logout protections and v31-v33 synchronization architecture are retained.
+
+
+## v36 - Transaction-safe local-first image uploads
+
+Image uploads are now local-first. The selected image is read and committed to IndexedDB before Firebase Storage is contacted. Cloud Storage and Firestore metadata are backup/synchronization operations and cannot prevent the local image from being used in the PWA or reports.
+
+Firebase Storage upload and download-URL generation are handled separately with retries. A transient `storage/object-not-found` while obtaining a download URL no longer discards a successful upload or the local image. Deterministic asset paths remain in use, so re-uploading an asset replaces the same cloud object.
+
+Student photo, staff signature, new staff signature, and school logo uploads all use the same local-first transaction pattern.

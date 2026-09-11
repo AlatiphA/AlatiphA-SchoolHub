@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v35';
+const APP_VERSION = 'v36';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -1050,42 +1050,49 @@ function loadSettingsForm() {
   else { wrap.classList.add('hidden'); }
 }
 
-document.getElementById('schoolLogo').addEventListener('change', e => {
+document.getElementById('schoolLogo').addEventListener('change', async e => {
   if (!requireHeadTeacher('upload the school logo')) return;
   const file = e.target.files[0];
   if (!file) return;
   const assetPath = schoolAssetPath(file, 'logos', 'school-logo');
-  Promise.all([uploadSchoolAsset(file, 'logos', 'school-logo'), fileToDataUrl(file)]).then(([url, dataUrl]) => {
+  try {
+    // v36: logo is cached locally before cloud backup.
+    const dataUrl = await fileToDataUrl(file);
+    if (!isDataImage(dataUrl)) throw new Error('The selected logo file is not a readable image.');
+    await cacheLocalImageWithMeta(imageCacheKey('logo', 'school'), dataUrl, {
+      storagePath: assetPath,
+      sourceUrl: '',
+      updatedAt: new Date().toISOString()
+    });
     const s = DB.get(KEYS.settings, {});
     s.logo = dataUrl;
-    s.logoUrl = url;
+    s.logoUrl = '';
     s.logoStoragePath = assetPath;
-    return cacheLocalImage(imageCacheKey('logo', 'school'), dataUrl).then(() => {
-      DB.set(KEYS.settings, s);
-      // Persist the authoritative logo reference in the cloud. The binary stays
-      // in Firebase Storage; Firestore stores only the URL/path metadata.
-      if (FIREBASE_ENABLED && currentSchoolId) {
-        return Promise.all([
-          schoolRef().set({
-            profile: {
-              logoUrl: url,
-              logoStoragePath: assetPath,
-              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            }
-          }, { merge: true }),
-          upsertImageManifest('logo', 'school', {
-            storagePath: assetPath,
-            sourceUrl: url,
-            storageUpdatedAt: new Date().toISOString()
-          })
-        ]);
-      }
-    });
-    /* cloud persistence is handled above */
-    /* DB.set is intentionally image-free in v23 */
-  }).then(() => {
+    DB.set(KEYS.settings, s);
     loadSettingsForm();
-  }).catch(err => alert('Could not upload the school logo: ' + err.message));
+    auditAction('update', 'settings-logo', 'school', 'Updated school logo');
+
+    try {
+      const url = await uploadSchoolAsset(file, 'logos', 'school-logo');
+      const latest = DB.get(KEYS.settings, {});
+      latest.logo = dataUrl;
+      latest.logoUrl = url || '';
+      latest.logoStoragePath = assetPath;
+      DB.set(KEYS.settings, latest);
+      if (FIREBASE_ENABLED && currentSchoolId) {
+        await schoolRef().set({ profile: { logoUrl: url || '', logoStoragePath: assetPath, updatedAt: firebase.firestore.FieldValue.serverTimestamp() } }, { merge: true });
+        await upsertImageManifest('logo', 'school', { storagePath: assetPath, sourceUrl: url || '', storageUpdatedAt: new Date().toISOString() });
+      }
+      loadSettingsForm();
+    } catch (cloudError) {
+      console.warn('School logo cloud backup pending:', cloudError);
+      alert(`School logo saved on this browser. Firebase backup is pending.\n\n${cloudError.message || cloudError}`);
+    }
+  } catch (err) {
+    alert('Could not save the school logo locally: ' + (err.message || err));
+  } finally {
+    e.target.value = '';
+  }
 });
 
 document.getElementById('removeLogo').addEventListener('click', () => {
@@ -1382,45 +1389,93 @@ function renderStudents() {
     btn.addEventListener('click', () => { editingStudentId = null; renderStudents(); });
   });
   list.querySelectorAll('.edit-student-photo-input').forEach(input => {
-    input.addEventListener('change', e => {
+    input.addEventListener('change', async e => {
       const file = e.target.files[0];
       if (!file) return;
       const students = DB.get(KEYS.students, []);
       const st = students.find(x => x.id === input.dataset.student);
       if (!st || !requireClassAccess(st.classId)) return;
+
       const assetPath = schoolAssetPath(file, 'student-photos', st.classId + '/' + st.id);
-      const oldUrl = st.photoUrl || '';
       const oldStoragePath = st.photoStoragePath || '';
-      Promise.all([uploadSchoolAsset(file, 'student-photos', st.classId + '/' + st.id), fileToDataUrl(file)]).then(([url, dataUrl]) => {
-        const currentStudents = DB.get(KEYS.students, []);
-        const current = currentStudents.find(x => x.id === input.dataset.student);
-        if (current) { current.photo = dataUrl; current.photoUrl = url; current.photoStoragePath = assetPath; }
-        return cacheLocalImage(imageCacheKey('student', st.id), dataUrl).then(() => {
-          DB.set(KEYS.students, currentStudents);
-          return studentRef(st.id).set({
-            photoUrl: url,
-            photoStoragePath: assetPath,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          }, { merge: true }).then(() => upsertImageManifest('student', st.id, {
-            classId: st.classId,
-            storagePath: assetPath,
-            sourceUrl: url,
-            storageUpdatedAt: new Date().toISOString()
-          })).then(() => {
-            // v32: deterministic paths are overwritten in place. Never delete
-            // oldUrl when it points to the same assetPath, because that would
-            // delete the newly uploaded replacement. Only remove a legacy
-            // object when its stored path is genuinely different.
-            if (oldUrl && oldStoragePath && oldStoragePath !== assetPath) {
-              return removeStoragePath(oldStoragePath).then(() => renderStudents());
-            }
-            if (oldUrl && !oldStoragePath && oldUrl !== url) {
-              return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStudents());
-            }
-            renderStudents();
-          });
+      const cacheKey = imageCacheKey('student', st.id);
+      const studentName = st.name || st.id;
+
+      // v36: LOCAL-FIRST TRANSACTION.
+      // The browser copy is the operational/reporting copy. Cloud upload is
+      // backup/synchronization and must never prevent the local image from
+      // being saved. This also prevents a transient Firebase getDownloadURL
+      // failure from producing a false upload failure.
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        if (!isDataImage(dataUrl)) throw new Error('The selected file is not a readable image.');
+
+        // 1. Persist the image locally FIRST.
+        await cacheLocalImageWithMeta(cacheKey, dataUrl, {
+          storagePath: assetPath,
+          sourceUrl: '',
+          updatedAt: new Date().toISOString()
         });
-      }).catch(err => alert('Could not upload the student photo: ' + err.message));
+
+        // 2. Update the lightweight local student record.
+        const currentStudents = DB.get(KEYS.students, []);
+        const current = currentStudents.find(x => x.id === st.id);
+        if (current) {
+          current.photo = dataUrl;
+          current.photoUrl = '';
+          current.photoStoragePath = assetPath;
+        }
+        DB.set(KEYS.students, currentStudents);
+        renderStudents();
+
+        // 3. Record the action immediately. Audit logging must not depend on
+        // Firebase Storage download-URL generation.
+        auditAction('update', 'student-photo', st.id, `Updated student photo: ${studentName}`);
+
+        // 4. Back up to Firebase Storage and publish metadata independently.
+        try {
+          const url = await uploadSchoolAsset(file, 'student-photos', st.classId + '/' + st.id);
+          const studentsAfterUpload = DB.get(KEYS.students, []);
+          const latest = studentsAfterUpload.find(x => x.id === st.id);
+          if (latest) {
+            latest.photo = dataUrl;
+            latest.photoUrl = url || '';
+            latest.photoStoragePath = assetPath;
+          }
+          DB.set(KEYS.students, studentsAfterUpload);
+
+          if (FIREBASE_ENABLED && currentSchoolId) {
+            await studentRef(st.id).set({
+              photoUrl: url || '',
+              photoStoragePath: assetPath,
+              updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            await upsertImageManifest('student', st.id, {
+              classId: st.classId,
+              storagePath: assetPath,
+              sourceUrl: url || '',
+              storageUpdatedAt: new Date().toISOString()
+            });
+          }
+
+          // Deterministic v21+ paths replace the same object. Remove only a
+          // genuinely different legacy object.
+          if (oldStoragePath && oldStoragePath !== assetPath) {
+            await removeStoragePath(oldStoragePath);
+          }
+
+          renderStudents();
+        } catch (cloudError) {
+          // Local copy is already safe. Do not undo it or overwrite it with a
+          // cloud URL. The next image sync/recovery can publish the local copy.
+          console.warn('Student photo cloud backup pending:', cloudError);
+          alert(`Student photo saved on this browser. Firebase backup is pending.\n\n${cloudError.message || cloudError}`);
+        }
+      } catch (err) {
+        alert('Could not save the student photo locally: ' + (err.message || err));
+      } finally {
+        input.value = '';
+      }
     });
   });
   list.querySelectorAll('.remove-student-photo').forEach(btn => {
@@ -1821,36 +1876,65 @@ function renderStaff() {
     btn.addEventListener('click', () => { editingStaffId = null; renderStaff(); });
   });
   list.querySelectorAll('.edit-staff-signature-input').forEach(input => {
-    input.addEventListener('change', e => {
+    input.addEventListener('change', async e => {
       const file = e.target.files[0];
       if (!file) return;
       const staffId = input.dataset.staff;
       const assetPath = schoolAssetPath(file, 'signatures', staffId);
       const existingStaff = DB.get(KEYS.staff, []).find(x => x.id === staffId);
-      const oldUrl = existingStaff ? (existingStaff.signatureUrl || '') : '';
       const oldStoragePath = existingStaff ? (existingStaff.signatureStoragePath || '') : '';
-      Promise.all([uploadSchoolAsset(file, 'signatures', staffId), fileToDataUrl(file)]).then(([url, dataUrl]) => {
+      const cacheKey = imageCacheKey('staff', staffId);
+
+      // v36: save locally before any Firebase operation.
+      try {
+        const dataUrl = await fileToDataUrl(file);
+        if (!isDataImage(dataUrl)) throw new Error('The selected file is not a readable image.');
+
+        await cacheLocalImageWithMeta(cacheKey, dataUrl, {
+          storagePath: assetPath,
+          sourceUrl: '',
+          updatedAt: new Date().toISOString()
+        });
+
         const staffList = DB.get(KEYS.staff, []);
         const st = staffList.find(x => x.id === staffId);
         if (!st) throw new Error('Staff record not found.');
         st.signature = dataUrl;
-        st.signatureUrl = url;
+        st.signatureUrl = '';
         st.signatureStoragePath = assetPath;
-        return cacheLocalImage(imageCacheKey('staff', staffId), dataUrl).then(() => {
-          DB.set(KEYS.staff, staffList);
-          return persistStaffSignature(staffId, url, assetPath).then(() => upsertImageManifest('staff', staffId, {
+        DB.set(KEYS.staff, staffList);
+        renderStaff();
+        auditAction('update', 'staff-signature', staffId, `Updated staff signature: ${st.name || staffId}`);
+
+        try {
+          const url = await uploadSchoolAsset(file, 'signatures', staffId);
+          const latestStaff = DB.get(KEYS.staff, []);
+          const latest = latestStaff.find(x => x.id === staffId);
+          if (latest) {
+            latest.signature = dataUrl;
+            latest.signatureUrl = url || '';
+            latest.signatureStoragePath = assetPath;
+          }
+          DB.set(KEYS.staff, latestStaff);
+
+          await persistStaffSignature(staffId, url || '', assetPath);
+          await upsertImageManifest('staff', staffId, {
             storagePath: assetPath,
-            sourceUrl: url,
+            sourceUrl: url || '',
             storageUpdatedAt: new Date().toISOString()
-          }));
-        });
-      }).then(() => {
-        // Deterministic v21+ signatures are overwritten in place. Only delete
-        // an older object when its stored path is different from the new path.
-        if (oldStoragePath && oldStoragePath !== assetPath) return removeStoragePath(oldStoragePath).then(() => renderStaff());
-        if (!oldStoragePath && oldUrl) return removeStorageFile(oldUrl).catch(() => {}).then(() => renderStaff());
-        renderStaff(); // stays in edit mode — editingStaffId is untouched
-      }).catch(err => alert('Could not save the signature: ' + err.message));
+          });
+
+          if (oldStoragePath && oldStoragePath !== assetPath) await removeStoragePath(oldStoragePath);
+          renderStaff();
+        } catch (cloudError) {
+          console.warn('Staff signature cloud backup pending:', cloudError);
+          alert(`Signature saved on this browser. Firebase backup is pending.\n\n${cloudError.message || cloudError}`);
+        }
+      } catch (err) {
+        alert('Could not save the signature locally: ' + (err.message || err));
+      } finally {
+        input.value = '';
+      }
     });
   });
   list.querySelectorAll('.remove-staff-signature').forEach(btn => {
@@ -1908,7 +1992,7 @@ function renderStaff() {
   });
 }
 
-document.getElementById('addStaffBtn').addEventListener('click', () => {
+document.getElementById('addStaffBtn').addEventListener('click', async () => {
   if (!requireHeadTeacher('manage staff')) return;
   const nameInput = document.getElementById('newStaffName');
   const name = nameInput.value.trim();
@@ -1920,43 +2004,61 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
 
   const staffId = uid();
   const signaturePath = file ? schoolAssetPath(file, 'signatures', staffId) : '';
-  const commit = signatureDataUrl => {
+  let signatureDataUrl = '';
+  let signatureUrl = '';
+
+  try {
+    // v36: read/cache the signature before touching Firebase.
+    if (file) {
+      signatureDataUrl = await fileToDataUrl(file);
+      if (!isDataImage(signatureDataUrl)) throw new Error('The selected signature file is not a readable image.');
+      await cacheLocalImageWithMeta(imageCacheKey('staff', staffId), signatureDataUrl, {
+        storagePath: signaturePath,
+        sourceUrl: '',
+        updatedAt: new Date().toISOString()
+      });
+    }
+
     const staffList = DB.get(KEYS.staff, []);
     const record = Object.assign({
       id: staffId,
       name,
       role,
-      signature: signatureDataUrl || '',
+      signature: signatureDataUrl,
       signatureUrl: '',
       signatureStoragePath: signaturePath
     }, values);
     staffList.push(record);
     DB.set(KEYS.staff, staffList);
+    renderStaff();
     auditAction('create', 'staff', record.id, `Added staff: ${record.name}`);
-    const cloudSave = Promise.resolve();
-    return cloudSave.then(() => {
-      nameInput.value = '';
-      STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; });
-      document.getElementById('newStaffSignature').value = '';
-      renderStaff();
-    });
-  };
 
-  if (file) {
-    Promise.all([uploadSchoolAsset(file, 'signatures', staffId), fileToDataUrl(file)])
-      .then(([url, dataUrl]) => {
-        return cacheLocalImage(imageCacheKey('staff', staffId), dataUrl)
-          .then(() => commit(dataUrl))
-          .then(() => persistStaffSignature(staffId, url, signaturePath))
-          .then(() => upsertImageManifest('staff', staffId, {
-            storagePath: signaturePath,
-            sourceUrl: url,
-            storageUpdatedAt: new Date().toISOString()
-          }));
-      })
-      .catch(err => alert('Could not upload the signature: ' + err.message));
-  } else {
-    commit('').catch(err => alert('Could not save the staff member: ' + err.message));
+    // Clear the form immediately after the local transaction succeeds.
+    nameInput.value = '';
+    STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; });
+    document.getElementById('newStaffSignature').value = '';
+
+    if (file) {
+      try {
+        signatureUrl = await uploadSchoolAsset(file, 'signatures', staffId);
+        const latestStaff = DB.get(KEYS.staff, []);
+        const latest = latestStaff.find(x => x.id === staffId);
+        if (latest) latest.signatureUrl = signatureUrl || '';
+        DB.set(KEYS.staff, latestStaff);
+        await persistStaffSignature(staffId, signatureUrl || '', signaturePath);
+        await upsertImageManifest('staff', staffId, {
+          storagePath: signaturePath,
+          sourceUrl: signatureUrl || '',
+          storageUpdatedAt: new Date().toISOString()
+        });
+      } catch (cloudError) {
+        console.warn('New staff signature cloud backup pending:', cloudError);
+        alert(`Staff member saved locally. Signature Firebase backup is pending.\n\n${cloudError.message || cloudError}`);
+      }
+    }
+    renderStaff();
+  } catch (err) {
+    alert('Could not save the staff member: ' + (err.message || err));
   }
 });
 
@@ -4332,11 +4434,41 @@ function getLastImageSyncText() {
   return raw ? new Date(Number(raw)).toLocaleString() : 'never';
 }
 
-function uploadSchoolAsset(file, kind, id) {
-  if (!FIREBASE_ENABLED || !currentSchoolId || !file) return Promise.resolve('');
+async function uploadSchoolAsset(file, kind, id) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !file) return '';
   const path = schoolAssetPath(file, kind, id);
-  return storageRef(path).put(file, { contentType: file.type || 'application/octet-stream' })
-    .then(snapshot => snapshot.ref.getDownloadURL());
+  if (!path) throw new Error('Could not determine the Firebase Storage path.');
+
+  const ref = storageRef(path);
+  let lastError = null;
+
+  // v36: upload and download-URL generation are separate operations. A
+  // successful Storage PUT must not be reported as a failed image upload just
+  // because getDownloadURL briefly returns object-not-found on mobile.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await ref.put(file, { contentType: file.type || 'application/octet-stream' });
+      break;
+    } catch (e) {
+      lastError = e;
+      if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 500));
+    }
+  }
+  if (lastError) throw lastError;
+
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      return await ref.getDownloadURL();
+    } catch (e) {
+      lastError = e;
+      if (attempt < 4) await new Promise(r => setTimeout(r, attempt * 700));
+    }
+  }
+
+  // The object is already in Storage. Return an empty URL and let Firestore
+  // keep the deterministic storagePath. Future sync can request a fresh URL.
+  console.warn('Storage upload succeeded but download URL is temporarily unavailable:', path, lastError);
+  return '';
 }
 
 function persistStaffSignature(staffId, url, storagePath) {
