@@ -601,3 +601,10 @@ html.disabledAccess #disabledGate{
 
 /* v34 image synchronization diagnostics */
 .sync-diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;background:color-mix(in srgb,var(--rule) 35%,transparent);border:1px solid var(--rule);border-radius:8px;padding:10px;margin:8px 0 14px;font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--text);max-height:220px;overflow:auto;}
+
+
+/* v35 Activity Log */
+.activity-item{display:flex;align-items:flex-start;gap:10px;}
+.activity-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--surface-alt);font-weight:700;flex:0 0 26px;}
+.activity-item strong{font-size:14px;}
+.activity-item .meta{line-height:1.45;}

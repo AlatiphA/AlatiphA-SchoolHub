@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v34';
+const APP_VERSION = 'v35';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -230,8 +230,58 @@ const KEYS = {
   get students() { return ns('arc_students'); },
   get grades() { return ns('arc_grades'); },
   get remarks() { return ns('arc_remarks'); },
-  get staff() { return ns('arc_staff'); }
+  get staff() { return ns('arc_staff'); },
+  get activity() { return ns('arc_activity'); }
 };
+
+/* ---------- audit trail / activity log ---------- */
+const AUDIT_MAX_LOCAL = 100;
+function auditActor() {
+  const u = FIREBASE_ENABLED && firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser : null;
+  return { uid: currentUid || (u && u.uid) || 'local', email: (u && u.email) || '', name: String((currentUserData && (currentUserData.displayName || currentUserData.name)) || '').trim(), role: currentRole || 'guest' };
+}
+function auditLocal(action, entity, entityId, summary) {
+  try {
+    const items = DB.get(KEYS.activity, []); const actor = auditActor();
+    items.unshift({ id: uid(), at: new Date().toISOString(), action, entity, entityId: entityId || '', summary: summary || '', actor });
+    DB.set(KEYS.activity, items.slice(0, AUDIT_MAX_LOCAL));
+  } catch (e) { console.warn('Could not save local activity:', e); }
+}
+function auditAction(action, entity, entityId, summary) {
+  if (!sessionReady && FIREBASE_ENABLED) return Promise.resolve();
+  auditLocal(action, entity, entityId, summary);
+  if (!FIREBASE_ENABLED || !currentSchoolId || !firebase.firestore) return Promise.resolve();
+  const actor = auditActor();
+  return schoolRef().collection('activity').add({ uid: actor.uid, email: actor.email, actorName: actor.name, role: actor.role, action: String(action || ''), entity: String(entity || ''), entityId: String(entityId || ''), summary: String(summary || '').slice(0, 300), createdAt: firebase.firestore.FieldValue.serverTimestamp() }).catch(err => console.warn('Activity log write failed:', err));
+}
+function formatActivityTime(value) {
+  const d = value && value.toDate ? value.toDate() : new Date(value || 0);
+  return isNaN(d.getTime()) ? '—' : d.toLocaleString();
+}
+function activityIcon(action) { if (/delete|remove|reject|disable/i.test(action)) return '✕'; if (/create|add|approve/i.test(action)) return '+'; if (/login|logout/i.test(action)) return '↪'; return '✓'; }
+function renderActivityRows(rows) {
+  const list = document.getElementById('activityLogList'); if (!list) return;
+  if (!rows.length) { list.innerHTML = '<li class="empty">No activity has been recorded yet.</li>'; return; }
+  list.innerHTML = rows.map(r => { const actor = r.actorName || r.email || r.actor?.name || r.actor?.email || r.role || 'User'; return `<li class="activity-item"><span class="activity-icon">${activityIcon(r.action)}</span><div><strong>${escapeHtml(r.summary || `${r.action || 'Activity'} · ${r.entity || ''}`)}</strong><div class="meta">${escapeHtml(actor)} · ${escapeHtml(r.role || r.actor?.role || '')} · ${escapeHtml(formatActivityTime(r.createdAt || r.at))}</div></div></li>`; }).join('');
+}
+async function loadActivityLog() {
+  const list = document.getElementById('activityLogList'), status = document.getElementById('activityLogStatus'); if (!list) return;
+  list.innerHTML = '<li class="empty">Loading activity…</li>';
+  try {
+    if (FIREBASE_ENABLED && currentSchoolId && firebase.firestore) {
+      let q = schoolRef().collection('activity');
+      if (!isHeadTeacher()) q = q.where('uid', '==', currentUid);
+      q = q.limit(100);
+      const snap = await q.get(); const rows=[]; snap.forEach(doc => rows.push(Object.assign({id:doc.id}, doc.data())));
+      rows.sort((a,b) => { const da = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : new Date(a.at || 0).getTime(); const db = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : new Date(b.at || 0).getTime(); return db - da; });
+      renderActivityRows(rows); if (status) status.textContent = `${rows.length} cloud activities shown.`;
+    } else {
+      const rows = DB.get(KEYS.activity, []).slice(0,100); renderActivityRows(rows); if (status) status.textContent = `${rows.length} local activities shown.`;
+    }
+  } catch (e) {
+    const rows = DB.get(KEYS.activity, []).slice(0,100); renderActivityRows(rows); if (status) status.textContent = `Cloud activity unavailable. Showing ${rows.length} local activities.`;
+  }
+}
 
 const DEFAULT_SUBJECTS = [
   'English Language','Mathematics','Science','History',
@@ -317,7 +367,7 @@ function ordinal(n) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'grades', 'remarks', 'reports', 'history', 'manage-teachers'];
+const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'grades', 'remarks', 'reports', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
   // Never render role-sensitive views while an authenticated session is still
   // being resolved. Guest mode explicitly marks itself ready before calling
@@ -359,6 +409,7 @@ function showView(name) {
   if (name === 'reports') renderReportsClassSelect();
   if (name === 'history') renderHistoryTermYearSelect();
   if (name === 'manage-teachers') renderManageTeachers();
+  if (name === 'activity') loadActivityLog();
   renderClasses();
   renderStudents();
   renderSubjects();
@@ -375,7 +426,7 @@ function sectionTitle(name) {
   const titles = {
     setup: 'Setup', staff: 'Staff', classes: 'Classes', students: 'Students', subjects: 'Subjects',
     grades: 'Grades', remarks: 'Remarks', reports: 'Reports', history: 'Term History',
-    'manage-teachers': 'Manage Teachers'
+    'manage-teachers': 'Manage Teachers', activity: 'Activity Log'
   };
   return titles[name] || 'AlatiphA SchoolHub';
 }
@@ -402,6 +453,8 @@ const QUICK_ACCESS_CARDS = [
     icon: '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>' },
   { view: 'reports', title: 'Reports', description: 'Generate PDFs, CSV, and view statistics',
     icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="9" y2="17"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="15" y1="15" x2="15" y2="17"/>' },
+  { view: 'activity', title: 'Activity Log', description: 'See who changed school data and when',
+    icon: '<path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h6M8 17h4"/>' },
   { view: 'history', title: 'Term History', description: 'Browse and export past terms',
     icon: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/>' }
 ];
@@ -1067,6 +1120,7 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   s.reportLayout = document.getElementById('reportLayout').value;
   s.headTeacherId = document.getElementById('headTeacherSelect').value;
   DB.set(KEYS.settings, s);
+  auditAction('update', 'settings', 'school', 'Updated school and report settings');
   alert('Settings saved. School name on report: ' + (s.schoolName || '(not set)'));
 });
 
@@ -1127,6 +1181,7 @@ document.getElementById('importBackupInput').addEventListener('change', e => {
     if (d.grades) DB.set(KEYS.grades, d.grades);
     if (d.remarks) DB.set(KEYS.remarks, d.remarks);
     if (d.staff) DB.set(KEYS.staff, d.staff);
+    auditAction('restore', 'backup', 'local', 'Restored a local backup');
     alert('Backup restored. The app will now reload.');
     location.reload();
   };
@@ -1198,6 +1253,7 @@ function renderClasses() {
       const c = classes.find(x => x.id === btn.dataset.id);
       if (c) { c.name = name; c.classTeacherId = classTeacherId; }
       DB.set(KEYS.classes, classes);
+      auditAction('update', 'class', c ? c.id : btn.dataset.id, `Updated class: ${name}`);
       editingClassId = null;
       renderClasses();
     });
@@ -1207,6 +1263,7 @@ function renderClasses() {
       if (!confirm('Delete this class and its students/grades?')) return;
       const id = btn.dataset.id;
       DB.set(KEYS.classes, DB.get(KEYS.classes, []).filter(c => c.id !== id));
+      auditAction('delete', 'class', id, 'Deleted class and its academic records');
       DB.set(KEYS.students, DB.get(KEYS.students, []).filter(s => s.classId !== id));
       const grades = DB.get(KEYS.grades, {});
       Object.keys(grades).forEach(k => { if (k.startsWith(id + '__')) delete grades[k]; });
@@ -1228,6 +1285,7 @@ document.getElementById('addClassBtn').addEventListener('click', () => {
   const classes = DB.get(KEYS.classes, []);
   classes.push({ id: uid(), name, classTeacherId });
   DB.set(KEYS.classes, classes);
+  auditAction('create', 'class', classes[classes.length - 1].id, `Created class: ${name}`);
   input.value = '';
   renderClasses();
 });
@@ -1389,6 +1447,7 @@ function renderStudents() {
       const st = students.find(x => x.id === btn.dataset.id);
       if (st) { st.name = name; st.admissionId = admissionId; st.parentPhone = parentPhone; st.gender = gender; }
       DB.set(KEYS.students, students);
+      auditAction('update', 'student', st ? st.id : btn.dataset.id, `Updated student: ${st ? st.name : ''}`);
       editingStudentId = null;
       renderStudents();
       renderClasses();
@@ -1399,6 +1458,7 @@ function renderStudents() {
       if (!confirm('Delete this student and their grades?')) return;
       const id = btn.dataset.id;
       DB.set(KEYS.students, DB.get(KEYS.students, []).filter(s => s.id !== id));
+      auditAction('delete', 'student', id, `Deleted student: ${id}`);
       const grades = DB.get(KEYS.grades, {});
       Object.keys(grades).forEach(k => { if (grades[k][id]) delete grades[k][id]; });
       DB.set(KEYS.grades, grades);
@@ -1527,6 +1587,7 @@ function moveSubjectByStep(subjectId, direction) {
   subjects[target] = temp;
   subjects.forEach((sub, i) => { sub.order = i; });
   DB.set(KEYS.subjects, subjects);
+  auditAction('update', 'subject-order', subjectId, 'Reordered subjects');
   renderSubjects();
 }
 
@@ -1626,6 +1687,7 @@ function renderSubjects() {
       const sub = subjects.find(x => x.id === btn.dataset.id);
       if (sub) sub.name = name;
       DB.set(KEYS.subjects, subjects);
+      auditAction('update', 'subject', sub ? sub.id : btn.dataset.id, `Updated subject: ${sub ? sub.name : ''}`);
       editingSubjectId = null;
       renderSubjects();
     });
@@ -1823,6 +1885,7 @@ function renderStaff() {
         STAFF_FIELDS.forEach(f => { st[f.key] = li.querySelector(`.edit-staff-${f.key}`).value.trim(); });
       }
       DB.set(KEYS.staff, staffList);
+      auditAction('update', 'staff', st ? st.id : btn.dataset.id, `Updated staff: ${st ? st.name : ''}`);
       editingStaffId = null;
       renderStaff();
       renderClasses(); // class list "Class Teacher:" meta may reference this name
@@ -1833,6 +1896,7 @@ function renderStaff() {
       if (!confirm('Delete this staff member? Any class or Head Teacher signature assignment referencing them will be cleared.')) return;
       const id = btn.dataset.id;
       DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== id));
+      auditAction('delete', 'staff', id, 'Deleted staff record');
       const classes = DB.get(KEYS.classes, []);
       classes.forEach(c => { if (c.classTeacherId === id) c.classTeacherId = ''; });
       DB.set(KEYS.classes, classes);
@@ -1868,6 +1932,7 @@ document.getElementById('addStaffBtn').addEventListener('click', () => {
     }, values);
     staffList.push(record);
     DB.set(KEYS.staff, staffList);
+    auditAction('create', 'staff', record.id, `Added staff: ${record.name}`);
     const cloudSave = Promise.resolve();
     return cloudSave.then(() => {
       nameInput.value = '';
@@ -1987,6 +2052,7 @@ document.getElementById('saveGradesBtn').addEventListener('click', () => {
   });
   allGrades[key] = classGrades;
   DB.set(KEYS.grades, allGrades);
+  auditAction('update', 'grades', key, `Saved grades for ${settings.currentTerm}, ${settings.currentYear}`);
   alert('Grades saved.');
 });
 
@@ -2205,6 +2271,7 @@ document.getElementById('saveRemarksBtn').addEventListener('click', () => {
   });
   allRemarks[key] = classRemarks;
   DB.set(KEYS.remarks, allRemarks);
+  auditAction('update', 'remarks', key, `Saved remarks for ${settings.currentTerm}, ${settings.currentYear}`);
   alert('Remarks saved.');
 });
 
@@ -2746,6 +2813,7 @@ document.getElementById('startNewTermBtn').addEventListener('click', () => {
   s.currentTerm = newTerm;
   s.currentYear = newYear;
   DB.set(KEYS.settings, s);
+  auditAction('update', 'term', `${newTerm}__${newYear}`, `Started new term: ${newTerm}, ${newYear}`);
   loadSettingsForm();
   document.getElementById('newTermYearInput').value = '';
   renderHistoryTermYearSelect();
@@ -5199,6 +5267,7 @@ function renderManageTeachers() {
             assignmentsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
           });
         }).then(() => {
+          auditAction('update', 'teacher', member.uid, `Updated teacher access and assignments: ${member.email || member.uid}`);
           return pullCloudData();
         }).then(() => {
           renderManageTeachers();
@@ -5253,7 +5322,7 @@ function renderManageTeachers() {
       btn.addEventListener('click', () => {
         if (!confirm('Disable this teacher? Their Staff record and school data will remain safe, but account access will be blocked.')) return;
         firebase.firestore().collection('users').doc(btn.dataset.uid).update({ status: 'disabled' })
-          .then(() => renderManageTeachers())
+          .then(() => { auditAction('disable', 'teacher', btn.dataset.uid, `Disabled teacher: ${btn.dataset.uid}`); return renderManageTeachers(); })
           .catch(err => alert('Could not disable teacher: ' + err.message));
       });
     });

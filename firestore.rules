@@ -162,6 +162,17 @@ service cloud.firestore {
         allow create, update, delete: if isHeadTeacher(schoolId);
       }
 
+      // v35: school activity/audit log. Head Teachers can read the whole
+      // school's log. Active teachers can read only their own actions.
+      match /activity/{activityId} {
+        allow read: if isHeadTeacher(schoolId)
+          || (isActiveTeacher(schoolId) && resource.data.uid == request.auth.uid);
+        allow create: if (isHeadTeacher(schoolId) || isActiveTeacher(schoolId))
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.role == myUser().role;
+        allow update, delete: if false;
+      }
+
       // v32: Firestore image manifest. Storage contains the binary files; this
       // collection tells each browser exactly which cloud asset belongs to a
       // school record. Teachers may manage manifests only for student photos
