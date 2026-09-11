@@ -46,3 +46,10 @@ Adds daily class attendance with Present/Absent/Late status, term summaries, aut
 
 ## v38 — Staff & Student Attendance
 Adds a Head Teacher-only Teacher Attendance panel under Attendance, with Present, Absent, Late, Excused, and On Leave statuses, local-first storage, Firestore synchronization, backup/restore support, and activity logging. Student attendance remains available to teachers and Head Teachers.
+
+
+## v38.1 Attendance UI refinement
+- Attendance Students/Teachers tabs now use theme-safe high-contrast active styling.
+- Student attendance now shows Present, Late, Total, and Absent. Total = Present + Late.
+- Teacher attendance now shows Present, Late, Total, Absent, Excused, and On Leave. Total = Present + Late.
+- Student report-card attendance continues to use Total attendance days, so Late counts as an attended day.

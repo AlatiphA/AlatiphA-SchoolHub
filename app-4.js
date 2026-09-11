@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38';
+const APP_VERSION = 'v38.1';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2106,7 +2106,7 @@ function attendanceSummary(classId, term, year) {
   const students = getAccessibleStudents().filter(s => s.classId === classId);
   const records = attendanceRecordsForTerm(classId, term, year);
   const summary = {};
-  students.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, recorded: 0 });
+  students.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, total: 0, recorded: 0 });
   records.forEach(({ record }) => {
     const entries = record.entries || record;
     students.forEach(st => {
@@ -2114,8 +2114,9 @@ function attendanceSummary(classId, term, year) {
       if (!status) return;
       summary[st.id].recorded++;
       if (status === 'P') summary[st.id].present++;
-      else if (status === 'L') { summary[st.id].late++; summary[st.id].present++; }
+      else if (status === 'L') summary[st.id].late++;
       else if (status === 'A') summary[st.id].absent++;
+      summary[st.id].total = summary[st.id].present + summary[st.id].late;
     });
   });
   return { records, summary };
@@ -2133,7 +2134,7 @@ function teacherAttendanceSummary(term, year) {
   const staff = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
   const records = teacherAttendanceRecordsForTerm(term, year);
   const summary = {};
-  staff.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, excused: 0, leave: 0, recorded: 0 });
+  staff.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, total: 0, excused: 0, leave: 0, recorded: 0 });
   records.forEach(({ record }) => {
     const entries = record.entries || record;
     staff.forEach(st => {
@@ -2141,10 +2142,11 @@ function teacherAttendanceSummary(term, year) {
       if (!status) return;
       summary[st.id].recorded++;
       if (status === 'P') summary[st.id].present++;
-      else if (status === 'L') { summary[st.id].late++; summary[st.id].present++; }
+      else if (status === 'L') summary[st.id].late++;
       else if (status === 'A') summary[st.id].absent++;
       else if (status === 'E') summary[st.id].excused++;
       else if (status === 'O') summary[st.id].leave++;
+      summary[st.id].total = summary[st.id].present + summary[st.id].late;
     });
   });
   return { records, summary };
@@ -2203,16 +2205,16 @@ function renderAttendanceForm() {
   const summary = attendanceSummary(classId, settings.currentTerm, settings.currentYear).summary;
 
   let html = `<div class="attendance-toolbar"><button type="button" id="attendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="attendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
-  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Student</th><th>Status</th><th>Term Present</th><th>Absent</th><th>Late</th></tr></thead><tbody>';
+  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Student</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th></tr></thead><tbody>';
   students.forEach(st => {
     const status = String(entries[st.id] || '').toUpperCase();
-    const sm = summary[st.id] || { present: 0, absent: 0, late: 0 };
+    const sm = summary[st.id] || { present: 0, absent: 0, late: 0, total: 0 };
     html += `<tr><td class="name-col">${escapeHtml(st.name)}</td><td><select class="attendance-status" data-student="${st.id}">
       <option value="" ${!status ? 'selected' : ''}>— Not marked —</option>
       <option value="P" ${status === 'P' ? 'selected' : ''}>Present</option>
       <option value="A" ${status === 'A' ? 'selected' : ''}>Absent</option>
       <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
-    </select></td><td>${sm.present}</td><td>${sm.absent}</td><td>${sm.late}</td></tr>`;
+    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td></tr>`;
   });
   html += '</tbody></table></div>';
   html += `<p class="hint">${attendanceRecordsForTerm(classId, settings.currentTerm, settings.currentYear).length} attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}.</p>`;
@@ -2236,10 +2238,10 @@ function renderTeacherAttendanceForm() {
   const entries = record.entries || record;
   const summary = teacherAttendanceSummary(settings.currentTerm, settings.currentYear).summary;
   let html = `<div class="attendance-toolbar"><button type="button" id="teacherAttendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="teacherAttendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
-  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Absent</th><th>Late</th><th>Excused</th><th>Leave</th></tr></thead><tbody>';
+  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th></tr></thead><tbody>';
   teachers.forEach(st => {
     const status = String(entries[st.id] || '').toUpperCase();
-    const sm = summary[st.id] || { present: 0, absent: 0, late: 0, excused: 0, leave: 0 };
+    const sm = summary[st.id] || { present: 0, absent: 0, late: 0, total: 0, excused: 0, leave: 0 };
     html += `<tr><td class="name-col">${escapeHtml(st.name)}</td><td><select class="teacher-attendance-status" data-staff="${st.id}">
       <option value="" ${!status ? 'selected' : ''}>— Not marked —</option>
       <option value="P" ${status === 'P' ? 'selected' : ''}>Present</option>
@@ -2247,7 +2249,7 @@ function renderTeacherAttendanceForm() {
       <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
       <option value="E" ${status === 'E' ? 'selected' : ''}>Excused</option>
       <option value="O" ${status === 'O' ? 'selected' : ''}>On Leave</option>
-    </select></td><td>${sm.present}</td><td>${sm.absent}</td><td>${sm.late}</td><td>${sm.excused}</td><td>${sm.leave}</td></tr>`;
+    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td></tr>`;
   });
   html += '</tbody></table></div>';
   html += `<p class="hint">${teacherAttendanceRecordsForTerm(settings.currentTerm, settings.currentYear).length} teacher attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}.</p>`;
@@ -2281,7 +2283,7 @@ document.getElementById('saveAttendanceBtn').addEventListener('click', () => {
   const classRemarks = remarksAll[remarkKey] || {};
   Object.keys(summary).forEach(studentId => {
     if (!classRemarks[studentId]) classRemarks[studentId] = {};
-    classRemarks[studentId].attendance = summary[studentId].present;
+    classRemarks[studentId].attendance = summary[studentId].total;
   });
   remarksAll[remarkKey] = classRemarks;
   DB.set(KEYS.remarks, remarksAll);
