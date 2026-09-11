@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v25';
+const APP_VERSION = 'v26';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -42,7 +42,66 @@ let currentStatus = null; // 'active' | 'pending'
 let currentAssignedClassIds = [];
 let currentAssignedSubjectIds = [];
 let currentUserData = null;
+
+// Session isolation: every authentication transition receives a new token.
+// Any asynchronous work started by a previous user must stop using its data
+// once the token changes. This prevents stale Firestore responses from
+// repainting or overwriting the next user's workspace.
+let sessionGeneration = 0;
+let sessionReady = false;
+
 function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}` : base; }
+
+function isCurrentSession(token, uid, schoolId) {
+  return token === sessionGeneration
+    && currentUid === uid
+    && (schoolId == null || currentSchoolId === schoolId);
+}
+
+function resetWorkspaceState() {
+  currentUid = null;
+  currentSchoolId = null;
+  currentRole = null;
+  currentStatus = null;
+  currentAssignedClassIds = [];
+  currentAssignedSubjectIds = [];
+  currentUserData = null;
+  sessionReady = false;
+
+  // Remove any stale rendered content immediately. Local/cloud records are
+  // deliberately NOT deleted here because they belong to their school
+  // namespace and may be reused after that same school logs in again.
+  try {
+    const ids = ['quickAccessList', 'classList', 'studentList', 'subjectList', 'staffList', 'statsSummary'];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+  } catch (e) {}
+}
+
+function beginSessionTransition() {
+  sessionGeneration += 1;
+  resetWorkspaceState();
+  showSyncingMessage();
+  showAuthGate();
+  return sessionGeneration;
+}
+
+async function signOutAndReset() {
+  // Invalidate the old session BEFORE Firebase signOut completes. This is
+  // essential because Firestore promises may still be resolving in the
+  // background when the user presses Logout.
+  beginSessionTransition();
+  try {
+    await firebase.auth().signOut();
+  } catch (err) {
+    hideSyncingMessage();
+    renderAuthForm();
+    showAuthGate();
+    setAuthError('Could not sign out: ' + err.message);
+  }
+}
 function isHeadTeacher() {
   return currentRole === 'headteacher' && currentStatus === 'active';
 }
@@ -236,6 +295,10 @@ function ordinal(n) {
 /* ---------- view switching ---------- */
 const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'grades', 'remarks', 'reports', 'history', 'manage-teachers'];
 function showView(name) {
+  // Never render role-sensitive views while an authenticated session is still
+  // being resolved. Guest mode explicitly marks itself ready before calling
+  // proceedToApp().
+  if (FIREBASE_ENABLED && !sessionReady) return;
   if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'manage-teachers'].indexOf(name) !== -1) {
     name = 'home';
   }
@@ -3596,8 +3659,13 @@ function pullRemarksForAccess(all, classIds) {
   });
 }
 
-function pullCloudData() {
+function pullCloudData(sessionToken) {
   if (!FIREBASE_ENABLED || !currentSchoolId) return Promise.resolve();
+  const token = sessionToken == null ? sessionGeneration : sessionToken;
+  const uid = currentUid;
+  const schoolId = currentSchoolId;
+  const valid = () => isCurrentSession(token, uid, schoolId);
+  if (!valid()) return Promise.resolve();
 
   return migrateLegacyImageLocalStorage()
     .then(() => migrateInlineImagesFromLocalRecords())
@@ -3616,6 +3684,7 @@ function pullCloudData() {
       pullGradesForAccess(all, classIds),
       pullRemarksForAccess(all, classIds)
     ]).then(async results => {
+      if (!valid()) return;
       const schoolDoc = results[0];
       const classSnap = results[1];
       const subjectSnap = results[2];
@@ -3666,8 +3735,11 @@ function pullCloudData() {
 
       // Reconcile the browser's IndexedDB image cache with cloud metadata.
       // This is the authoritative image sync step. Reports remain local-first.
+      if (!valid()) return;
       await syncImagesFromCloud();
+      if (!valid()) return;
       await hydrateLocalImageCaches(schoolProfile, students, staff);
+      if (!valid()) return;
 
       const grades = {};
       gradeSnap.forEach(d => {
@@ -3684,6 +3756,7 @@ function pullCloudData() {
         if (all || classIds.has(classId)) remarks[key] = (d.data() || {}).entries || {};
       });
       DB.set(KEYS.remarks, remarks);
+      if (!valid()) return;
       setLastSyncedNow();
     });
   });
@@ -4454,16 +4527,25 @@ function initAuth() {
   });
 
   document.getElementById('authGuestBtn').addEventListener('click', () => {
+    sessionGeneration += 1;
     localStorage.setItem(GUEST_MODE_KEY, '1');
+    currentUid = null;
+    currentSchoolId = null;
+    currentRole = null;
+    currentStatus = null;
+    currentUserData = null;
+    currentAssignedClassIds = [];
+    currentAssignedSubjectIds = [];
+    sessionReady = true;
     hideAuthGate();
     initLockScreen();
     proceedToApp();
   });
 
-  document.getElementById('logoutBtn').addEventListener('click', () => firebase.auth().signOut());
-  document.getElementById('schoolChoiceLogoutBtn').addEventListener('click', () => firebase.auth().signOut());
-  document.getElementById('pendingLogoutBtn').addEventListener('click', () => firebase.auth().signOut());
-  document.getElementById('disabledLogoutBtn').addEventListener('click', () => firebase.auth().signOut());
+  document.getElementById('logoutBtn').addEventListener('click', signOutAndReset);
+  document.getElementById('schoolChoiceLogoutBtn').addEventListener('click', signOutAndReset);
+  document.getElementById('pendingLogoutBtn').addEventListener('click', signOutAndReset);
+  document.getElementById('disabledLogoutBtn').addEventListener('click', signOutAndReset);
 
   let appStarted = false;
 
@@ -4498,18 +4580,25 @@ function initAuth() {
   });
 
   firebase.auth().onAuthStateChanged(user => {
+    const token = ++sessionGeneration;
+
     if (user) {
       currentUid = user.uid;
+      currentSchoolId = null;
+      currentRole = null;
+      currentStatus = null;
+      currentAssignedClassIds = [];
+      currentAssignedSubjectIds = [];
+      currentUserData = null;
+      sessionReady = false;
       localStorage.removeItem(GUEST_MODE_KEY);
       showSyncingMessage();
       showAuthGate();
+
       firebase.firestore().collection('users').doc(currentUid).get().then(userDoc => {
+        if (!isCurrentSession(token, user.uid, null)) return;
         const data = userDoc.exists ? userDoc.data() : null;
         currentUserData = data || null;
-        // Keep the account directory useful to the Head Teacher. Firebase Auth
-        // knows the signed-in user's email, while Firestore stores the school
-        // membership record. Older accounts created before v17 may not have
-        // email/displayName in users/{uid}; repair those fields from Auth.
         const authProfileUpdates = {};
         if (data && data.schoolId && firebase.auth().currentUser) {
           const authUser = firebase.auth().currentUser;
@@ -4535,9 +4624,6 @@ function initAuth() {
           return;
         }
         if (data.status !== 'active') {
-          // Disabled, or any other non-active status — never treat as
-          // active by default. This is what a Head Teacher disabling a
-          // teacher actually blocks.
           currentSchoolId = null; currentRole = data.role; currentStatus = data.status || 'disabled';
           hideSyncingMessage(); hideAuthGate(); hidePendingGate();
           showDisabledGate();
@@ -4547,22 +4633,34 @@ function initAuth() {
         currentSchoolId = data.schoolId;
         currentRole = data.role;
         currentStatus = 'active';
-        return pullCloudData().then(() => {
+
+        return repairAccountProfile.then(() => {
+          if (!isCurrentSession(token, user.uid, data.schoolId)) return;
+          return pullCloudData(token);
+        }).then(() => {
+          if (!isCurrentSession(token, user.uid, data.schoolId)) return;
+          sessionReady = true;
           hideSyncingMessage(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
           initLockScreen();
           if (!appStarted) { appStarted = true; proceedToApp(); }
-          else { refreshProfileMenu(); renderClasses(); renderStudents(); renderSubjects(); renderStaff(); }
+          else { refreshProfileMenu(); renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList(); }
         });
       }).catch(err => {
+        if (!isCurrentSession(token, user.uid, currentSchoolId)) return;
+        sessionReady = false;
         hideSyncingMessage();
         setAuthError('Could not load your account: ' + err.message);
       });
     } else {
-      currentUid = null; currentSchoolId = null; currentRole = null; currentStatus = null; currentUserData = null; currentAssignedClassIds = []; currentAssignedSubjectIds = [];
+      // The Firebase callback is the final authority that no account is signed
+      // in. Invalidate every pending operation from the previous account.
+      resetWorkspaceState();
       if (localStorage.getItem(GUEST_MODE_KEY)) {
+        sessionReady = true;
         hideAuthGate(); hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
         initLockScreen();
         if (!appStarted) { appStarted = true; proceedToApp(); }
+        else { renderQuickAccessList(); renderHome(); }
       } else {
         hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
         renderAuthForm();
@@ -4694,6 +4792,7 @@ function initLockScreen() {
 }
 
 function proceedToApp() {
+  if (FIREBASE_ENABLED && !sessionReady) return;
   ensureDefaults();
   renderPinSection();
   loadSettingsForm();
