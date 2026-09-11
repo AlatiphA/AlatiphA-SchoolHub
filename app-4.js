@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v30';
+const APP_VERSION = 'v31';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -648,6 +648,215 @@ function hideAboutDialog() {
   if (dialog) dialog.classList.add('hidden');
 }
 
+
+/* ---------- v31 Sync Center + System Health ---------- */
+function formatSyncTime(raw) {
+  if (!raw) return 'Never';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return 'Unknown';
+  try { return new Date(n).toLocaleString(); } catch (e) { return 'Unknown'; }
+}
+
+function setStatusRow(id, state, text) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = `health-status ${state || ''}`.trim();
+  el.textContent = text || '';
+}
+
+async function getLocalStorageUsageBytes() {
+  try {
+    let chars = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || '';
+      chars += k.length + String(localStorage.getItem(k) || '').length;
+    }
+    return chars * 2;
+  } catch (e) { return null; }
+}
+
+async function getStorageQuotaInfo() {
+  try {
+    if (!navigator.storage || !navigator.storage.estimate) return null;
+    return await navigator.storage.estimate();
+  } catch (e) { return null; }
+}
+
+function bytesToText(bytes) {
+  if (bytes == null || !Number.isFinite(Number(bytes))) return 'Unknown';
+  const n = Number(bytes);
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function countCachedInventoryItems(inventory) {
+  if (!Array.isArray(inventory) || !inventory.length) return 0;
+  let count = 0;
+  for (const item of inventory) {
+    if (!item || !item.kind || !item.id) continue;
+    const rec = await getCachedImageRecordAsync(imageCacheKey(item.kind, item.id));
+    if (rec && rec.dataUrl) count++;
+  }
+  return count;
+}
+
+async function updateSyncCenter() {
+  const cloudEl = document.getElementById('syncCloudImages');
+  const localEl = document.getElementById('syncLocalImages');
+  const lastEl = document.getElementById('syncLastImage');
+  const dataEl = document.getElementById('syncLastData');
+  const stateEl = document.getElementById('syncOverallState');
+  const detailEl = document.getElementById('syncDetail');
+  if (!cloudEl) return;
+
+  cloudEl.textContent = 'Checking…';
+  localEl.textContent = 'Checking…';
+  lastEl.textContent = 'Checking…';
+  dataEl.textContent = formatSyncTime(localStorage.getItem(LAST_SYNCED_KEY));
+  stateEl.textContent = 'Checking cloud synchronization…';
+  detailEl.textContent = '';
+
+  if (!FIREBASE_ENABLED || !currentSchoolId) {
+    cloudEl.textContent = '—';
+    localEl.textContent = `${(await getImageCacheCount()) ?? 0}`;
+    stateEl.textContent = 'Offline / Guest mode';
+    detailEl.textContent = 'Sign in to a school account to compare cloud and browser data.';
+    return;
+  }
+
+  try {
+    const inventory = await getCloudImageInventory();
+    const localCount = await countCachedInventoryItems(inventory);
+    cloudEl.textContent = String(inventory.length);
+    localEl.textContent = String(localCount);
+    lastEl.textContent = getLastImageSyncText();
+    const missing = Math.max(0, inventory.length - localCount);
+    if (missing > 0) {
+      stateEl.textContent = `⚠ ${missing} image${missing === 1 ? '' : 's'} may need synchronization`;
+      detailEl.textContent = 'Use Sync Images to reconcile this browser with the current cloud image inventory.';
+    } else {
+      stateEl.textContent = '✓ Image cache appears synchronized';
+      detailEl.textContent = 'Cloud and local image counts match. This does not remove unrelated legacy cloud files.';
+    }
+  } catch (e) {
+    stateEl.textContent = '⚠ Could not read cloud image inventory';
+    detailEl.textContent = e && e.message ? e.message : String(e || 'Unknown error');
+  }
+}
+
+async function showSyncCenter() {
+  const dialog = document.getElementById('syncCenterDialog');
+  if (!dialog) return;
+  dialog.classList.remove('hidden');
+  await updateSyncCenter();
+}
+
+function hideSyncCenter() {
+  const dialog = document.getElementById('syncCenterDialog');
+  if (dialog) dialog.classList.add('hidden');
+}
+
+async function runSyncCenterSync() {
+  const btn = document.getElementById('syncCenterSyncBtn');
+  const status = document.getElementById('syncCenterActionStatus');
+  if (!FIREBASE_ENABLED || !currentSchoolId) {
+    if (status) status.textContent = 'Sign in to a school account first.';
+    return;
+  }
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Synchronizing school data and images…';
+  try {
+    await pullCloudData();
+    renderCloudSyncStatus();
+    renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList(); renderHome();
+    const result = await syncImagesFromCloud({ force: false });
+    if (status) status.textContent = `Sync complete: ${result.downloaded} downloaded, ${result.repaired} metadata repaired, ${result.failed} failed.`;
+    await updateSyncCenter();
+  } catch (e) {
+    if (status) status.textContent = 'Sync failed: ' + (e && e.message ? e.message : String(e || 'Unknown error'));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function checkHealth() {
+  const ids = ['healthAuth','healthFirestore','healthStorage','healthIndexedDB','healthLocalStorage','healthServiceWorker','healthSchool','healthRole','healthImages','healthReport'];
+  ids.forEach(id => setStatusRow(id, 'checking', 'Checking…'));
+  const summary = document.getElementById('healthSummary');
+  if (summary) summary.textContent = 'Running read-only diagnostics…';
+
+  // Authentication
+  try {
+    const user = FIREBASE_ENABLED && firebase.auth ? firebase.auth().currentUser : null;
+    setStatusRow('healthAuth', user ? 'ok' : 'warn', user ? `✓ Signed in: ${user.email || user.uid}` : '⚠ Not signed in');
+  } catch (e) { setStatusRow('healthAuth', 'fail', '✗ Authentication unavailable'); }
+
+  // LocalStorage
+  const usage = await getLocalStorageUsageBytes();
+  setStatusRow('healthLocalStorage', usage == null ? 'fail' : 'ok', usage == null ? '✗ Unavailable' : `✓ ${bytesToText(usage)} used by localStorage`);
+
+  // IndexedDB
+  try {
+    const db = await openImageDB();
+    const count = await getImageCacheCount();
+    setStatusRow('healthIndexedDB', db ? 'ok' : 'warn', db ? `✓ Available, ${count == null ? '?' : count} image${count === 1 ? '' : 's'}` : '⚠ IndexedDB unavailable');
+  } catch (e) { setStatusRow('healthIndexedDB', 'fail', '✗ IndexedDB check failed'); }
+
+  // Service worker
+  try {
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration('./') : null;
+    setStatusRow('healthServiceWorker', reg && reg.active ? 'ok' : 'warn', reg && reg.active ? '✓ Active' : reg ? '⚠ Registered but not active' : '⚠ Not registered');
+  } catch (e) { setStatusRow('healthServiceWorker', 'fail', '✗ Service worker check failed'); }
+
+  if (!FIREBASE_ENABLED || !currentSchoolId) {
+    setStatusRow('healthFirestore', 'warn', '⚠ Cloud disabled or no school selected');
+    setStatusRow('healthStorage', 'warn', '⚠ Cloud disabled or no school selected');
+    setStatusRow('healthSchool', 'warn', '⚠ No active school session');
+    setStatusRow('healthRole', currentRole ? 'ok' : 'warn', currentRole ? `✓ ${currentRole}` : '⚠ No active role');
+    setStatusRow('healthImages', 'warn', '⚠ Cloud image check requires a school session');
+  } else {
+    try {
+      const snap = await schoolRef().get();
+      setStatusRow('healthFirestore', snap.exists ? 'ok' : 'warn', snap.exists ? '✓ Firestore read successful' : '⚠ School document not found');
+      setStatusRow('healthSchool', snap.exists ? 'ok' : 'warn', snap.exists ? `✓ School ${currentSchoolId}` : '⚠ School profile unavailable');
+    } catch (e) { setStatusRow('healthFirestore', 'fail', '✗ Firestore read failed: ' + (e.message || e)); setStatusRow('healthSchool', 'fail', '✗ School profile unavailable'); }
+    try {
+      const root = firebase.storage().ref(`schools/${currentSchoolId}`);
+      await root.listAll();
+      setStatusRow('healthStorage', 'ok', '✓ Storage read successful');
+    } catch (e) { setStatusRow('healthStorage', 'fail', '✗ Storage read failed: ' + (e.message || e)); }
+    try {
+      const inventory = await getCloudImageInventory();
+      const localCount = await countCachedInventoryItems(inventory);
+      const missing = Math.max(0, inventory.length - localCount);
+      setStatusRow('healthImages', missing ? 'warn' : 'ok', missing ? `⚠ ${localCount}/${inventory.length} current cloud images cached locally` : `✓ ${inventory.length} current cloud images / ${localCount} local`);
+    } catch (e) { setStatusRow('healthImages', 'fail', '✗ Image inventory failed'); }
+  }
+
+  setStatusRow('healthRole', currentRole && currentStatus === 'active' ? 'ok' : currentRole ? 'warn' : 'warn', currentRole ? `✓ ${currentRole} (${currentStatus || 'unknown'})` : '⚠ No active role');
+  setStatusRow('healthReport', typeof window.jspdf !== 'undefined' || typeof window.jsPDF !== 'undefined' ? 'ok' : 'warn', (typeof window.jspdf !== 'undefined' || typeof window.jsPDF !== 'undefined') ? '✓ jsPDF library available' : '⚠ jsPDF library not detected');
+
+  const quota = await getStorageQuotaInfo();
+  if (quota && quota.usage != null && quota.quota) {
+    const pct = (Number(quota.usage) / Number(quota.quota)) * 100;
+    const quotaEl = document.getElementById('healthQuota');
+    if (quotaEl) quotaEl.textContent = `Browser storage estimate: ${bytesToText(quota.usage)} / ${bytesToText(quota.quota)} (${pct.toFixed(1)}%)`;
+  }
+  if (summary) summary.textContent = 'Diagnostics complete. Green items are healthy; yellow items need attention.';
+}
+
+function showSystemHealth() {
+  const dialog = document.getElementById('systemHealthDialog');
+  if (!dialog) return;
+  dialog.classList.remove('hidden');
+  checkHealth();
+}
+function hideSystemHealth() {
+  const dialog = document.getElementById('systemHealthDialog');
+  if (dialog) dialog.classList.add('hidden');
+}
+
 document.getElementById('profileAboutBtn').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
   showAboutDialog();
@@ -656,6 +865,22 @@ document.getElementById('aboutCloseBtn').addEventListener('click', hideAboutDial
 document.getElementById('aboutDialog').addEventListener('click', e => {
   if (e.target.id === 'aboutDialog') hideAboutDialog();
 });
+
+document.getElementById('profileSyncCenterBtn').addEventListener('click', () => {
+  document.getElementById('profileDropdown').classList.add('hidden');
+  showSyncCenter();
+});
+document.getElementById('profileSystemHealthBtn').addEventListener('click', () => {
+  document.getElementById('profileDropdown').classList.add('hidden');
+  showSystemHealth();
+});
+document.getElementById('syncCenterCloseBtn').addEventListener('click', hideSyncCenter);
+document.getElementById('syncCenterDialog').addEventListener('click', e => { if (e.target.id === 'syncCenterDialog') hideSyncCenter(); });
+document.getElementById('syncCenterRefreshBtn').addEventListener('click', updateSyncCenter);
+document.getElementById('syncCenterSyncBtn').addEventListener('click', runSyncCenterSync);
+document.getElementById('systemHealthCloseBtn').addEventListener('click', hideSystemHealth);
+document.getElementById('systemHealthDialog').addEventListener('click', e => { if (e.target.id === 'systemHealthDialog') hideSystemHealth(); });
+document.getElementById('systemHealthRefreshBtn').addEventListener('click', checkHealth);
 
 document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async () => {
   const status = document.getElementById('aboutUpdateStatus');

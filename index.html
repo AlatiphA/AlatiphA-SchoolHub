@@ -131,6 +131,8 @@
         <button type="button" id="profileSetupLink" class="profile-link">Go to Setup</button>
         <button type="button" id="profileTourBtn" class="profile-link">Show Guided Tour</button>
         <button type="button" id="profileAboutBtn" class="profile-link">About SchoolHub</button>
+        <button type="button" id="profileSyncCenterBtn" class="profile-link">Sync Center</button>
+        <button type="button" id="profileSystemHealthBtn" class="profile-link">System Health</button>
         <button type="button" id="profileLoginBtn" class="profile-link hidden">Log In</button>
         <button type="button" id="logoutBtn" class="profile-link profile-link-danger hidden">Log Out</button>
       </div>
@@ -417,12 +419,62 @@
 
 </main>
 
+<!-- SYNC CENTER -->
+<div id="syncCenterDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="syncCenterTitle">
+  <div class="about-box diagnostic-box">
+    <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
+    <h2 id="syncCenterTitle">Sync Center</h2>
+    <p class="about-version">Cloud ↔ browser synchronization</p>
+    <div class="about-details diagnostic-details">
+      <div><span>Cloud images</span><strong id="syncCloudImages">Checking…</strong></div>
+      <div><span>Local images</span><strong id="syncLocalImages">Checking…</strong></div>
+      <div><span>Last image sync</span><strong id="syncLastImage">Checking…</strong></div>
+      <div><span>Last data sync</span><strong id="syncLastData">Checking…</strong></div>
+    </div>
+    <div id="syncOverallState" class="diagnostic-state">Checking…</div>
+    <p id="syncDetail" class="hint about-status"></p>
+    <p id="syncCenterActionStatus" class="hint about-status"></p>
+    <div class="about-actions">
+      <button type="button" id="syncCenterSyncBtn" class="btn-primary">Sync Everything</button>
+      <button type="button" id="syncCenterRefreshBtn" class="btn-primary">Refresh</button>
+      <button type="button" id="syncCenterCloseBtn" class="btn-text">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- SYSTEM HEALTH -->
+<div id="systemHealthDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="systemHealthTitle">
+  <div class="about-box diagnostic-box health-box">
+    <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
+    <h2 id="systemHealthTitle">System Health</h2>
+    <p class="about-version">Read-only diagnostics</p>
+    <div class="health-list">
+      <div><span>Authentication</span><strong id="healthAuth">Checking…</strong></div>
+      <div><span>Firestore</span><strong id="healthFirestore">Checking…</strong></div>
+      <div><span>Firebase Storage</span><strong id="healthStorage">Checking…</strong></div>
+      <div><span>IndexedDB</span><strong id="healthIndexedDB">Checking…</strong></div>
+      <div><span>LocalStorage</span><strong id="healthLocalStorage">Checking…</strong></div>
+      <div><span>Service Worker</span><strong id="healthServiceWorker">Checking…</strong></div>
+      <div><span>School session</span><strong id="healthSchool">Checking…</strong></div>
+      <div><span>Role / permissions</span><strong id="healthRole">Checking…</strong></div>
+      <div><span>Image synchronization</span><strong id="healthImages">Checking…</strong></div>
+      <div><span>Report engine</span><strong id="healthReport">Checking…</strong></div>
+    </div>
+    <p id="healthQuota" class="hint about-status"></p>
+    <p id="healthSummary" class="hint about-status">Running diagnostics…</p>
+    <div class="about-actions">
+      <button type="button" id="systemHealthRefreshBtn" class="btn-primary">Run Diagnostics</button>
+      <button type="button" id="systemHealthCloseBtn" class="btn-text">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- ABOUT -->
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box">
     <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
     <h2 id="aboutTitle">AlatiphA SchoolHub</h2>
-    <p class="about-version">Version <strong id="aboutVersion">v25</strong></p>
+    <p class="about-version">Version <strong id="aboutVersion">v31</strong></p>
     <div class="about-details">
       <div><span>Developer</span><strong id="aboutDeveloper">AlatiphA Multimedia</strong></div>
       <div><span>Browser</span><strong id="aboutBrowserStatus">Checking…</strong></div>
