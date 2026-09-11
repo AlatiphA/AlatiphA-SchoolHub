@@ -75,6 +75,6 @@ V28 - Security/session loading improvement
 - Image binaries remain in IndexedDB; structured localStorage records remain image-free.
 
 
-## v28 Session Loading Fix
+## v29 Session Loading Fix
 
-v28 separates authentication/role readiness from core cloud synchronization. After Firebase Auth and the user role/school are resolved, the authentication gate is released immediately. Core school data loads in the background, while the dashboard shows a neutral loading state and does not render previous-session school records until the new session data is ready. Image synchronization remains background work.
+v29 separates authentication/role readiness from core cloud synchronization. After Firebase Auth and the user role/school are resolved, the authentication gate is released immediately. Core school data loads in the background, while the dashboard shows a neutral loading state and does not render previous-session school records until the new session data is ready. Image synchronization remains background work.

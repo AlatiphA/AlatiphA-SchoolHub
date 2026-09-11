@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v28';
+const APP_VERSION = 'v29';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -91,13 +91,23 @@ function beginSessionTransition() {
 }
 
 async function signOutAndReset() {
-  // Invalidate the old session BEFORE Firebase signOut completes. This is
-  // essential because Firestore promises may still be resolving in the
-  // background when the user presses Logout.
-  beginSessionTransition();
+  // Invalidate all old async work immediately. Once signOut() resolves we
+  // already know this application has deliberately signed out, so do not
+  // wait for Firebase's onAuthStateChanged event to release the login form.
+  // This prevents the post-logout Sign In screen from getting stuck on
+  // "Syncing…" while Auth persistence is settling.
+  const token = beginSessionTransition();
   try {
     await firebase.auth().signOut();
+    if (token !== sessionGeneration) return;
+    resetWorkspaceState();
+    hideSyncingMessage();
+    hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
+    renderAuthForm();
+    showAuthGate();
   } catch (err) {
+    if (token !== sessionGeneration) return;
+    resetWorkspaceState();
     hideSyncingMessage();
     renderAuthForm();
     showAuthGate();
@@ -486,12 +496,18 @@ document.getElementById('tourBackBtn').addEventListener('click', () => {
 document.getElementById('tourSkipBtn').addEventListener('click', hideTour);
 
 function renderHome() {
+  // During a new authenticated session, show only neutral identity/status
+  // information. Never expose the previous school's cached records while
+  // cloud data is being loaded, but also do not make the welcome screen wait
+  // for the complete Firestore synchronization.
   if (FIREBASE_ENABLED && !sessionDataReady) {
-    document.getElementById('welcomeHeading').textContent = 'Welcome';
-    document.getElementById('welcomeSubtext').textContent = 'Preparing your school workspace…';
-    document.getElementById('statsSummary').innerHTML = '<span>SYNCING SCHOOL DATA…</span>';
+    const displayName = (currentUserData && (currentUserData.displayName || currentUserData.name)) || '';
+    document.getElementById('welcomeHeading').textContent = displayName
+      ? `Welcome back, ${displayName}` : 'Welcome back';
+    document.getElementById('welcomeSubtext').textContent = 'Your school workspace is loading in the background…';
+    document.getElementById('statsSummary').innerHTML = '<span>LOADING SCHOOL DATA…</span>';
     const qa = document.getElementById('quickAccessList');
-    if (qa) qa.innerHTML = '<div class="empty">Loading your school workspace…</div>';
+    if (qa) qa.innerHTML = '<div class="empty">Preparing your school workspace…</div>';
     return;
   }
   const settings = DB.get(KEYS.settings, {});
