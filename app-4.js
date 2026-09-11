@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v32';
+const APP_VERSION = 'v33';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -884,6 +884,28 @@ document.getElementById('syncCenterCloseBtn').addEventListener('click', hideSync
 document.getElementById('syncCenterDialog').addEventListener('click', e => { if (e.target.id === 'syncCenterDialog') hideSyncCenter(); });
 document.getElementById('syncCenterRefreshBtn').addEventListener('click', updateSyncCenter);
 document.getElementById('syncCenterSyncBtn').addEventListener('click', runSyncCenterSync);
+const syncCenterRecoverBtn = document.getElementById('syncCenterRecoverBtn');
+if (syncCenterRecoverBtn) {
+  syncCenterRecoverBtn.addEventListener('click', async () => {
+    const status = document.getElementById('syncCenterActionStatus');
+    if (!isHeadTeacher()) {
+      if (status) status.textContent = 'Only the Head Teacher can recover local images to the cloud.';
+      return;
+    }
+    syncCenterRecoverBtn.disabled = true;
+    if (status) status.textContent = 'Registering this browser’s local images in the cloud…';
+    try {
+      const result = await publishLocalImagesToCloud();
+      if (status) status.textContent = `Recovery complete: ${result.published} published, ${result.skipped} already registered, ${result.failed} failed.`;
+      await updateSyncCenter();
+    } catch (e) {
+      if (status) status.textContent = 'Image recovery failed: ' + (e.message || e);
+    } finally {
+      syncCenterRecoverBtn.disabled = false;
+    }
+  });
+}
+
 document.getElementById('systemHealthCloseBtn').addEventListener('click', hideSystemHealth);
 document.getElementById('systemHealthDialog').addEventListener('click', e => { if (e.target.id === 'systemHealthDialog') hideSystemHealth(); });
 document.getElementById('systemHealthRefreshBtn').addEventListener('click', checkHealth);
@@ -3914,6 +3936,151 @@ async function getCloudImageInventory() {
 function requireImageAssetWriteAccess(item) {
   if (!item || item.kind !== 'student') return false;
   return isHeadTeacher() || (item.classId && canAccessClass(item.classId));
+}
+
+
+function dataUrlToBlob(dataUrl) {
+  const value = String(dataUrl || '');
+  const match = value.match(/^data:([^;,]+)(?:;[^,]*)?,(.*)$/i);
+  if (!match) return null;
+  const mime = match[1] || 'application/octet-stream';
+  const body = match[2] || '';
+  try {
+    const binary = atob(body);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  } catch (e) {
+    return null;
+  }
+}
+
+async function getKnownLocalImageCandidates() {
+  const candidates = [];
+  const add = async (kind, id, path, extra) => {
+    if (!id) return;
+    const key = imageCacheKey(kind, id);
+    const rec = await getCachedImageRecordAsync(key);
+    const dataUrl = rec && rec.dataUrl ? String(rec.dataUrl) : '';
+    if (!isDataImage(dataUrl)) return;
+    candidates.push(Object.assign({ kind, id: String(id), cacheKey: key, dataUrl }, extra || {}));
+  };
+
+  await add('logo', 'school', `schools/${currentSchoolId}/logos/school-logo`);
+
+  const staff = DB.get(KEYS.staff, []);
+  for (const st of staff) {
+    if (!st || !st.id) continue;
+    await add('staff', st.id, `schools/${currentSchoolId}/signatures/${st.id}`, {
+      name: st.name || '', role: st.role || ''
+    });
+  }
+
+  const students = DB.get(KEYS.students, []);
+  for (const st of students) {
+    if (!st || !st.id || !st.classId) continue;
+    await add('student', st.id, `schools/${currentSchoolId}/student-photos/${st.classId}/${st.id}`, {
+      classId: String(st.classId), name: st.name || ''
+    });
+  }
+  return candidates;
+}
+
+async function publishLocalImagesToCloud() {
+  if (!FIREBASE_ENABLED || !currentSchoolId) throw new Error('No active school cloud session.');
+  if (!isHeadTeacher()) throw new Error('Only the Head Teacher can recover local images to the cloud.');
+
+  const candidates = await getKnownLocalImageCandidates();
+  if (!candidates.length) return { found: 0, published: 0, skipped: 0, failed: 0, details: [] };
+
+  // Only use the Firestore manifest to decide whether an asset is already
+  // registered. We deliberately do not list Storage folders. This preserves
+  // the least-privilege Storage rules introduced in v32.
+  let manifest = [];
+  try {
+    const snap = await schoolRef().collection('imageAssets').get();
+    snap.forEach(doc => {
+      const a = doc.data() || {};
+      if (a.kind && a.recordId) manifest.push({ kind: String(a.kind), id: String(a.recordId), storagePath: String(a.storagePath || '') });
+    });
+  } catch (e) {
+    throw new Error('Could not read the Firestore image manifest: ' + (e.message || e));
+  }
+  const registered = new Set(manifest.map(x => `${x.kind}__${x.id}`));
+
+  let published = 0, skipped = 0, failed = 0;
+  const details = [];
+  for (const item of candidates) {
+    const key = `${item.kind}__${item.id}`;
+    if (registered.has(key)) {
+      skipped++;
+      details.push(`${item.kind}:${item.id} already registered`);
+      continue;
+    }
+
+    const blob = dataUrlToBlob(item.dataUrl);
+    if (!blob) {
+      failed++;
+      details.push(`${item.kind}:${item.id} invalid local image`);
+      continue;
+    }
+
+    let storagePath = '';
+    if (item.kind === 'logo') storagePath = `schools/${currentSchoolId}/logos/school-logo`;
+    else if (item.kind === 'staff') storagePath = `schools/${currentSchoolId}/signatures/${item.id}`;
+    else if (item.kind === 'student') storagePath = `schools/${currentSchoolId}/student-photos/${item.classId}/${item.id}`;
+    if (!storagePath) {
+      failed++;
+      details.push(`${item.kind}:${item.id} no deterministic path`);
+      continue;
+    }
+
+    try {
+      const ref = storageRef(storagePath);
+      await ref.put(blob, { contentType: blob.type || 'image/png' });
+      const url = await ref.getDownloadURL();
+      const meta = await ref.getMetadata();
+      const updatedAt = meta && meta.updated ? String(meta.updated) : new Date().toISOString();
+
+      const payload = {
+        storagePath,
+        sourceUrl: url,
+        storageUpdatedAt: updatedAt,
+        recoveredFromLocal: true,
+        recoveredAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      if (item.kind === 'student') payload.classId = item.classId || '';
+      await upsertImageManifest(item.kind, item.id, payload);
+
+      if (item.kind === 'logo') {
+        await schoolRef().set({ profile: {
+          logoUrl: url,
+          logoStoragePath: storagePath,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        } }, { merge: true });
+      } else if (item.kind === 'staff') {
+        await staffRef(item.id).set({
+          signatureUrl: url,
+          signatureStoragePath: storagePath,
+          signatureUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } else if (item.kind === 'student') {
+        await studentRef(item.id).set({
+          photoUrl: url,
+          photoStoragePath: storagePath,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
+
+      registered.add(key);
+      published++;
+      details.push(`${item.kind}:${item.id} registered`);
+    } catch (e) {
+      failed++;
+      details.push(`${item.kind}:${item.id} failed: ${e.message || e}`);
+    }
+  }
+  return { found: candidates.length, published, skipped, failed, details };
 }
 
 async function syncImagesFromCloud(options) {
