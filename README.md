@@ -53,3 +53,15 @@ Adds a Head Teacher-only Teacher Attendance panel under Attendance, with Present
 - Student attendance now shows Present, Late, Total, and Absent. Total = Present + Late.
 - Teacher attendance now shows Present, Late, Total, Absent, Excused, and On Leave. Total = Present + Late.
 - Student report-card attendance continues to use Total attendance days, so Late counts as an attended day.
+
+
+## v38.2 - Attendance ratios
+
+Student Attendance now displays an Attendance Ratio for each pupil and an Average Pupil Attendance Ratio pill.
+Teacher Attendance now displays an Attendance Ratio for each teacher and an Average Teacher Attendance Ratio pill.
+
+Ratio calculation:
+- Pupils: `(Present + Late) / (Present + Late + Absent) × 100`.
+- Teachers: `(Present + Late) / (Present + Late + Absent) × 100`.
+- Teacher Excused and On Leave days are excluded from the ratio denominator because they are not counted as absence.
+- The average pill is the arithmetic mean of the individual ratios with a valid denominator.

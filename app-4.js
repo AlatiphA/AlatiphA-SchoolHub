@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.1';
+const APP_VERSION = 'v38.2';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2152,6 +2152,25 @@ function teacherAttendanceSummary(term, year) {
   return { records, summary };
 }
 
+function attendanceRatio(summary) {
+  const attended = Number(summary && summary.total || 0);
+  const absent = Number(summary && summary.absent || 0);
+  const denominator = attended + absent;
+  return denominator > 0 ? (attended / denominator) * 100 : null;
+}
+
+function averageAttendanceRatio(summary) {
+  const ratios = Object.values(summary || {})
+    .map(attendanceRatio)
+    .filter(v => Number.isFinite(v));
+  if (!ratios.length) return null;
+  return ratios.reduce((sum, value) => sum + value, 0) / ratios.length;
+}
+
+function formatAttendanceRatio(value) {
+  return Number.isFinite(value) ? `${value.toFixed(1)}%` : '—';
+}
+
 function isTeacherStaffRecord(st) {
   const role = String(st && st.role || '').toLowerCase().replace(/\s+/g, '');
   return role === 'teacher' || (role.includes('teacher') && role !== 'headteacher');
@@ -2203,9 +2222,11 @@ function renderAttendanceForm() {
   const record = all[key] || {};
   const entries = record.entries || record;
   const summary = attendanceSummary(classId, settings.currentTerm, settings.currentYear).summary;
+  const averageRatio = averageAttendanceRatio(summary);
 
-  let html = `<div class="attendance-toolbar"><button type="button" id="attendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="attendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
-  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Student</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th></tr></thead><tbody>';
+  let html = `<div class="attendance-summary-pill" aria-label="Average pupil attendance ratio"><span>Average Pupil Attendance Ratio</span><strong>${formatAttendanceRatio(averageRatio)}</strong></div>`;
+  html += `<div class="attendance-toolbar"><button type="button" id="attendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="attendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
+  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Student</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Attendance Ratio</th></tr></thead><tbody>';
   students.forEach(st => {
     const status = String(entries[st.id] || '').toUpperCase();
     const sm = summary[st.id] || { present: 0, absent: 0, late: 0, total: 0 };
@@ -2214,7 +2235,7 @@ function renderAttendanceForm() {
       <option value="P" ${status === 'P' ? 'selected' : ''}>Present</option>
       <option value="A" ${status === 'A' ? 'selected' : ''}>Absent</option>
       <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
-    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td></tr>`;
+    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm))}</strong></td></tr>`;
   });
   html += '</tbody></table></div>';
   html += `<p class="hint">${attendanceRecordsForTerm(classId, settings.currentTerm, settings.currentYear).length} attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}.</p>`;
@@ -2237,8 +2258,10 @@ function renderTeacherAttendanceForm() {
   const record = DB.get(KEYS.teacherAttendance, {})[key] || {};
   const entries = record.entries || record;
   const summary = teacherAttendanceSummary(settings.currentTerm, settings.currentYear).summary;
-  let html = `<div class="attendance-toolbar"><button type="button" id="teacherAttendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="teacherAttendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
-  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th></tr></thead><tbody>';
+  const averageRatio = averageAttendanceRatio(summary);
+  let html = `<div class="attendance-summary-pill" aria-label="Average teacher attendance ratio"><span>Average Teacher Attendance Ratio</span><strong>${formatAttendanceRatio(averageRatio)}</strong></div>`;
+  html += `<div class="attendance-toolbar"><button type="button" id="teacherAttendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="teacherAttendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
+  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Attendance Ratio</th></tr></thead><tbody>';
   teachers.forEach(st => {
     const status = String(entries[st.id] || '').toUpperCase();
     const sm = summary[st.id] || { present: 0, absent: 0, late: 0, total: 0, excused: 0, leave: 0 };
@@ -2249,7 +2272,7 @@ function renderTeacherAttendanceForm() {
       <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
       <option value="E" ${status === 'E' ? 'selected' : ''}>Excused</option>
       <option value="O" ${status === 'O' ? 'selected' : ''}>On Leave</option>
-    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td></tr>`;
+    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm))}</strong></td></tr>`;
   });
   html += '</tbody></table></div>';
   html += `<p class="hint">${teacherAttendanceRecordsForTerm(settings.currentTerm, settings.currentYear).length} teacher attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}.</p>`;
