@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v27';
+const APP_VERSION = 'v28';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -49,6 +49,7 @@ let currentUserData = null;
 // repainting or overwriting the next user's workspace.
 let sessionGeneration = 0;
 let sessionReady = false;
+let sessionDataReady = false; // Core school data has finished loading for this session.
 
 function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}` : base; }
 
@@ -67,6 +68,7 @@ function resetWorkspaceState() {
   currentAssignedSubjectIds = [];
   currentUserData = null;
   sessionReady = false;
+  sessionDataReady = false;
 
   // Remove any stale rendered content immediately. Local/cloud records are
   // deliberately NOT deleted here because they belong to their school
@@ -307,6 +309,26 @@ function showView(name) {
   });
   document.getElementById('backBtn').classList.toggle('hidden', name === 'home');
   document.getElementById('brandText').textContent = name === 'home' ? 'AlatiphA SchoolHub' : sectionTitle(name);
+
+  // v28: identity/role may be ready before cloud data. Never render cached
+  // school records from a previous session while the new session is syncing.
+  if (FIREBASE_ENABLED && !sessionDataReady) {
+    if (name !== 'home') {
+      views.forEach(v => {
+        document.getElementById('view-' + v).classList.toggle('hidden', v !== 'home');
+      });
+      document.getElementById('backBtn').classList.add('hidden');
+      document.getElementById('brandText').textContent = 'AlatiphA SchoolHub';
+    }
+    renderHome();
+    renderClasses();
+    renderStudents();
+    renderSubjects();
+    renderStaff();
+    window.scrollTo(0, 0);
+    return;
+  }
+
   if (name === 'home') renderHome();
   if (name === 'setup') { refreshHeadTeacherSelect(); renderCloudSyncStatus(); }
   if (name === 'students') renderStudentClassSelect();
@@ -364,6 +386,10 @@ const QUICK_ACCESS_CARDS = [
 
 function renderQuickAccessList() {
   const wrap = document.getElementById('quickAccessList');
+  if (FIREBASE_ENABLED && !sessionDataReady) {
+    wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
+    return;
+  }
   const cards = QUICK_ACCESS_CARDS.filter(c => !c.headteacherOnly || currentRole === 'headteacher');
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
@@ -460,6 +486,14 @@ document.getElementById('tourBackBtn').addEventListener('click', () => {
 document.getElementById('tourSkipBtn').addEventListener('click', hideTour);
 
 function renderHome() {
+  if (FIREBASE_ENABLED && !sessionDataReady) {
+    document.getElementById('welcomeHeading').textContent = 'Welcome';
+    document.getElementById('welcomeSubtext').textContent = 'Preparing your school workspace…';
+    document.getElementById('statsSummary').innerHTML = '<span>SYNCING SCHOOL DATA…</span>';
+    const qa = document.getElementById('quickAccessList');
+    if (qa) qa.innerHTML = '<div class="empty">Loading your school workspace…</div>';
+    return;
+  }
   const settings = DB.get(KEYS.settings, {});
   document.getElementById('welcomeHeading').textContent = settings.teacherName
     ? `Welcome back, ${settings.teacherName}`
@@ -791,6 +825,7 @@ document.getElementById('importBackupInput').addEventListener('change', e => {
 let editingClassId = null;
 
 function renderClasses() {
+  if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('classList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
   if (isTeacher()) {
     const list = document.getElementById('classList');
     const classes = getAccessibleClasses();
@@ -904,6 +939,7 @@ function fillClassSelect(sel) {
 let editingStudentId = null;
 
 function renderStudents() {
+  if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('studentList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
   const sel = document.getElementById('studentClassSelect');
   if (!sel.options.length) fillClassSelect(sel);
   const query = document.getElementById('studentSearchInput').value.trim().toLowerCase();
@@ -1192,6 +1228,7 @@ if (!window.__schoolhubSubjectDragHandlers) {
 }
 
 function renderSubjects() {
+  if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('subjectList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
   const list = document.getElementById('subjectList');
   const subjects = DB.get(KEYS.subjects, []);
   ensureSubjectOrder(subjects);
@@ -1334,6 +1371,7 @@ const STAFF_FIELDS = [
 ];
 
 function renderStaff() {
+  if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('staffList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
   const list = document.getElementById('staffList');
   const staff = DB.get(KEYS.staff, []);
   list.innerHTML = '';
@@ -4549,6 +4587,7 @@ function initAuth() {
     currentAssignedClassIds = [];
     currentAssignedSubjectIds = [];
     sessionReady = true;
+    sessionDataReady = true;
     hideAuthGate();
     initLockScreen();
     proceedToApp();
@@ -4648,19 +4687,36 @@ function initAuth() {
 
         return repairAccountProfile.then(() => {
           if (!isCurrentSession(token, user.uid, data.schoolId)) return;
-          return pullCloudData(token);
-        }).then(() => {
-          if (!isCurrentSession(token, user.uid, data.schoolId)) return;
+
+          // v28: authentication and role resolution are the login critical
+          // path. Core Firestore synchronization is deliberately moved out of
+          // the auth gate so a slow/hung cloud read can never trap the user on
+          // the Sign In screen. While data is loading, the dashboard shows a
+          // neutral loading state and no previous session's records.
           sessionReady = true;
+          sessionDataReady = false;
           hideSyncingMessage(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
           initLockScreen();
           if (!appStarted) { appStarted = true; proceedToApp(); }
-          else { refreshProfileMenu(); renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList(); }
+          else { proceedToApp(); }
 
-          // v27: never hold the authentication gate open while Storage images
-          // are being synchronized. This work is session-bound and may take
-          // several seconds on mobile browsers.
-          startBackgroundImageSync(token, user.uid, data.schoolId);
+          // Load the new school's core data in the background. All writes and
+          // UI updates remain session-bound. If this fails, the dashboard stays
+          // usable without exposing the previous session's cached records.
+          pullCloudData(token).then(() => {
+            if (!isCurrentSession(token, user.uid, data.schoolId)) return;
+            sessionDataReady = true;
+            loadSettingsForm();
+            refreshProfileMenu();
+            renderHome();
+            renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
+            startBackgroundImageSync(token, user.uid, data.schoolId);
+          }).catch(err => {
+            if (!isCurrentSession(token, user.uid, data.schoolId)) return;
+            console.warn('Core cloud synchronization failed:', err);
+            const sub = document.getElementById('welcomeSubtext');
+            if (sub) sub.textContent = 'Cloud sync is taking longer than expected. You can retry from the profile menu.';
+          });
         });
       }).catch(err => {
         if (!isCurrentSession(token, user.uid, currentSchoolId)) return;
@@ -4812,7 +4868,7 @@ function proceedToApp() {
   if (FIREBASE_ENABLED && !sessionReady) return;
   ensureDefaults();
   renderPinSection();
-  loadSettingsForm();
+  if (!FIREBASE_ENABLED || sessionDataReady) loadSettingsForm();
   showView('home');
 }
 
