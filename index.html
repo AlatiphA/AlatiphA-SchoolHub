@@ -334,17 +334,35 @@
   <!-- ATTENDANCE -->
   <section id="view-attendance" class="view hidden">
     <h2>Attendance</h2>
-    <div class="row">
-      <label>Class
-        <select id="attendanceClassSelect"></select>
-      </label>
-      <label>Date
-        <input type="date" id="attendanceDate">
-      </label>
+    <div id="attendanceModeBar" class="attendance-mode-bar" role="tablist" aria-label="Attendance type">
+      <button type="button" id="attendanceStudentOption" class="attendance-mode active" data-mode="students">Students</button>
+      <button type="button" id="attendanceTeacherOption" class="attendance-mode hidden" data-mode="teachers">Teachers</button>
     </div>
-    <div id="attendanceFormWrap"></div>
-    <button id="saveAttendanceBtn" class="btn-primary">Save Attendance</button>
-    <p class="hint">Record daily attendance as Present, Absent, or Late. Late is counted as present in the term total. The Present total is automatically reflected on report cards.</p>
+
+    <div id="studentAttendancePanel">
+      <div class="row">
+        <label>Class
+          <select id="attendanceClassSelect"></select>
+        </label>
+        <label>Date
+          <input type="date" id="attendanceDate">
+        </label>
+      </div>
+      <div id="attendanceFormWrap"></div>
+      <button id="saveAttendanceBtn" class="btn-primary">Save Student Attendance</button>
+      <p class="hint">Record daily student attendance as Present, Absent, or Late. Late is counted as present in the term total. The Present total is automatically reflected on report cards.</p>
+    </div>
+
+    <div id="teacherAttendancePanel" class="hidden">
+      <div class="row">
+        <label>Date
+          <input type="date" id="teacherAttendanceDate">
+        </label>
+      </div>
+      <div id="teacherAttendanceFormWrap"></div>
+      <button id="saveTeacherAttendanceBtn" class="btn-primary">Save Teacher Attendance</button>
+      <p class="hint">Head Teacher only. Record teacher attendance as Present, Absent, Late, Excused, or On Leave. Teacher attendance is separate from student attendance.</p>
+    </div>
   </section>
 
   <!-- GRADES -->
@@ -500,7 +518,7 @@
   <div class="about-box">
     <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
     <h2 id="aboutTitle">AlatiphA SchoolHub</h2>
-    <p class="about-version">Version <strong id="aboutVersion">v36</strong></p>
+    <p class="about-version">Version <strong id="aboutVersion">v38</strong></p>
     <div class="about-details">
       <div><span>Developer</span><strong id="aboutDeveloper">AlatiphA Multimedia</strong></div>
       <div><span>Browser</span><strong id="aboutBrowserStatus">Checking…</strong></div>

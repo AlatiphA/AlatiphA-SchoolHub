@@ -614,3 +614,10 @@ html.disabledAccess #disabledGate{
 .attendance-toolbar{display:flex;gap:1rem;flex-wrap:wrap;margin:.75rem 0}
 .attendance-table select{min-width:130px}
 @media (max-width:600px){.attendance-table{font-size:.9rem}.attendance-table th,.attendance-table td{padding:.55rem .45rem}.attendance-table .name-col{min-width:150px}}
+
+
+/* v38 student + teacher attendance */
+.attendance-mode-bar{display:flex;gap:8px;margin:0 0 16px;border-bottom:1px solid var(--rule);padding-bottom:10px}
+.attendance-mode{border:1px solid var(--rule);background:var(--surface-alt);color:var(--muted);padding:9px 16px;border-radius:999px;cursor:pointer;font-weight:600}
+.attendance-mode.active{background:var(--text);color:var(--surface);border-color:var(--text)}
+.teacher-attendance-status{min-width:135px}

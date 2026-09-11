@@ -1,4 +1,4 @@
-# AlatiphA SchoolHub Phase 3 v34
+# AlatiphA SchoolHub Phase 3 v38
 
 ## v34: Image Sync Diagnostics & Browser Compatibility
 
@@ -31,7 +31,7 @@ v34 image synchronization improvements:
 - v30 session/logout protections and v31-v33 synchronization architecture are retained.
 
 
-## v37 - Transaction-safe local-first image uploads
+## v38 - Transaction-safe local-first image uploads
 
 Image uploads are now local-first. The selected image is read and committed to IndexedDB before Firebase Storage is contacted. Cloud Storage and Firestore metadata are backup/synchronization operations and cannot prevent the local image from being used in the PWA or reports.
 
@@ -40,5 +40,9 @@ Firebase Storage upload and download-URL generation are handled separately with 
 Student photo, staff signature, new staff signature, and school logo uploads all use the same local-first transaction pattern.
 
 
-## v37
+## v38
 Adds daily class attendance with Present/Absent/Late status, term summaries, automatic report-card attendance totals, Firestore synchronization, backup/restore support, and role-based class access.
+
+
+## v38 — Staff & Student Attendance
+Adds a Head Teacher-only Teacher Attendance panel under Attendance, with Present, Absent, Late, Excused, and On Leave statuses, local-first storage, Firestore synchronization, backup/restore support, and activity logging. Student attendance remains available to teachers and Head Teachers.

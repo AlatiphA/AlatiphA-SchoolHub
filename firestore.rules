@@ -157,6 +157,11 @@ service cloud.firestore {
         allow delete: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
       }
 
+      match /teacherAttendance/{attendanceId} {
+        allow read: if isHeadTeacher(schoolId);
+        allow create, update, delete: if isHeadTeacher(schoolId);
+      }
+
       match /remarks/{remarkId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
         allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);
