@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v26';
+const APP_VERSION = 'v27';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2733,6 +2733,28 @@ async function resolveReportAsset(primarySource, fallbackFolder, fallbackPrefixe
   return findStorageAssetDataUrl(fallbackFolder, fallbackPrefixes);
 }
 
+async function getOrSyncReportImage(kind, id, storagePath, sourceUrl, deterministicPath) {
+  const key = imageCacheKey(kind, id);
+  let data = await getCachedLocalImageAsync(key);
+  if (data) return data;
+
+  // If background synchronization has not completed yet, a report can still
+  // obtain its required image without reopening the authentication gate.
+  const source = storagePath || sourceUrl || deterministicPath || '';
+  if (!source || !FIREBASE_ENABLED || !currentSchoolId) return '';
+
+  try {
+    const result = await syncOneCloudImage(kind, id, source.indexOf('schools/') === 0 ? source : storagePath, sourceUrl, false);
+    if (result && result.ok) {
+      data = await getCachedLocalImageAsync(key);
+      if (data) return data;
+    }
+  } catch (e) {
+    console.warn('On-demand report image sync failed:', kind, id, e);
+  }
+  return '';
+}
+
 async function prepareReportAssets(result, settings, classInfo) {
   const staffList = DB.get(KEYS.staff, []);
   const studentList = DB.get(KEYS.students, []);
@@ -2762,10 +2784,10 @@ async function prepareReportAssets(result, settings, classInfo) {
   const studentId = result && result.student ? result.student.id : '';
   const student = studentList.find(s => s.id === studentId) || (result && result.student ? result.student : null);
 
-  const logo = settings ? (isDataImage(settings.logo) ? settings.logo : await getCachedLocalImageAsync(imageCacheKey('logo', 'school'))) : '';
-  const photo = student ? (isDataImage(student.photo) ? student.photo : await getCachedLocalImageAsync(imageCacheKey('student', student.id))) : '';
-  const classTeacherSignature = classTeacher ? (isDataImage(classTeacher.signature) ? classTeacher.signature : await getCachedLocalImageAsync(imageCacheKey('staff', classTeacher.id))) : '';
-  const headTeacherSignature = headTeacher ? (isDataImage(headTeacher.signature) ? headTeacher.signature : await getCachedLocalImageAsync(imageCacheKey('staff', headTeacher.id))) : '';
+  const logo = settings ? (isDataImage(settings.logo) ? settings.logo : await getOrSyncReportImage('logo', 'school', settings.logoStoragePath || '', settings.logoUrl || '', `schools/${currentSchoolId}/logos/school-logo`)) : '';
+  const photo = student ? (isDataImage(student.photo) ? student.photo : await getOrSyncReportImage('student', student.id, student.photoStoragePath || '', student.photoUrl || '', student.classId ? `schools/${currentSchoolId}/student-photos/${student.classId}/${student.id}` : '')) : '';
+  const classTeacherSignature = classTeacher ? (isDataImage(classTeacher.signature) ? classTeacher.signature : await getOrSyncReportImage('staff', classTeacher.id, classTeacher.signatureStoragePath || '', classTeacher.signatureUrl || '', `schools/${currentSchoolId}/signatures/${classTeacher.id}`)) : '';
+  const headTeacherSignature = headTeacher ? (isDataImage(headTeacher.signature) ? headTeacher.signature : await getOrSyncReportImage('staff', headTeacher.id, headTeacher.signatureStoragePath || '', headTeacher.signatureUrl || '', `schools/${currentSchoolId}/signatures/${headTeacher.id}`)) : '';
 
   return {
     logo,
@@ -3135,45 +3157,10 @@ async function hydrateImageCacheFromStorage(kind, id, storagePath, url) {
 }
 
 async function hydrateLocalImageCaches(profile, students, staff) {
-  const jobs = [];
-  if (profile) {
-    const logoPath = profile.logoStoragePath || '';
-    const logoUrl = profile.logoUrl || '';
-    if (logoPath || logoUrl) {
-      jobs.push(hydrateImageCacheFromStorage('logo', 'school', logoPath, logoUrl).then(data => {
-        if (data) {
-          const settings = DB.get(KEYS.settings, {});
-          settings.logo = data;
-          settings.logoUrl = logoUrl || settings.logoUrl || '';
-          settings.logoStoragePath = logoPath || settings.logoStoragePath || '';
-          DB.set(KEYS.settings, settings);
-        }
-      }));
-    }
-  }
-  (students || []).forEach(st => {
-    if (st.photoUrl || st.photoStoragePath) {
-      jobs.push(hydrateImageCacheFromStorage('student', st.id, st.photoStoragePath, st.photoUrl).then(data => {
-        if (data) {
-          const list = DB.get(KEYS.students, []);
-          const current = list.find(x => x.id === st.id);
-          if (current) { current.photo = data; current.photoUrl = st.photoUrl || current.photoUrl || ''; current.photoStoragePath = st.photoStoragePath || current.photoStoragePath || ''; DB.set(KEYS.students, list); }
-        }
-      }));
-    }
-  });
-  (staff || []).forEach(st => {
-    if (st.signatureUrl || st.signatureStoragePath) {
-      jobs.push(hydrateImageCacheFromStorage('staff', st.id, st.signatureStoragePath, st.signatureUrl).then(data => {
-        if (data) {
-          const list = DB.get(KEYS.staff, []);
-          const current = list.find(x => x.id === st.id);
-          if (current) { current.signature = data; current.signatureUrl = st.signatureUrl || current.signatureUrl || ''; current.signatureStoragePath = st.signatureStoragePath || current.signatureStoragePath || ''; DB.set(KEYS.staff, list); }
-        }
-      }));
-    }
-  });
-  await Promise.all(jobs);
+  // v27 compatibility shim. Images belong in IndexedDB only. Do not copy
+  // Base64/data URLs back into localStorage records. Cloud synchronization
+  // is handled by syncImagesFromCloud(), and reports read IndexedDB directly.
+  return;
 }
 
 
@@ -3465,6 +3452,33 @@ async function syncImagesFromCloud(options) {
   return { total: inventory.length, local, downloaded, failed, skipped, repaired };
 }
 
+function startBackgroundImageSync(token, uid, schoolId) {
+  if (!FIREBASE_ENABLED || !schoolId) return;
+  Promise.resolve().then(async () => {
+    if (!isCurrentSession(token, uid, schoolId)) return;
+    try {
+      const result = await syncImagesFromCloud({ force: false });
+      if (!isCurrentSession(token, uid, schoolId)) return;
+      // Refresh lightweight status indicators without repainting the whole
+      // dashboard or changing the active view.
+      const countEl = document.getElementById('aboutImageCount');
+      if (countEl) {
+        const count = await getImageCacheCount();
+        countEl.textContent = count == null ? 'Unavailable' : `${count} local images cached (IndexedDB)`;
+      }
+      const status = document.getElementById('aboutImageSyncStatus');
+      if (status) {
+        status.textContent = result.failed ? `Image sync: ${result.downloaded || 0} downloaded, ${result.failed} failed` : `Image sync complete: ${result.downloaded || 0} downloaded`;
+      }
+    } catch (e) {
+      if (!isCurrentSession(token, uid, schoolId)) return;
+      console.warn('Background image sync failed:', e);
+      const status = document.getElementById('aboutImageSyncStatus');
+      if (status) status.textContent = 'Image sync is pending; reports can retry when needed.';
+    }
+  });
+}
+
 function getLastImageSyncText() {
   const raw = localStorage.getItem(LAST_IMAGE_SYNC_KEY);
   return raw ? new Date(Number(raw)).toLocaleString() : 'never';
@@ -3733,13 +3747,11 @@ function pullCloudData(sessionToken) {
       staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
       DB.set(KEYS.staff, staff);
 
-      // Reconcile the browser's IndexedDB image cache with cloud metadata.
-      // This is the authoritative image sync step. Reports remain local-first.
-      if (!valid()) return;
-      await syncImagesFromCloud();
-      if (!valid()) return;
-      await hydrateLocalImageCaches(schoolProfile, students, staff);
-      if (!valid()) return;
+      // v27: image synchronization is deliberately NOT part of the login
+      // critical path. The account, role, and core school data must become
+      // usable immediately. Image synchronization runs in the background
+      // after the dashboard is ready. Reports can fetch a missing image
+      // on-demand from IndexedDB/Storage without blocking authentication.
 
       const grades = {};
       gradeSnap.forEach(d => {
@@ -4644,6 +4656,11 @@ function initAuth() {
           initLockScreen();
           if (!appStarted) { appStarted = true; proceedToApp(); }
           else { refreshProfileMenu(); renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList(); }
+
+          // v27: never hold the authentication gate open while Storage images
+          // are being synchronized. This work is session-bound and may take
+          // several seconds on mobile browsers.
+          startBackgroundImageSync(token, user.uid, data.schoolId);
         });
       }).catch(err => {
         if (!isCurrentSession(token, user.uid, currentSchoolId)) return;

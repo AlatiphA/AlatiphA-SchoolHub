@@ -66,3 +66,10 @@ Approved SchoolHub teacher accounts in `users/{uid}` are now linked one-to-one w
 - Cloud image inventory now merges Firestore metadata with actual Storage objects.
 - Sync Images reports metadata repairs as well as downloads.
 - Reports remain local-first through IndexedDB.
+
+
+V27 - Security/session loading improvement
+- Authentication and role resolution no longer wait for image synchronization.
+- Image sync runs in the background after the dashboard is ready.
+- Reports can synchronize a missing image on demand.
+- Image binaries remain in IndexedDB; structured localStorage records remain image-free.
