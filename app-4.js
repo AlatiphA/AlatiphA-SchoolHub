@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.3';
+const APP_VERSION = 'v38.11.4';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -3979,6 +3979,28 @@ document.getElementById('importGradesXlsxInput').addEventListener('change', e =>
   reader.readAsArrayBuffer(file);
 });
 
+/* ---------- Remarks Comment Bank ---------- */
+// Source: Polished Report Card Comment Bank supplied for SchoolHub remarks dropdowns.
+const REMARK_COMMENT_BANK = {
+  conduct: ["Respectful", "Humble", "Calm", "Approachable", "Kind", "Caring", "Sociable", "Friendly", "Quiet", "Responsible", "Reliable", "Dependable", "Polite", "Courteous", "Obedient", "Cooperative", "Helpful", "Thoughtful", "Patient", "Attentive", "Composed", "Gentle", "Cheerful", "Active", "Proactive", "Resourceful", "Dedicated", "Serious", "Punctual", "Regular in attendance", "Neat", "Well-mannered", "Well-behaved", "Confident", "Considerate", "Leadership qualities", "Works well with classmates", "Follows classroom routines", "Participates in classroom activities", "Participates in class discussions", "Works independently", "Works cooperatively with peers", "Reads well", "Shows good manners and positive social behaviour", "Respectful and obedient", "Calm and respectful", "Calm and quiet", "Humble and respectful", "Respectful and hardworking", "Friendly and sociable", "Calm and approachable", "Calm and obedient", "Calm and hardworking", "Quiet and respectful", "Polite and respectful", "Responsible and dependable", "Punctual and respectful", "Regular and respectful", "Regular and punctual", "Active and sociable", "Approachable and respectful", "Helpful and hardworking", "Hardworking and caring", "Good team player", "Shows improvement", "Shows strong effort and persistence", "Shows enthusiasm for learning", "Eager to learn and explore new ideas", "Accepts challenges positively", "Shows good leadership skills", "Has good comprehension", "Has legible handwriting", "Needs to improve concentration", "Needs encouragement to build confidence", "Needs consistent support to improve", "Needs to be more punctual", "Needs to attend school regularly", "Needs to be more attentive in class", "Can improve with guidance", "Talkative", "Loud", "Noisy", "Playful", "Shy", "Reserved", "Quick-tempered", "Easily distracted", "Inattentive", "Passive in class", "Lazy", "Truant", "Frequently late to school", "Not regular in attendance", "Needs to improve behaviour", "Needs to be more serious", "Needs to participate more actively", "Needs to learn to work with others", "Needs close guidance and support", "Needs to avoid disturbing others"],
+  attitude: ["Hardworking", "Serious", "Calm", "Humble", "Respectful", "Polite", "Obedient", "Responsible", "Dependable", "Diligent", "Dedicated", "Studious", "Persistent", "Resilient", "Patient", "Kind", "Friendly", "Cooperative", "Helpful", "Honest", "Communicative", "Interactive", "Cordial", "Creative", "Confident", "Proactive", "Thoughtful", "Considerate", "Brave", "Lively", "Enthusiastic", "Attentive", "Composed", "Self-motivated", "Works independently", "Works well with peers", "Works carefully and neatly", "Checks work before submission", "Listens to feedback", "Accepts advice positively", "Takes ownership of learning", "Shows enthusiasm for learning", "Eager to learn and participate", "Participates actively in class", "Contributes to discussions", "Shows leadership skills", "Shows commitment to studies", "Maintains a positive attitude", "Makes a sincere effort", "Tries consistently despite challenges", "Shows potential for improvement", "Needs to be more serious", "Needs better concentration", "Needs more attention in class", "Needs more practice", "Needs additional support", "Needs guidance to follow instructions", "Needs encouragement to build confidence", "Needs better time management", "Needs to be more proactive", "Needs to participate more actively", "Needs to improve attendance", "Needs to improve punctuality", "Needs to work harder", "Needs extra support at home", "Needs closer supervision", "Slow in learning", "Slow in writing", "Lazy in studies", "Not serious in class", "Not attentive in class", "Easily distracted", "Loses focus easily", "Talkative in class", "Playful in class", "Passive in class", "Reluctant to participate", "Inactive in lessons", "Sleeps in class", "Truant", "Frequently late to school", "Needs to improve behaviour", "Needs to learn to work with others", "Needs support to catch up with peers"],
+  interest: ["Reading", "Writing", "Spelling", "Mathematics", "Science", "Integrated Science", "Natural Science", "Environmental Studies", "English Language", "Ghanaian Language", "French", "Religious and Moral Education", "History", "Computing", "Literacy", "Numeracy", "Phonics", "Creative Arts", "Art and Design", "Drawing", "Colouring", "Crafts", "Music", "Singing", "Dancing", "Drumming", "Drama", "Sports", "Football", "Netball", "Handball", "Volleyball", "Athletics", "Games", "Outdoor activities", "Indoor activities", "Social activities", "Group work", "Group assignments", "Peer teaching", "Leadership", "Volunteering", "Storytelling", "Creative writing", "Calculation", "Comprehension", "Making friends", "Gardening", "Cooking", "Cleaning", "Sweeping", "Woodwork", "Trading", "Repairs", "Fashion", "Modelling", "Cultural activities", "Prayer", "Shows interest in all subjects", "Shows keen interest in academic work", "Shows interest in Mathematics", "Shows interest in Science", "Shows interest in creativity", "Shows strong understanding of subjects", "Shows great creativity", "Enjoys reading", "Enjoys sports", "Enjoys music and dance", "Enjoys outdoor activities", "Enjoys group activities", "Enjoys educational games", "Interested in social activities", "Interested in reading and writing", "Interested in sports and arts", "Interested in music and sports", "Interested in reading and mathematics", "Interested in reading and science", "Interested in drawing and colouring", "Interested in football and artwork", "Interested in dancing and singing", "Interested in games and reading", "Interested in group learning", "Shows improvement", "Needs encouragement to develop interests", "Needs to show more interest in learning"],
+  comment: ["Keep it up.", "Well done. Keep it up.", "Good performance. Keep it up.", "Excellent performance. Keep it up.", "Excellent progress. Keep it up.", "Splendid performance. Keep it up.", "Impressive performance. Keep it up.", "Outstanding effort and progress. Keep it up.", "Great work. Keep it up.", "Great work. Continue working hard.", "Keep working hard.", "Continue learning and improving.", "Keep aiming for excellence.", "You have the potential to do better.", "Can do better.", "Could do better. Keep working hard.", "There is room for improvement.", "More room for improvement. Keep working hard.", "Shows good progress.", "Shows steady improvement.", "Has improved. Keep it up.", "Has made good progress.", "Making good progress. Keep it up.", "Excellent effort.", "Good effort. Continue working hard.", "Shows enthusiasm for learning.", "Shows a positive attitude towards learning.", "Excellent participation in class.", "Shows good leadership qualities.", "Hardworking and sincere.", "A pleasant student to have in class.", "A well-rounded student with good potential.", "Works carefully and neatly.", "Needs to be more serious with studies.", "Needs to work harder.", "Needs to improve concentration in class.", "Needs to pay more attention in class.", "Needs to improve time management.", "Needs to improve punctuality.", "Needs to attend school regularly.", "Needs to study more at home.", "Needs more practice and revision.", "Needs additional support at home.", "Needs close supervision and encouragement at home.", "Needs extra tuition and support.", "Needs special attention at home.", "Needs help to improve reading.", "Needs help to improve handwriting.", "Needs help with English composition.", "Needs to improve spelling and handwriting.", "Needs to work on basic concepts.", "Needs to follow instructions carefully.", "Needs to be more cooperative in group work.", "Needs to learn to work well with others.", "Needs to change negative behaviour.", "Needs to stop playing and concentrate on learning.", "Needs to be more punctual and regular at school.", "Be more serious and work harder next term.", "Be more serious and attend school regularly.", "Be more serious and attend school on time.", "Study hard and continue improving.", "Revise regularly and work consistently.", "With consistent effort and guidance, improvement is possible.", "With regular support, the pupil can achieve better results.", "Can achieve better results with improved focus.", "Continue working hard and maintain the positive attitude.", "Keep improving and strive for excellence.", "Excellent. Continue the good work.", "Very good performance. Keep it up.", "Satisfactory performance. There is room for improvement.", "Needs to put in more effort.", "Needs to sit up and concentrate more.", "Needs to take studies more seriously.", "Needs more attention in class and at home.", "Needs continuous support to improve performance."]
+};
+
+function remarksSelectOptions(items, current) {
+  const value = current == null ? '' : String(current);
+  let html = '<option value=\"\">Select an option...</option>';
+  const exists = items.some(item => item === value);
+  if (value && !exists) {
+    html += `<option value=\"${escapeHtml(value)}\" selected>Current: ${escapeHtml(value)}</option>`;
+  }
+  items.forEach(item => {
+    html += `<option value=\"${escapeHtml(item)}\"${item === value ? ' selected' : ''}>${escapeHtml(item)}</option>`;
+  });
+  return html;
+}
+
 /* ---------- Remarks (attendance, conduct, fees, comments) ---------- */
 function renderRemarksClassSelect() {
   const sel = document.getElementById('remarksClassSelect');
@@ -4013,16 +4035,24 @@ function renderRemarksForm() {
         <input type="number" min="0" step="0.01" class="rm-fees" value="${r.feesDue !== undefined ? r.feesDue : ''}">
       </label>
       <label>Conduct / Character
-        <input type="text" class="rm-conduct" placeholder="e.g. Faithfully performs classroom tasks" value="${r.conduct ? escapeHtml(r.conduct) : ''}">
+        <select class="rm-conduct" aria-label="Conduct / Character">
+          ${remarksSelectOptions(REMARK_COMMENT_BANK.conduct, r.conduct)}
+        </select>
       </label>
       <label>Attitude
-        <input type="text" class="rm-attitude" placeholder="e.g. Shows enthusiasm for classroom activities" value="${r.attitude ? escapeHtml(r.attitude) : ''}">
+        <select class="rm-attitude" aria-label="Attitude">
+          ${remarksSelectOptions(REMARK_COMMENT_BANK.attitude, r.attitude)}
+        </select>
       </label>
       <label>Interest
-        <input type="text" class="rm-interest" placeholder="e.g. Reading, Football, Drawing" value="${r.interest ? escapeHtml(r.interest) : ''}">
+        <select class="rm-interest" aria-label="Interest">
+          ${remarksSelectOptions(REMARK_COMMENT_BANK.interest, r.interest)}
+        </select>
       </label>
       <label>Form Teacher's Comment
-        <input type="text" class="rm-comment" placeholder="e.g. Keep it up" value="${r.comment ? escapeHtml(r.comment) : ''}">
+        <select class="rm-comment" aria-label="Form Teacher's Comment">
+          ${remarksSelectOptions(REMARK_COMMENT_BANK.comment, r.comment)}
+        </select>
       </label>
     </div>`;
   });

@@ -401,6 +401,28 @@ table.grades-table input:focus{border-bottom-color:var(--gold);}
 }
 .remarks-card label{margin-bottom:12px;}
 
+.remarks-card select.rm-conduct,
+.remarks-card select.rm-attitude,
+.remarks-card select.rm-interest,
+.remarks-card select.rm-comment{
+  width:100%;
+  min-height:42px;
+  padding:9px 12px;
+  border:1px solid var(--rule);
+  border-radius:10px;
+  background:var(--surface);
+  color:var(--ink);
+  font:inherit;
+}
+.remarks-card select.rm-conduct:focus,
+.remarks-card select.rm-attitude:focus,
+.remarks-card select.rm-interest:focus,
+.remarks-card select.rm-comment:focus{
+  outline:none;
+  border-color:var(--gold);
+  box-shadow:0 0 0 2px rgba(168,129,25,.12);
+}
+
 /* Home dashboard */
 .welcome-block{margin-bottom:20px;text-align:center;}
 .welcome-block h1{
