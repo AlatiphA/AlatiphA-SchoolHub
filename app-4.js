@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.3.1';
+const APP_VERSION = 'v38.3.2';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2112,22 +2112,56 @@ function termYearKey(term, year) {
 
 function getTermDates(term, year) {
   const settings = DB.get(KEYS.settings, {});
-  const key = termYearKey(term || settings.currentTerm, year || settings.currentYear);
+  const targetTerm = term || settings.currentTerm;
+  const targetYear = year || settings.currentYear;
+  const key = termYearKey(targetTerm, targetYear);
   const map = settings.termDates && typeof settings.termDates === 'object' ? settings.termDates : {};
-  const item = map[key];
-  if (item && item.start && item.end) return { start: item.start, end: item.end };
-  // Backward-compatible support for optional single-term fields.
-  if (settings.termStartDate && settings.termEndDate) {
-    return { start: settings.termStartDate, end: settings.termEndDate };
+
+  const candidates = [
+    map[key],
+    map[encodeURIComponent(key)],
+    settings.termDates && settings.termDates[targetTerm],
+    settings.termDates && settings.termDates[String(targetYear)]
+  ];
+  for (const item of candidates) {
+    if (item && item.start && item.end && parseDateOnly(item.start) && parseDateOnly(item.end)) {
+      return { start: dateOnlyString(parseDateOnly(item.start)), end: dateOnlyString(parseDateOnly(item.end)) };
+    }
+  }
+
+  // Backward-compatible support for older versions that stored one active
+  // term range directly in Settings.
+  const start = settings.termStartDate || settings.termOpens || settings.termStart || '';
+  const end = settings.termEndDate || settings.termCloses || settings.termEnd || '';
+  if (start && end && parseDateOnly(start) && parseDateOnly(end)) {
+    return { start: dateOnlyString(parseDateOnly(start)), end: dateOnlyString(parseDateOnly(end)) };
   }
   return null;
 }
 
 function parseDateOnly(value) {
   if (!value) return null;
-  const parts = String(value).split('-').map(Number);
-  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return null;
-  return new Date(parts[0], parts[1] - 1, parts[2]);
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  const text = String(value).trim();
+  if (!text) return null;
+
+  // Primary storage format is yyyy-mm-dd from <input type="date">.
+  let m = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Accept dd/mm/yyyy and dd-mm-yyyy as a recovery path for older backups
+  // or manually imported settings.
+  m = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (m) {
+    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
 }
 
 function dateOnlyString(d) {
@@ -2159,9 +2193,30 @@ function calendarRecord(term, year, date) {
 
 function calculateTimesOpen(term, year, throughDate) {
   const dates = getTermDates(term, year);
-  if (!dates) return 0;
-  const start = parseDateOnly(dates.start);
-  const end = parseDateOnly(dates.end);
+
+  // Term dates are authoritative. If an older workspace has attendance
+  // records but no saved term range, use the earliest/latest recorded open
+  // attendance dates as a temporary recovery range instead of displaying 0
+  // and suppressing every ratio. The Setup term dates should still be set for
+  // a complete academic-calendar calculation.
+  let start = dates ? parseDateOnly(dates.start) : null;
+  let end = dates ? parseDateOnly(dates.end) : null;
+
+  if (!start || !end) {
+    const datesFound = [];
+    const allStudentAttendance = DB.get(KEYS.attendance, {});
+    const studentRecords = Object.keys(allStudentAttendance).filter(k => k.indexOf(`__${term}__${year}__`) !== -1).map(key => ({ key, date: key.split('__').slice(-1)[0], record: allStudentAttendance[key] || {} }));
+    const teacherRecords = teacherAttendanceRecordsForTerm(term, year);
+    studentRecords.concat(teacherRecords).forEach(item => {
+      if (item && item.date && attendanceDayType(term, year, item.date) === 'open') datesFound.push(item.date);
+    });
+    schoolCalendarRecordsForTerm(term, year).forEach(item => {
+      if (item && item.date && String(item.record.type || '').toLowerCase() === 'open') datesFound.push(item.date);
+    });
+    const parsed = datesFound.map(parseDateOnly).filter(Boolean).sort((a,b) => a - b);
+    if (parsed.length) { start = parsed[0]; end = parsed[parsed.length - 1]; }
+  }
+
   if (!start || !end || start > end) return 0;
   let limit = end;
   if (throughDate) {
@@ -2239,7 +2294,90 @@ function teacherAttendanceRecordsForTerm(term, year) {
 
 function isTeacherStaffRecord(st) {
   const role = String(st && st.role || '').toLowerCase().replace(/\s+/g, '');
-  return role === 'teacher' || (role.includes('teacher') && role !== 'headteacher');
+  // A Head Teacher is also a teaching staff member and must be included in
+  // teacher attendance and the average teacher attendance ratio. Assistant
+  // Head Teachers are included too when their Staff role identifies them as
+  // teaching staff.
+  return role === 'teacher' || role === 'headteacher' || role === 'assistantheadteacher'
+    || role.includes('teacher');
+}
+
+function ensureHeadTeacherStaffRecord() {
+  if (!isHeadTeacher() || !currentUid || !currentSchoolId) return Promise.resolve(null);
+
+  const settings = DB.get(KEYS.settings, {});
+  let staffList = DB.get(KEYS.staff, []);
+  const authUser = firebase.auth().currentUser;
+  const accountEmail = String((currentUserData && currentUserData.email) || (authUser && authUser.email) || '').trim().toLowerCase();
+  const accountName = String((currentUserData && (currentUserData.displayName || currentUserData.name)) || (authUser && authUser.displayName) || '').trim().toLowerCase();
+  let staff = staffList.find(s => s.userUid === currentUid);
+
+  // Also recognize an existing Staff record by the Head Teacher's account
+  // email or display name, preventing duplicate personnel records after an
+  // older version was used before account-to-Staff linking.
+  if (!staff && accountEmail) staff = staffList.find(s => String(s.email || '').trim().toLowerCase() === accountEmail) || null;
+  if (!staff && accountName) staff = staffList.find(s => String(s.name || '').trim().toLowerCase() === accountName) || null;
+
+  // If the Head Teacher was already selected in Setup, reuse that Staff
+  // record and establish the missing account link rather than creating a
+  // duplicate.
+  if (!staff && settings.headTeacherId) {
+    staff = staffList.find(s => s.id === settings.headTeacherId) || null;
+  }
+
+  if (staff) {
+    let changed = false;
+    if (staff.userUid !== currentUid) { staff.userUid = currentUid; changed = true; }
+    if (!staff.email) {
+      const email = currentUserData && currentUserData.email
+        ? currentUserData.email
+        : (firebase.auth().currentUser && firebase.auth().currentUser.email) || '';
+      if (email) { staff.email = email; changed = true; }
+    }
+    if (!staff.role || !String(staff.role).toLowerCase().includes('teacher')) {
+      staff.role = 'Head Teacher';
+      changed = true;
+    }
+    if (settings.headTeacherId !== staff.id) {
+      settings.headTeacherId = staff.id;
+      DB.set(KEYS.settings, settings);
+    }
+    if (changed) {
+      DB.set(KEYS.staff, staffList);
+      return staffRef(staff.id).set(stripImagesForCloud('staff', staff), { merge: true })
+        .then(() => firebase.firestore().collection('users').doc(currentUid).set({ staffId: staff.id, staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true }))
+        .then(() => staff);
+    }
+    return Promise.resolve(staff);
+  }
+
+  const email = String((currentUserData && currentUserData.email) || (authUser && authUser.email) || '').trim();
+  const displayName = String((currentUserData && (currentUserData.displayName || currentUserData.name)) || (authUser && authUser.displayName) || '').trim();
+  const fallbackName = displayName || staffNameFromMember({ email }) || 'Head Teacher';
+  const staffId = uid();
+  staff = {
+    id: staffId,
+    userUid: currentUid,
+    email,
+    name: fallbackName,
+    role: 'Head Teacher',
+    dob: '', staffId: '', registeredNo: '', licenseNo: '', ssnitNo: '',
+    ghanaCardId: '', dateOfAppointment: '', rank: '', phone: '',
+    signature: '', signatureUrl: '', signatureStoragePath: '',
+    createdAt: new Date().toISOString()
+  };
+
+  staffList.push(staff);
+  DB.set(KEYS.staff, staffList);
+  settings.headTeacherId = staffId;
+  DB.set(KEYS.settings, settings);
+
+  return staffRef(staffId).set(stripImagesForCloud('staff', staff), { merge: true })
+    .then(() => firebase.firestore().collection('users').doc(currentUid).set({
+      staffId: staffId,
+      staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true }))
+    .then(() => staff);
 }
 
 function teacherAttendanceSummary(term, year) {
@@ -5272,6 +5410,14 @@ function pullCloudData(sessionToken) {
       const staff = [];
       staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
       DB.set(KEYS.staff, staff);
+
+      // The Head Teacher is also teaching staff. Ensure the account has a
+      // corresponding Staff record so teacher attendance includes the Head
+      // Teacher and the average is not distorted.
+      if (isHeadTeacher()) {
+        try { await ensureHeadTeacherStaffRecord(); }
+        catch (e) { console.warn('Could not ensure Head Teacher Staff record:', e); }
+      }
 
       // v27: image synchronization is deliberately NOT part of the login
       // critical path. The account, role, and core school data must become

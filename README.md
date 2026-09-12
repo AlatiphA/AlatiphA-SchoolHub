@@ -77,7 +77,7 @@ Ratio calculation:
 - Backup and restore includes school calendar.
 
 
-## v38.3.1 Attendance bugfix
+## v38.3.2 Attendance correction
 - Restored the teacher-staff filter used by Teacher Attendance.
 - Setup now reloads saved Term Opens and Term Closes values correctly.
 - Legacy `termStartDate` / `termEndDate` values are accepted when present.
