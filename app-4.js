@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.9.2';
+const APP_VERSION = 'v38.9.3';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -7451,35 +7451,42 @@ function initAuth() {
         return repairAccountProfile.then(() => {
           if (!isCurrentSession(token, user.uid, data.schoolId)) return;
 
-          // v28: authentication and role resolution are the login critical
-          // path. Core Firestore synchronization is deliberately moved out of
-          // the auth gate so a slow/hung cloud read can never trap the user on
-          // the Sign In screen. While data is loading, the dashboard shows a
-          // neutral loading state and no previous session's records.
+          // v38.9.3: authentication/profile resolution is the only startup
+          // gate. The user's school data is local-first, so once the account
+          // and school namespace are known we can immediately restore the last
+          // page from this school's local cache. Firestore synchronization then
+          // runs in the background. This prevents a slow/hung Firestore read
+          // from leaving the user permanently on "Restoring your session…".
           sessionReady = true;
-          sessionDataReady = false;
-          // Keep the boot gate visible until the current school's data has
-          // finished loading. Do not briefly expose Home while restoring a
-          // saved page. The saved location is revealed only after
-          // pullCloudData() completes below.
-          hideSyncingMessage(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
-          initLockScreen();
-          if (!appStarted) { appStarted = true; proceedToApp(); }
-          else { proceedToApp(); }
+          sessionDataReady = true;
 
-          // Load the new school's core data in the background. All writes and
-          // UI updates remain session-bound. If this fails, the dashboard stays
-          // usable without exposing the previous session's cached records.
+          // The local cache is namespaced by currentSchoolId, so this does not
+          // expose another school's records. On a new device/school the page
+          // simply renders its empty/loading state until cloud data arrives.
+          hideSyncingMessage(); hideSessionRestoring(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
+          initLockScreen();
+          if (!appStarted) appStarted = true;
+          proceedToApp();
+
+          // Restore the exact page immediately, then synchronize the school in
+          // the background. The sync completion refreshes the current view but
+          // never routes the user through Home.
+          const restoredBeforeSync = getSavedNavigation();
+          if (restoredBeforeSync.view === 'attendance') {
+            showView('attendance');
+            setAttendanceMode(restoredBeforeSync.attendanceTab);
+          } else {
+            showView(restoredBeforeSync.view);
+          }
+
           pullCloudData(token).then(() => {
             if (!isCurrentSession(token, user.uid, data.schoolId)) return;
-            sessionDataReady = true;
             loadSettingsForm();
             refreshProfileMenu();
             renderHome();
             renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
-            // Restore the exact page and Attendance sub-tab that the user had
-            // before a browser refresh. This happens only after school data is
-            // ready, so startup never overwrites the saved location with Home.
+            // Re-render the page the user is actually on. Do not call
+            // showView('home') and do not change the saved navigation.
             const restored = getSavedNavigation();
             if (restored.view === 'attendance') {
               showView('attendance');
@@ -7490,25 +7497,7 @@ function initAuth() {
             startBackgroundImageSync(token, user.uid, data.schoolId);
           }).catch(err => {
             if (!isCurrentSession(token, user.uid, data.schoolId)) return;
-            console.warn('Core cloud synchronization failed:', err);
-
-            // Do not leave the user behind a permanent boot screen if cloud
-            // sync fails. Allow the already-restored local workspace to open
-            // at the saved page, while clearly indicating that cloud sync
-            // needs attention.
-            sessionDataReady = true;
-            hideSessionRestoring();
-            loadSettingsForm();
-            refreshProfileMenu();
-            renderHome();
-            renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
-            const restored = getSavedNavigation();
-            if (restored.view === 'attendance') {
-              showView('attendance');
-              setAttendanceMode(restored.attendanceTab);
-            } else {
-              showView(restored.view);
-            }
+            console.warn('Background cloud synchronization failed:', err);
             const sub = document.getElementById('welcomeSubtext');
             if (sub) sub.textContent = 'Cloud sync is taking longer than expected. You can retry from the profile menu.';
           });
