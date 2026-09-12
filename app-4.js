@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.8';
+const APP_VERSION = 'v38.8.1';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2501,15 +2501,29 @@ function attendanceReportTeacherHistory(staff, term, year) {
 }
 
 function attendanceReportPupilStats(student, term, year, timesOpen) {
+  // Canonical pupil totals come from attendanceSummary(), the same source used
+  // by the Students tab, Summary, Class Reports and Analytics. History is
+  // retained only for the chronological streak calculation.
   const history = attendanceReportPupilHistory(student, term, year);
-  let present=0, late=0, absent=0, recorded=0;
-  history.forEach(r => { if (!r.status) return; recorded++; if(r.status==='P')present++; else if(r.status==='L')late++; else if(r.status==='A')absent++; });
-  const total = present + late;
-  const ratio = attendanceRatio({present,late,total,absent}, timesOpen, false);
-  let current=0, longest=0, run=0;
-  history.forEach(r => { if(r.status==='A'){run++; longest=Math.max(longest,run);} else {run=0;} });
-  current=run;
-  return { present, late, total, absent, recorded, ratio, currentAbsenceStreak:current, longestAbsenceStreak:longest, history };
+  const summaryMap = attendanceSummary(student.classId, term, year).summary || {};
+  const sm = summaryMap[student.id] || { present: 0, late: 0, absent: 0, total: 0, recorded: 0 };
+  const present = Number(sm.present || 0);
+  const late = Number(sm.late || 0);
+  const absent = Number(sm.absent || 0);
+  const total = Number(sm.total || (present + late));
+  const recorded = Number(sm.recorded || 0);
+  const ratio = attendanceRatio({ present, late, total, absent }, timesOpen, false);
+  let current = 0, longest = 0, run = 0;
+  history.forEach(r => {
+    if (r.status === 'A') {
+      run++;
+      longest = Math.max(longest, run);
+    } else {
+      run = 0;
+    }
+  });
+  current = run;
+  return { present, late, total, absent, recorded, ratio, currentAbsenceStreak: current, longestAbsenceStreak: longest, history };
 }
 
 function attendanceReportTeacherStats(staff, term, year, timesOpen) {
@@ -3162,117 +3176,178 @@ function teacherAttendanceAnalysis(term, year, timesOpen) {
 }
 
 function attendanceAnalyticsBuild(term, year, timesOpen) {
+  /*
+   * v38.8.1 UNIFIED ATTENDANCE ENGINE
+   * ---------------------------------
+   * Analytics must consume the same authoritative summaries used by the
+   * Attendance and Reports tabs. The previous v38.8 implementation rebuilt
+   * pupil totals from a separate class-map path. That path could disagree
+   * with attendanceSummary(), producing 0% analytics while Reports showed
+   * the correct attendance.
+   */
   const classes = getAccessibleClasses();
   const students = getAccessibleStudents();
-  const openDates = openSchoolDatesForTerm(term, year);
-  const attendanceAll = DB.get(KEYS.attendance, {});
-  const classMaps = {};
+  const openDates = attendanceOpenDates(term, year);
 
+  // Build one authoritative pupil summary per class, then enrich each pupil
+  // with history-derived streaks. Totals, recorded marks and ratios all come
+  // from attendanceSummary()/attendanceRatio().
+  const classSummaryMaps = {};
   classes.forEach(c => {
-    const map = {};
-    attendanceRecordsForTerm(c.id, term, year).forEach(({date, record}) => {
-      const entries = record.entries || record;
-      map[date] = entries || {};
-    });
-    classMaps[c.id] = map;
+    classSummaryMaps[c.id] = attendanceSummary(c.id, term, year).summary || {};
   });
 
   const pupilRows = students.map(st => {
-    const sm = {present:0, late:0, absent:0, recorded:0};
-    const statusByDate = {};
-    const map = classMaps[st.classId] || {};
-    openDates.forEach(date => {
-      const status = String((map[date] || {})[st.id] || '').toUpperCase();
-      if (status) { statusByDate[date] = status; sm.recorded++; }
-      if (status === 'P') sm.present++;
-      else if (status === 'L') sm.late++;
-      else if (status === 'A') sm.absent++;
-    });
-    sm.total = sm.present + sm.late;
+    const base = classSummaryMaps[st.classId] && classSummaryMaps[st.classId][st.id]
+      ? classSummaryMaps[st.classId][st.id]
+      : { present: 0, late: 0, absent: 0, total: 0, recorded: 0 };
+
+    const sm = {
+      present: Number(base.present || 0),
+      late: Number(base.late || 0),
+      absent: Number(base.absent || 0),
+      total: Number(base.total || 0),
+      recorded: Number(base.recorded || 0)
+    };
     sm.ratio = attendanceRatio(sm, timesOpen, false);
-    sm.completion = timesOpen > 0 ? (sm.recorded / timesOpen) * 100 : null;
+    sm.completion = timesOpen > 0 ? Math.min(100, (sm.recorded / timesOpen) * 100) : null;
+
+    const history = attendanceReportPupilHistory(st, term, year);
     let current = 0, longest = 0, run = 0;
-    openDates.forEach(date => {
-      if (statusByDate[date] === 'A') { run++; longest = Math.max(longest, run); }
-      else run = 0;
+    history.forEach(r => {
+      if (r.status === 'A') {
+        run++;
+        longest = Math.max(longest, run);
+      } else {
+        run = 0;
+      }
     });
-    for (let i=openDates.length-1;i>=0;i--) {
-      if (statusByDate[openDates[i]] === 'A') current++; else break;
-    }
+    current = run;
     sm.currentAbsenceStreak = current;
     sm.longestAbsenceStreak = longest;
-    return {student:st, summary:sm};
+
+    return { student: st, summary: sm };
   });
 
+  // Teacher totals are already authoritative through teacherAttendanceSummary().
   const teacherData = teacherAttendanceAnalysis(term, year, timesOpen);
-  const teacherRows = teacherData.teachers.map(st => ({staff:st, summary:teacherData.summary[st.id]}));
+  const teacherRows = teacherData.teachers.map(st => ({
+    staff: st,
+    summary: teacherData.summary[st.id] || {
+      present: 0, late: 0, total: 0, absent: 0,
+      excused: 0, leave: 0, recorded: 0,
+      ratio: null, currentAbsenceStreak: 0, longestAbsenceStreak: 0
+    }
+  }));
 
+  // Daily figures use the same attendance status source as the daily
+  // Attendance screen, while the term totals above use the canonical summary.
   const daily = openDates.map(date => {
-    let pupilExpected = students.length, pupilMarked = 0, pupilAttended = 0, pupilAbsent = 0, pupilLate = 0;
-    classes.forEach(c => {
-      const map = classMaps[c.id] || {};
-      const entries = map[date] || {};
-      students.filter(st => st.classId === c.id).forEach(st => {
-        const status = String(entries[st.id] || '').toUpperCase();
-        if (status) pupilMarked++;
-        if (status === 'P') { pupilAttended++; }
-        else if (status === 'L') { pupilAttended++; pupilLate++; }
-        else if (status === 'A') pupilAbsent++;
-      });
+    let pupilExpected = students.length;
+    let pupilMarked = 0, pupilAttended = 0, pupilAbsent = 0, pupilLate = 0;
+
+    students.forEach(st => {
+      const status = attendanceStatusCodeForStudent(st.classId, term, year, date, st.id);
+      if (status) pupilMarked++;
+      if (status === 'P') pupilAttended++;
+      else if (status === 'L') { pupilAttended++; pupilLate++; }
+      else if (status === 'A') pupilAbsent++;
     });
-    let teacherExpected = isHeadTeacher() ? teacherRows.length : 0, teacherMarked = 0, teacherAttended = 0, teacherAbsent = 0, teacherLate = 0;
+
+    let teacherExpected = isHeadTeacher() ? teacherRows.length : 0;
+    let teacherMarked = 0, teacherAttended = 0, teacherAbsent = 0, teacherLate = 0;
     if (isHeadTeacher()) {
-      const key = teacherAttendanceKey(term, year, date);
-      const rec = DB.get(KEYS.teacherAttendance, {})[key] || {};
-      const entries = rec.entries || rec;
-      teacherRows.forEach(({staff}) => {
-        const status = String(entries[staff.id] || '').toUpperCase();
+      teacherRows.forEach(({ staff }) => {
+        const status = attendanceStatusCodeForTeacher(term, year, date, staff.id);
         if (status) teacherMarked++;
         if (status === 'P') teacherAttended++;
         else if (status === 'L') { teacherAttended++; teacherLate++; }
         else if (status === 'A') teacherAbsent++;
       });
     }
+
     return {
       date,
-      pupilExpected, pupilMarked, pupilAttended, pupilAbsent, pupilLate,
+      pupilExpected,
+      pupilMarked,
+      pupilAttended,
+      pupilAbsent,
+      pupilLate,
       pupilCompletion: pupilExpected ? (pupilMarked / pupilExpected) * 100 : null,
       pupilRate: pupilExpected ? (pupilAttended / pupilExpected) * 100 : null,
-      teacherExpected, teacherMarked, teacherAttended, teacherAbsent, teacherLate,
+      teacherExpected,
+      teacherMarked,
+      teacherAttended,
+      teacherAbsent,
+      teacherLate,
       teacherCompletion: teacherExpected ? (teacherMarked / teacherExpected) * 100 : null,
       teacherRate: teacherExpected ? (teacherAttended / teacherExpected) * 100 : null
     };
   });
 
-  const pupilAttended = pupilRows.reduce((n,x)=>n+x.summary.total,0);
-  const pupilAbsent = pupilRows.reduce((n,x)=>n+x.summary.absent,0);
-  const pupilLate = pupilRows.reduce((n,x)=>n+x.summary.late,0);
-  const pupilExpected = students.length * timesOpen;
-  const pupilCompletion = pupilExpected ? (pupilRows.reduce((n,x)=>n+x.summary.recorded,0) / pupilExpected) * 100 : null;
-  const pupilRate = pupilExpected ? (pupilAttended / pupilExpected) * 100 : null;
+  // School-level attendance rate is total attended marks divided by total
+  // expected marks. Completion is recorded marks divided by expected marks.
+  const pupilAttended = pupilRows.reduce((n, x) => n + Number(x.summary.total || 0), 0);
+  const pupilAbsent = pupilRows.reduce((n, x) => n + Number(x.summary.absent || 0), 0);
+  const pupilLate = pupilRows.reduce((n, x) => n + Number(x.summary.late || 0), 0);
+  const pupilRecorded = pupilRows.reduce((n, x) => n + Number(x.summary.recorded || 0), 0);
+  const pupilExpected = students.length * Number(timesOpen || 0);
+  const pupilCompletion = pupilExpected > 0 ? Math.min(100, (pupilRecorded / pupilExpected) * 100) : null;
+  const pupilRate = pupilExpected > 0 ? Math.min(100, (pupilAttended / pupilExpected) * 100) : null;
 
-  const teacherExpected = teacherRows.reduce((n,x)=>n+Math.max(0, timesOpen - Number(x.summary.excused||0) - Number(x.summary.leave||0)),0);
-  const teacherAttended = teacherRows.reduce((n,x)=>n+Number(x.summary.total||0),0);
-  const teacherAbsent = teacherRows.reduce((n,x)=>n+Number(x.summary.absent||0),0);
-  const teacherLate = teacherRows.reduce((n,x)=>n+Number(x.summary.late||0),0);
-  const teacherRecorded = teacherRows.reduce((n,x)=>n+Number(x.summary.recorded||0),0);
-  const teacherCompletion = (teacherRows.length && timesOpen) ? (teacherRecorded / (teacherRows.length * timesOpen)) * 100 : null;
-  const teacherRate = teacherExpected ? (teacherAttended / teacherExpected) * 100 : null;
+  const teacherAttended = teacherRows.reduce((n, x) => n + Number(x.summary.total || 0), 0);
+  const teacherAbsent = teacherRows.reduce((n, x) => n + Number(x.summary.absent || 0), 0);
+  const teacherLate = teacherRows.reduce((n, x) => n + Number(x.summary.late || 0), 0);
+  const teacherRecorded = teacherRows.reduce((n, x) => n + Number(x.summary.recorded || 0), 0);
+  const teacherExpected = teacherRows.reduce((n, x) =>
+    n + Math.max(0, Number(timesOpen || 0) - Number(x.summary.excused || 0) - Number(x.summary.leave || 0)), 0);
+  const teacherCompletionDenominator = teacherRows.reduce((n, x) =>
+    n + Math.max(0, Number(timesOpen || 0) - Number(x.summary.excused || 0) - Number(x.summary.leave || 0)), 0);
+  const teacherCompletion = teacherCompletionDenominator > 0
+    ? Math.min(100, (teacherRecorded / teacherCompletionDenominator) * 100)
+    : null;
+  const teacherRate = teacherExpected > 0 ? Math.min(100, (teacherAttended / teacherExpected) * 100) : null;
 
   const classRows = classes.map(c => {
-    const rows = pupilRows.filter(x=>x.student.classId===c.id);
-    const expected = rows.length * timesOpen;
-    const attended = rows.reduce((n,x)=>n+x.summary.total,0);
-    const absent = rows.reduce((n,x)=>n+x.summary.absent,0);
-    const late = rows.reduce((n,x)=>n+x.summary.late,0);
-    const marked = rows.reduce((n,x)=>n+x.summary.recorded,0);
-    return {classInfo:c,pupils:rows.length,expected,attended,absent,late,marked,completion:expected?(marked/expected)*100:null,ratio:expected?(attended/expected)*100:null};
+    const rows = pupilRows.filter(x => x.student.classId === c.id);
+    const expected = rows.length * Number(timesOpen || 0);
+    const attended = rows.reduce((n, x) => n + Number(x.summary.total || 0), 0);
+    const absent = rows.reduce((n, x) => n + Number(x.summary.absent || 0), 0);
+    const late = rows.reduce((n, x) => n + Number(x.summary.late || 0), 0);
+    const marked = rows.reduce((n, x) => n + Number(x.summary.recorded || 0), 0);
+    const ratios = rows.map(x => x.summary.ratio).filter(Number.isFinite);
+    return {
+      classInfo: c,
+      pupils: rows.length,
+      expected,
+      attended,
+      absent,
+      late,
+      marked,
+      completion: expected > 0 ? Math.min(100, (marked / expected) * 100) : null,
+      ratio: expected > 0 ? Math.min(100, (attended / expected) * 100) : null,
+      averageIndividualRatio: ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null
+    };
   });
 
   return {
-    classes, students, teachers:teacherRows, pupilRows, teacherRows, classRows, daily,
-    pupilRate, pupilCompletion, pupilAttended, pupilAbsent, pupilLate,
-    teacherRate, teacherCompletion, teacherAttended, teacherAbsent, teacherLate,
+    classes,
+    students,
+    teachers: teacherRows,
+    pupilRows,
+    teacherRows,
+    classRows,
+    daily,
+    pupilRate,
+    pupilCompletion,
+    pupilAttended,
+    pupilAbsent,
+    pupilLate,
+    teacherRate,
+    teacherCompletion,
+    teacherAttended,
+    teacherAbsent,
+    teacherLate,
     openDates
   };
 }
