@@ -113,7 +113,7 @@ v38.5 - Attendance Summary Print/PDF fix:
 - Existing Print Report and Download Report are retained.
 
 
-## v38.7 Attendance Analysis
+## v38.7.1 Attendance Analysis
 - Pupil and teacher attendance analysis.
 - Average ratio, below-75% alerts, late and absent totals.
 - Current and longest absence streaks.

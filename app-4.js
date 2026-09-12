@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.7';
+const APP_VERSION = 'v38.7.1';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2432,7 +2432,7 @@ function formatAttendanceRatio(value) {
 }
 
 
-/* ---------- v38.7 Attendance Reports ---------- */
+/* ---------- v38.7.1 Attendance Reports ---------- */
 function attendanceOpenDates(term, year, throughDate) {
   const td = getTermDates(term, year);
   if (!td) return [];
@@ -2513,14 +2513,37 @@ function attendanceReportPupilStats(student, term, year, timesOpen) {
 }
 
 function attendanceReportTeacherStats(staff, term, year, timesOpen) {
+  // Use the same authoritative local summary used by the Teacher Attendance
+  // tab. The previous report implementation rebuilt the totals from a
+  // separate date-history path, which could disagree with the live teacher
+  // attendance data after a save/sync. That is why the Teacher Attendance tab
+  // could show Present/Late totals while the Reports tab showed zeros.
   const history = attendanceReportTeacherHistory(staff, term, year);
-  let present=0, late=0, absent=0, excused=0, leave=0, recorded=0;
-  history.forEach(r => { if(!r.status)return; recorded++; if(r.status==='P')present++; else if(r.status==='L')late++; else if(r.status==='A')absent++; else if(r.status==='E')excused++; else if(r.status==='O')leave++; });
-  const total=present+late;
-  const ratio=attendanceRatio({present,late,total,absent,excused,leave},timesOpen,true);
-  let current=0,longest=0,run=0;
-  history.forEach(r=>{if(r.status==='A'){run++;longest=Math.max(longest,run);}else{run=0;}}); current=run;
-  return {present,late,total,absent,excused,leave,recorded,ratio,currentAbsenceStreak:current,longestAbsenceStreak:longest,history};
+  const summaryMap = teacherAttendanceSummary(term, year).summary || {};
+  const sm = summaryMap[staff.id] || {present:0, late:0, absent:0, excused:0, leave:0, recorded:0};
+  const present = Number(sm.present || 0);
+  const late = Number(sm.late || 0);
+  const absent = Number(sm.absent || 0);
+  const excused = Number(sm.excused || 0);
+  const leave = Number(sm.leave || 0);
+  const total = present + late;
+  const recorded = Number(sm.recorded || 0);
+  const ratio = attendanceRatio({present, late, total, absent, excused, leave}, timesOpen, true);
+
+  // Streaks are still derived from the chronological history so they reflect
+  // the actual dates on which the teacher was marked Absent.
+  let current=0, longest=0, run=0;
+  history.forEach(r => {
+    if (r.status === 'A') {
+      run++;
+      longest = Math.max(longest, run);
+    } else {
+      run = 0;
+    }
+  });
+  current = run;
+  return {present, late, total, absent, excused, leave, recorded, ratio,
+          currentAbsenceStreak:current, longestAbsenceStreak:longest, history};
 }
 
 function attendanceReportClassRows(classId, term, year, timesOpen) {
