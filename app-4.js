@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.6';
+const APP_VERSION = 'v38.6.1';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2925,11 +2925,15 @@ function renderAttendanceAnalysis() {
   if (!term || !year) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
   const timesOpen = calculateTimesOpen(term, year);
   const mode = document.getElementById('attendanceAnalysisType')?.value || 'students';
+  // Read the selected class before constructing the markup.  Previously this
+  // value was declared later inside the students branch, but was referenced
+  // by the template above, causing a temporal-dead-zone error and leaving
+  // the Analysis panel completely blank.
+  const classId = document.getElementById('attendanceAnalysisClass')?.value || '';
   const threshold = 75;
   const below = [];
   let html = `<div class="attendance-analysis-head"><div><h3>Attendance Analysis</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)} · Times Open: <strong>${timesOpen}</strong> day${timesOpen === 1 ? '' : 's'}</p></div><div class="attendance-analysis-controls">${isHeadTeacher() ? `<label>Analyse<select id="attendanceAnalysisType"><option value="students" ${mode==='students'?'selected':''}>Pupils</option><option value="teachers" ${mode==='teachers'?'selected':''}>Teachers</option></select></label>` : ''}${mode==='students' ? `<label>Class<select id="attendanceAnalysisClass"><option value="">All Classes</option>${getAccessibleClasses().map(c=>`<option value="${escapeHtml(c.id)}" ${classId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></label>` : ''}<label>Search<input type="search" id="attendanceAnalysisSearch" placeholder="Search name..."></label></div></div>`;
   if (mode === 'students') {
-    const classId = document.getElementById('attendanceAnalysisClass')?.value || '';
     const data = studentAttendanceAnalysis(classId, term, year, timesOpen);
     const list = data.students.map(st => ({st, sm:data.summary[st.id]}));
     const ratios = list.map(x=>x.sm.ratio).filter(Number.isFinite);
