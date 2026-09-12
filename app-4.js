@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.9.4';
+const APP_VERSION = 'v38.9.5';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -4602,7 +4602,8 @@ document.getElementById('startNewTermBtn').addEventListener('click', () => {
 
 /* ---------- PDF generation ---------- */
 const INK = [22, 36, 28];
-const GOLD = [162, 128, 33];
+const PRIMARY = [24, 112, 99]; // SchoolHub primary green/teal
+const GOLD = [201, 162, 39]; // SchoolHub gold accent
 const RED_INK = [150, 55, 40];
 
 // Looks up the assigned Class Teacher (per class) and Head Teacher (per
@@ -4649,9 +4650,9 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.text('REPORT CARD', pageWidth / 2, y, { align: 'center' });
-  doc.setDrawColor(0, 0, 0);
+  doc.setDrawColor(PRIMARY[0], PRIMARY[1], PRIMARY[2]);
   doc.setLineWidth(0.2);
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(INK[0], INK[1], INK[2]);
 
   const logoImage = resolvedAssets && resolvedAssets.logo !== undefined ? resolvedAssets.logo : settings.logo;
   if (logoImage) {
@@ -4705,7 +4706,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.setFontSize(9.5);
 
   y += 8;
-  // Results table. Standard: Subject | Class | Exam | Total | Grade | Position | Remark.
+  // Results table. Standard: Subject | Class (50%) | Exam (50%) | Total (100%) | Grade | Position | Remark.
   // Simple: Subject | Score | Grade | Position | Remark — no Class column,
   // since Class Score is never entered or used in this layout. Column
   // widths always sum to the full printable width edge-to-edge.
@@ -4717,7 +4718,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // Keep the labels together so the weighting is immediately visible on the PDF.
   const headers = simple
     ? ['Subject', 'Score', 'Grade', 'Position', 'Remark']
-    : ['Subject', ['Class', '(50%)'], ['Exam', '(50%)'], 'Total', 'Grade', 'Position', 'Remark'];
+    : ['Subject', ['Class', '(50%)'], ['Exam', '(50%)'], ['Total', '(100%)'], 'Grade', 'Position', 'Remark'];
   const rowH = simple ? 8 : 10;
   const lastCol = colW.length;
   const centerCols = simple ? [1, 2, 3] : [1, 2, 3, 4, 5]; // numeric columns center; Subject/Remark stay left-aligned
@@ -4731,7 +4732,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     }
   };
 
-  doc.setFillColor(INK[0], INK[1], INK[2]);
+  doc.setFillColor(PRIMARY[0], PRIMARY[1], PRIMARY[2]);
   doc.setTextColor(255, 255, 255);
   doc.rect(left, y, colX[lastCol] - left, rowH, 'F');
   doc.setFontSize(simple ? 9 : 8.5);
@@ -4746,7 +4747,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     }
   });
   y += rowH;
-  doc.setTextColor(0, 0, 0);
+  doc.setTextColor(INK[0], INK[1], INK[2]);
 
   result.entries.forEach(en => {
     const weak = en.grade >= 7;
@@ -4818,8 +4819,8 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     catch (e) { try { doc.addImage(sig.headTeacherSignature, 'JPEG', rightSigCenter - sigImgW / 2, y - sigImgH - 2, sigImgW, sigImgH); } catch (e2) {} }
   }
 
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(0.3);
+  doc.setDrawColor(PRIMARY[0], PRIMARY[1], PRIMARY[2]);
+  doc.setLineWidth(0.45);
   doc.line(leftSigCenter - sigLineWidth / 2, y, leftSigCenter + sigLineWidth / 2, y);
   doc.line(rightSigCenter - sigLineWidth / 2, y, rightSigCenter + sigLineWidth / 2, y);
   y += 6;
