@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.9.3';
+const APP_VERSION = 'v38.9.4';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -4712,8 +4712,13 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const colW = simple ? [48, 20, 18, 20, 74] : [46, 19, 19, 19, 15, 18, 44];
   const colX = [left];
   colW.forEach(w => colX.push(colX[colX.length - 1] + w));
-  const headers = simple ? ['Subject', 'Score', 'Grade', 'Position', 'Remark'] : ['Subject', 'Class', 'Exam', 'Total', 'Grade', 'Position', 'Remark'];
-  const rowH = 8;
+  // Standard report headings show the assessment weighting on a second line.
+  // The current grading engine uses 50% Class Score + 50% Exam Score.
+  // Keep the labels together so the weighting is immediately visible on the PDF.
+  const headers = simple
+    ? ['Subject', 'Score', 'Grade', 'Position', 'Remark']
+    : ['Subject', ['Class', '(50%)'], ['Exam', '(50%)'], 'Total', 'Grade', 'Position', 'Remark'];
+  const rowH = simple ? 8 : 10;
   const lastCol = colW.length;
   const centerCols = simple ? [1, 2, 3] : [1, 2, 3, 4, 5]; // numeric columns center; Subject/Remark stay left-aligned
 
@@ -4729,8 +4734,17 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.setFillColor(INK[0], INK[1], INK[2]);
   doc.setTextColor(255, 255, 255);
   doc.rect(left, y, colX[lastCol] - left, rowH, 'F');
-  doc.setFontSize(9);
-  headers.forEach((h, i) => cellText(h, i, y + 5.5, true, true));
+  doc.setFontSize(simple ? 9 : 8.5);
+  headers.forEach((h, i) => {
+    if (Array.isArray(h)) {
+      cellText(h[0], i, y + 4.2, true, true);
+      doc.setFontSize(7.2);
+      cellText(h[1], i, y + 8.0, true, true);
+      doc.setFontSize(8.5);
+    } else {
+      cellText(h, i, y + (simple ? 5.5 : 6.0), true, true);
+    }
+  });
   y += rowH;
   doc.setTextColor(0, 0, 0);
 
