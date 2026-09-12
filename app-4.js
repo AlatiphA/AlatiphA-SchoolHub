@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.9';
+const APP_VERSION = 'v38.9.1';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -372,6 +372,30 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+/* ---------- persistent navigation state ---------- */
+const NAV_VIEW_KEY = 'arc_last_view';
+const NAV_ATTENDANCE_TAB_KEY = 'arc_last_attendance_tab';
+const VALID_ATTENDANCE_TABS = ['students','teachers','calendar','summary','analysis','reports'];
+
+function getSavedNavigation() {
+  let view = localStorage.getItem(NAV_VIEW_KEY) || 'home';
+  const allowed = ['home','setup','staff','classes','students','subjects','attendance','grades','remarks','reports','history','manage-teachers','activity'];
+  if (allowed.indexOf(view) === -1) view = 'home';
+  let attendanceTab = localStorage.getItem(NAV_ATTENDANCE_TAB_KEY) || 'students';
+  if (VALID_ATTENDANCE_TABS.indexOf(attendanceTab) === -1) attendanceTab = 'students';
+  return { view, attendanceTab };
+}
+
+function saveNavigationState(view) {
+  if (!view || !sessionDataReady) return;
+  localStorage.setItem(NAV_VIEW_KEY, view);
+}
+
+function saveAttendanceTabState(mode) {
+  if (!sessionDataReady || VALID_ATTENDANCE_TABS.indexOf(mode) === -1) return;
+  localStorage.setItem(NAV_ATTENDANCE_TAB_KEY, mode);
+}
+
 /* ---------- view switching ---------- */
 const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
@@ -390,6 +414,11 @@ function showView(name) {
 
   // v28: identity/role may be ready before cloud data. Never render cached
   // school records from a previous session while the new session is syncing.
+  // Persist the user's last valid page only after the current session's
+  // school data is ready. During startup we deliberately do not overwrite the
+  // saved page with the temporary Home view.
+  saveNavigationState(name);
+
   if (FIREBASE_ENABLED && !sessionDataReady) {
     if (name !== 'home') {
       views.forEach(v => {
@@ -2703,6 +2732,7 @@ function renderAttendanceView() {
 
 function setAttendanceMode(mode) {
   if (mode === 'teachers' && !isHeadTeacher()) mode = 'students';
+  saveAttendanceTabState(mode);
   document.querySelectorAll('#attendanceModeBar .attendance-mode').forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
   const studentPanel = document.getElementById('studentAttendancePanel');
   const teacherPanel = document.getElementById('teacherAttendancePanel');
@@ -7444,6 +7474,16 @@ function initAuth() {
             refreshProfileMenu();
             renderHome();
             renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
+            // Restore the exact page and Attendance sub-tab that the user had
+            // before a browser refresh. This happens only after school data is
+            // ready, so startup never overwrites the saved location with Home.
+            const restored = getSavedNavigation();
+            if (restored.view === 'attendance') {
+              showView('attendance');
+              setAttendanceMode(restored.attendanceTab);
+            } else {
+              showView(restored.view);
+            }
             startBackgroundImageSync(token, user.uid, data.schoolId);
           }).catch(err => {
             if (!isCurrentSession(token, user.uid, data.schoolId)) return;
@@ -7471,7 +7511,12 @@ function initAuth() {
         hideAuthGate(); hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
         initLockScreen();
         if (!appStarted) { appStarted = true; proceedToApp(); }
-        else { renderQuickAccessList(); renderHome(); }
+        else {
+          renderQuickAccessList(); renderHome();
+          const restored = getSavedNavigation();
+          if (restored.view === 'attendance') { showView('attendance'); setAttendanceMode(restored.attendanceTab); }
+          else showView(restored.view);
+        }
       } else {
         hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
         renderAuthForm();
@@ -7608,7 +7653,21 @@ function proceedToApp() {
   ensureDefaults();
   renderPinSection();
   if (!FIREBASE_ENABLED || sessionDataReady) loadSettingsForm();
-  showView('home');
+
+  // On first startup of a session, show a temporary Home while cloud data is
+  // still loading. Once sessionDataReady is true, restore the saved location.
+  // This avoids saving/remembering the temporary Home screen itself.
+  if (sessionDataReady) {
+    const restored = getSavedNavigation();
+    if (restored.view === 'attendance') {
+      showView('attendance');
+      setAttendanceMode(restored.attendanceTab);
+    } else {
+      showView(restored.view);
+    }
+  } else {
+    showView('home');
+  }
 }
 
 /* ---------- init ---------- */
