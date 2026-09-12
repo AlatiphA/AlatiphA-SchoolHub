@@ -1,4 +1,4 @@
-# AlatiphA SchoolHub Phase 3 v38.11.0
+# AlatiphA SchoolHub Phase 3 v38.11.1
 
 ## Report Card Visual Refinements
 
@@ -32,6 +32,12 @@ If there is no authenticated session, the normal Sign In screen is shown.
 - Signature/date cards are equally spaced: Class Teacher | Date of Issue | Head Teacher.
 - Footer height reduced for more printable space.
 
+
+## v38.11.1 Report Card Theme UI Refinements
+
+- Improved theme picker text contrast in light mode.
+- Reduced Preview and Apply button height and padding.
+- Kept theme previews and report generation unchanged.
 
 ## v38.11.0 Report Card Themes
 - Added a school-level Report Card Theme selector.
