@@ -1,4 +1,4 @@
-# AlatiphA SchoolHub Phase 3 v38.11.4
+# AlatiphA SchoolHub Phase 3 v38.11.5
 
 ## Report Card Visual Refinements
 
@@ -48,6 +48,6 @@ If there is no authenticated session, the normal Sign In screen is shown.
 - Existing v38.10.3 SchoolHub Professional design remains the default/fallback theme.
 
 
-## v38.11.4 Remarks Comment Dropdowns
+## v38.11.5 Remarks Comment Dropdowns
 
 The Remarks tab now provides dropdowns for Conduct / Character, Attitude, Interest, and Form Teacher's Comment. The options are based on the supplied Polished Report Card Comment Bank. Existing custom values are preserved as a temporary "Current:" option so no previously saved remark is lost. Attendance, promotion/repetition, and fees remain normal editable fields.

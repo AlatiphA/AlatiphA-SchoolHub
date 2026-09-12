@@ -3988,15 +3988,30 @@ const REMARK_COMMENT_BANK = {
   comment: ["Keep it up.", "Well done. Keep it up.", "Good performance. Keep it up.", "Excellent performance. Keep it up.", "Excellent progress. Keep it up.", "Splendid performance. Keep it up.", "Impressive performance. Keep it up.", "Outstanding effort and progress. Keep it up.", "Great work. Keep it up.", "Great work. Continue working hard.", "Keep working hard.", "Continue learning and improving.", "Keep aiming for excellence.", "You have the potential to do better.", "Can do better.", "Could do better. Keep working hard.", "There is room for improvement.", "More room for improvement. Keep working hard.", "Shows good progress.", "Shows steady improvement.", "Has improved. Keep it up.", "Has made good progress.", "Making good progress. Keep it up.", "Excellent effort.", "Good effort. Continue working hard.", "Shows enthusiasm for learning.", "Shows a positive attitude towards learning.", "Excellent participation in class.", "Shows good leadership qualities.", "Hardworking and sincere.", "A pleasant student to have in class.", "A well-rounded student with good potential.", "Works carefully and neatly.", "Needs to be more serious with studies.", "Needs to work harder.", "Needs to improve concentration in class.", "Needs to pay more attention in class.", "Needs to improve time management.", "Needs to improve punctuality.", "Needs to attend school regularly.", "Needs to study more at home.", "Needs more practice and revision.", "Needs additional support at home.", "Needs close supervision and encouragement at home.", "Needs extra tuition and support.", "Needs special attention at home.", "Needs help to improve reading.", "Needs help to improve handwriting.", "Needs help with English composition.", "Needs to improve spelling and handwriting.", "Needs to work on basic concepts.", "Needs to follow instructions carefully.", "Needs to be more cooperative in group work.", "Needs to learn to work well with others.", "Needs to change negative behaviour.", "Needs to stop playing and concentrate on learning.", "Needs to be more punctual and regular at school.", "Be more serious and work harder next term.", "Be more serious and attend school regularly.", "Be more serious and attend school on time.", "Study hard and continue improving.", "Revise regularly and work consistently.", "With consistent effort and guidance, improvement is possible.", "With regular support, the pupil can achieve better results.", "Can achieve better results with improved focus.", "Continue working hard and maintain the positive attitude.", "Keep improving and strive for excellence.", "Excellent. Continue the good work.", "Very good performance. Keep it up.", "Satisfactory performance. There is room for improvement.", "Needs to put in more effort.", "Needs to sit up and concentrate more.", "Needs to take studies more seriously.", "Needs more attention in class and at home.", "Needs continuous support to improve performance."]
 };
 
+function normalizeRemarkChoice(value) {
+  return String(value == null ? '' : value)
+    .trim()
+    .replace(/[.\u3002]+$/, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
 function remarksSelectOptions(items, current) {
-  const value = current == null ? '' : String(current);
+  const value = current == null ? '' : String(current).trim();
   let html = '<option value=\"\">Select an option...</option>';
-  const exists = items.some(item => item === value);
-  if (value && !exists) {
-    html += `<option value=\"${escapeHtml(value)}\" selected>Current: ${escapeHtml(value)}</option>`;
+  const normalizedCurrent = normalizeRemarkChoice(value);
+  const matchedItem = value ? items.find(item => normalizeRemarkChoice(item) === normalizedCurrent) : null;
+
+  // If an existing saved remark differs only by punctuation/case/spacing from
+  // a bank option (e.g. “Keep it up” vs “Keep it up.”), use the bank option
+  // directly. This avoids showing a misleading duplicate “Current:” entry.
+  if (value && !matchedItem) {
+    html += `<option value=\"${escapeHtml(value)}\" selected>${escapeHtml(value)}</option>`;
   }
+
   items.forEach(item => {
-    html += `<option value=\"${escapeHtml(item)}\"${item === value ? ' selected' : ''}>${escapeHtml(item)}</option>`;
+    const selected = matchedItem ? item === matchedItem : item === value;
+    html += `<option value=\"${escapeHtml(item)}\"${selected ? ' selected' : ''}>${escapeHtml(item)}</option>`;
   });
   return html;
 }

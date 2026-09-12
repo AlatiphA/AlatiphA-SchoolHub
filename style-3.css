@@ -399,20 +399,24 @@ table.grades-table input:focus{border-bottom-color:var(--gold);}
   margin:0 0 12px;font-size:16px;font-weight:600;color:var(--gold);
   font-family:'Fraunces',Georgia,serif;
 }
-.remarks-card label{margin-bottom:12px;}
+.remarks-card label{margin-bottom:8px;}
 
 .remarks-card select.rm-conduct,
 .remarks-card select.rm-attitude,
 .remarks-card select.rm-interest,
 .remarks-card select.rm-comment{
   width:100%;
-  min-height:42px;
-  padding:9px 12px;
+  min-height:38px;
+  height:38px;
+  padding:6px 10px;
   border:1px solid var(--rule);
-  border-radius:10px;
+  border-radius:9px;
   background:var(--surface);
-  color:var(--ink);
+  color:var(--paper);
   font:inherit;
+  font-size:15px;
+  line-height:1.25;
+  color-scheme:light;
 }
 .remarks-card select.rm-conduct:focus,
 .remarks-card select.rm-attitude:focus,
