@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.10.2';
+const APP_VERSION = 'v38.10.3';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -4826,11 +4826,12 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   ]);
   y = infoY + infoH + 5;
 
-  // Signature panels are deliberately WHITE because uploaded signature images
-  // are normally saved with white backgrounds. This makes the signature blend
-  // naturally into the signature area instead of showing a coloured rectangle.
+  // Three equal-width signature/date cards, arranged symmetrically:
+  // Class Teacher | Date of Issue | Head Teacher.
+  // Signature cards remain WHITE because uploaded signature images normally
+  // have white backgrounds, while the Head Teacher card sits on the right.
   const sig = getStaffSignatures(classInfo, settings, resolvedAssets);
-  const sigGap = 5, sigW = (contentW - sigGap - 31) / 2;
+  const sigGap = 5, sigW = (contentW - (sigGap * 2)) / 3;
   const sigY = y, sigH = 21;
   function signatureBox(x, title, image) {
     setFill(WHITE); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'F');
@@ -4843,14 +4844,15 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(7.2); doc.text(title, x + sigW/2, sigY + 18.5, {align:'center'});
   }
   signatureBox(left, 'CLASS TEACHER', sig.classTeacherSignature);
-  signatureBox(left + sigW + sigGap, 'HEAD TEACHER', sig.headTeacherSignature);
 
-  const dateX = right - 31;
-  setFill(WHITE); doc.roundedRect(dateX, sigY, 31, sigH, 2.5, 2.5, 'F');
-  setDraw(GOLD); doc.setLineWidth(0.5); doc.roundedRect(dateX, sigY, 31, sigH, 2.5, 2.5, 'S');
-  setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(6.8); doc.text('DATE OF ISSUE', dateX + 15.5, sigY + 8, {align:'center'});
-  doc.setFont('helvetica','normal'); doc.setFontSize(7.2); doc.text(new Date().toLocaleDateString(), dateX + 15.5, sigY + 14.5, {align:'center'});
-  setText(GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.text('SchoolHub', dateX + 15.5, sigY + 19, {align:'center'});
+  const dateX = left + sigW + sigGap;
+  setFill(WHITE); doc.roundedRect(dateX, sigY, sigW, sigH, 2.5, 2.5, 'F');
+  setDraw(GOLD); doc.setLineWidth(0.5); doc.roundedRect(dateX, sigY, sigW, sigH, 2.5, 2.5, 'S');
+  setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(6.8); doc.text('DATE OF ISSUE', dateX + sigW/2, sigY + 8, {align:'center'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.2); doc.text(new Date().toLocaleDateString(), dateX + sigW/2, sigY + 14.5, {align:'center'});
+  setText(GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.text('SchoolHub', dateX + sigW/2, sigY + 19, {align:'center'});
+
+  signatureBox(dateX + sigW + sigGap, 'HEAD TEACHER', sig.headTeacherSignature);
 
   // Two-line grading and remarks guides, deliberately compact so each fits
   // completely inside its container.
@@ -4873,14 +4875,15 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     '46-53 Approaching Proficiency   40-45 Developing   0-39 Emerging'
   ]);
 
-  // Footer branding.
-  const footerY = pageHeight - 14;
-  setFill(PRIMARY_DARK); doc.rect(0, footerY, pageWidth, 14, 'F');
-  setFill(GOLD); doc.rect(0, footerY, pageWidth, 1.5, 'F');
-  setText(PAPER); doc.setFont('helvetica','normal'); doc.setFontSize(6.8);
-  doc.text('Phone: +233243443688', left, footerY + 8);
-  doc.setFont('helvetica','bold'); doc.text('Designed with AlatiphA SchoolHub', pageWidth / 2, footerY + 8, {align:'center'});
-  doc.setFont('helvetica','normal'); doc.text('Email: alatipha@ymail.com', right, footerY + 8, {align:'right'});
+  // Compact footer branding.
+  const footerH = 9;
+  const footerY = pageHeight - footerH;
+  setFill(PRIMARY_DARK); doc.rect(0, footerY, pageWidth, footerH, 'F');
+  setFill(GOLD); doc.rect(0, footerY, pageWidth, 1.0, 'F');
+  setText(PAPER); doc.setFont('helvetica','normal'); doc.setFontSize(6.4);
+  doc.text('Phone: +233243443688', left, footerY + 6);
+  doc.setFont('helvetica','bold'); doc.text('Designed with AlatiphA SchoolHub', pageWidth / 2, footerY + 6, {align:'center'});
+  doc.setFont('helvetica','normal'); doc.text('Email: alatipha@ymail.com', right, footerY + 6, {align:'right'});
 }
 
 async function storageRefToDataUrl(ref) {

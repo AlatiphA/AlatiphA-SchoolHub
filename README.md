@@ -1,4 +1,4 @@
-# AlatiphA SchoolHub Phase 3 v38.10.2
+# AlatiphA SchoolHub Phase 3 v38.10.3
 
 ## Report Card Visual Refinements
 
@@ -19,10 +19,15 @@ If the user is on `Attendance > Analytics` and refreshes the browser, SchoolHub 
 If there is no authenticated session, the normal Sign In screen is shown.
 
 
-## v38.10.2 Report Card Refinements
+## v38.10.3 Report Card Refinements
 - Removed the gold border around student photographs.
 - Reordered Student Information to Name, Roll / ID, Class, Position.
 - Expanded and centered the results table to the full report content width.
 - Removed teacher names from signature cards and reduced signature-card height.
 - Reduced Grading Scale and Remarks Guide card height to fit their two-line content tightly.
 - Footer now shows Phone: +233243443688, Designed with AlatiphA SchoolHub, and Email: alatipha@ymail.com.
+
+
+## v38.10.3 Report Card Bottom Layout
+- Signature/date cards are equally spaced: Class Teacher | Date of Issue | Head Teacher.
+- Footer height reduced for more printable space.
