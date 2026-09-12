@@ -753,3 +753,48 @@ html.disabledAccess #disabledGate{
 .attendance-report-controls label{min-width:0}
 .attendance-report-controls input,.attendance-report-controls select{width:100%;box-sizing:border-box}
 @media(max-width:600px){.attendance-report-builder-head{display:block}.attendance-report-actions{width:100%;margin-top:10px}.attendance-report-actions .btn-primary{flex:1;min-width:0}.attendance-report-controls{grid-template-columns:1fr}}
+
+/* v38.8 Attendance Analytics */
+.attendance-analytics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:10px 0 16px}
+.attendance-analytics-panel{padding:15px;border:1px solid var(--rule);border-radius:15px;background:var(--surface-alt);min-width:0}
+.attendance-analytics-panel h4{margin:.1rem 0 .55rem}
+.attendance-analytics-metric{margin:12px 0}
+.attendance-analytics-metric>span{display:block;font-size:.82rem;font-weight:700;color:var(--muted);margin-bottom:5px}
+.attendance-analytics-bar{height:9px;border-radius:999px;background:var(--surface);border:1px solid var(--rule);overflow:hidden}
+.attendance-analytics-bar span{display:block;height:100%;background:var(--gold);border-radius:999px}
+.attendance-analytics-bar-label{display:flex;justify-content:space-between;gap:8px;margin-top:3px;font-size:.76rem;color:var(--muted)}
+.attendance-analytics-bar-label strong{color:var(--gold)}
+.attendance-analytics-highlight{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;margin-top:8px;border:1px solid var(--gold);border-radius:10px;background:color-mix(in srgb,var(--gold) 7%,var(--surface))}
+.attendance-analytics-highlight span{color:var(--muted);font-size:.78rem}
+.attendance-analytics-highlight strong{text-align:right}
+.attendance-analytics-distribution{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.attendance-analytics-distribution>div{padding:11px;border:1px solid var(--rule);border-radius:11px;background:var(--surface);display:flex;flex-direction:column;gap:2px}
+.attendance-analytics-distribution strong{font-size:1.12rem;color:var(--gold)}
+.attendance-analytics-distribution span{font-size:.76rem;color:var(--muted)}
+.attendance-analytics-trend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.attendance-analytics-day{padding:12px;border:1px solid var(--rule);border-radius:13px;background:var(--surface-alt)}
+.attendance-analytics-day-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;font-size:.78rem}
+.attendance-analytics-day-head span{color:var(--muted);text-align:right}
+.attendance-analytics-risk-list{display:flex;flex-direction:column;gap:7px}
+.attendance-analytics-risk-list>div{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+.attendance-analytics-risk-list span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.attendance-analytics-risk-list small{display:block;color:var(--muted);font-size:.72rem;margin-top:2px}
+.attendance-analytics-risk-list strong{color:var(--gold);white-space:nowrap}
+
+/* v38.8 Reports: freeze the identifying column while horizontal-scrolling */
+#attendanceReportsWrap .table-scroll{position:relative;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch}
+#attendanceReportsWrap .attendance-report-table th:first-child,
+#attendanceReportsWrap .attendance-report-table td:first-child{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:1px 0 0 var(--rule)}
+#attendanceReportsWrap .attendance-report-table thead th:first-child{z-index:4;background:var(--surface-alt)}
+#attendanceReportsWrap .attendance-report-table tbody tr:nth-child(even) td:first-child{background:var(--surface-alt)}
+@media(max-width:600px){
+  .attendance-analytics-grid{grid-template-columns:1fr}
+  .attendance-analytics-trend{grid-template-columns:1fr}
+  .attendance-analytics-panel{padding:12px}
+  .attendance-analytics-highlight{display:block}
+  .attendance-analytics-highlight strong{display:block;text-align:left;margin-top:3px}
+}
+@media print{
+  #attendanceReportsWrap .attendance-report-table th:first-child,
+  #attendanceReportsWrap .attendance-report-table td:first-child{position:static;box-shadow:none}
+}

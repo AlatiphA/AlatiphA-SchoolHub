@@ -120,3 +120,15 @@ v38.5 - Attendance Summary Print/PDF fix:
 - Pupil class filter and name search.
 - Head Teacher teacher-analysis view includes Head Teacher as teaching staff.
 - Holidays, midterm and weekends excluded from Times Open.
+
+## v38.8 Attendance Analytics
+- Renamed the Attendance **Analysis** tab to **Analytics**.
+- Added school-wide attendance KPIs for pupils and, for Head Teachers, teachers.
+- Added pupil and teacher attendance/completion rates.
+- Added class comparison with attendance rate, absence and recording completion.
+- Added daily attendance trend cards for each school-open day.
+- Added attendance distribution and low-attendance alerts for pupils and teachers.
+- Kept the existing Present + Late attendance rule and Times Open calendar logic.
+- Teacher ratios continue to exclude approved Excused and On Leave days from the individual denominator.
+- Reports now keep the identifying first column visible while horizontally scrolling, including the Class and Teacher columns in the Term Summary.
+- Service-worker cache updated to v38.8.
