@@ -111,3 +111,12 @@ v38.5 - Attendance Summary Print/PDF fix:
 - Term-level fully recorded student and teacher attendance days.
 - Weekend and out-of-term dates are not treated as attendance days.
 - Existing Print Report and Download Report are retained.
+
+
+## v38.6 Attendance Analysis
+- Pupil and teacher attendance analysis.
+- Average ratio, below-75% alerts, late and absent totals.
+- Current and longest absence streaks.
+- Pupil class filter and name search.
+- Head Teacher teacher-analysis view includes Head Teacher as teaching staff.
+- Holidays, midterm and weekends excluded from Times Open.

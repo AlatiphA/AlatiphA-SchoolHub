@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.5';
+const APP_VERSION = 'v38.6';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2436,7 +2436,8 @@ function renderAttendanceView() {
   const teacherOption = document.getElementById('attendanceTeacherOption');
   const calendarOption = document.getElementById('attendanceCalendarOption');
   const summaryOption = document.getElementById('attendanceSummaryOption');
-  if (!studentOption || !teacherOption || !calendarOption || !summaryOption) return;
+  const analysisOption = document.getElementById('attendanceAnalysisOption');
+  if (!studentOption || !teacherOption || !calendarOption || !summaryOption || !analysisOption) return;
   teacherOption.classList.toggle('hidden', !isHeadTeacher());
   const active = document.querySelector('#attendanceModeBar .attendance-mode.active');
   const mode = (active && active.dataset.mode) || 'students';
@@ -2451,14 +2452,17 @@ function setAttendanceMode(mode) {
   const teacherPanel = document.getElementById('teacherAttendancePanel');
   const calendarPanel = document.getElementById('schoolCalendarPanel');
   const summaryPanel = document.getElementById('attendanceSummaryPanel');
+  const analysisPanel = document.getElementById('attendanceAnalysisPanel');
   if (studentPanel) studentPanel.classList.toggle('hidden', mode !== 'students');
   if (teacherPanel) teacherPanel.classList.toggle('hidden', mode !== 'teachers');
   if (calendarPanel) calendarPanel.classList.toggle('hidden', mode !== 'calendar');
   if (summaryPanel) summaryPanel.classList.toggle('hidden', mode !== 'summary');
+  if (analysisPanel) analysisPanel.classList.toggle('hidden', mode !== 'analysis');
   if (mode === 'students') renderAttendanceClassSelect();
   else if (mode === 'teachers') renderTeacherAttendanceForm();
   else if (mode === 'calendar') renderSchoolCalendar();
-  else renderAttendanceSummary();
+  else if (mode === 'summary') renderAttendanceSummary();
+  else renderAttendanceAnalysis();
 }
 
 function renderAttendanceClassSelect() {
@@ -2815,6 +2819,156 @@ function attendanceCompletionBadge(state) {
   if (state === 'complete') return '<span class="attendance-completion-badge complete">Complete</span>';
   if (state === 'partial') return '<span class="attendance-completion-badge partial">Partial</span>';
   return '<span class="attendance-completion-badge missing">Not recorded</span>';
+}
+
+
+function openSchoolDatesForTerm(term, year) {
+  const dates = getTermDates(term, year);
+  if (!dates) return [];
+  const start = parseDateOnly(dates.start), end = parseDateOnly(dates.end);
+  if (!start || !end || start > end) return [];
+  const exceptions = new Map(schoolCalendarRecordsForTerm(term, year).map(x => [x.date, String(x.record.type || '').toLowerCase()]));
+  const out = [];
+  for (let d = new Date(start); d <= end; d = addDaysDateOnly(d, 1)) {
+    if (!isWeekdayDate(d)) continue;
+    const key = dateOnlyString(d);
+    const type = exceptions.get(key);
+    if (type === 'holiday' || type === 'midterm') continue;
+    const today = parseDateOnly(attendanceDateToday());
+    if (today && d > today) continue;
+    out.push(key);
+  }
+  return out;
+}
+
+function studentAttendanceAnalysis(classId, term, year, timesOpen) {
+  const students = getAccessibleStudents().filter(s => !classId || s.classId === classId);
+  const classes = {};
+  const byId = {};
+  getAccessibleClasses().forEach(c => { classes[c.id] = c.name; });
+  const summary = {};
+  students.forEach(st => {
+    const sm = { present: 0, late: 0, total: 0, absent: 0, recorded: 0, currentAbsenceStreak: 0, longestAbsenceStreak: 0 };
+    const records = attendanceRecordsForTerm(st.classId, term, year);
+    const statusByDate = {};
+    records.forEach(({date, record}) => {
+      if (attendanceDayType(term, year, date) !== 'open') return;
+      const entries = record.entries || record;
+      const status = String(entries && entries[st.id] || '').toUpperCase();
+      if (status) statusByDate[date] = status;
+      if (status === 'P') sm.present++;
+      else if (status === 'L') sm.late++;
+      else if (status === 'A') sm.absent++;
+      if (status) sm.recorded++;
+    });
+    sm.total = sm.present + sm.late;
+    const openDates = openSchoolDatesForTerm(term, year).filter(d => statusByDate[d]);
+    let run = 0;
+    openDates.forEach(d => {
+      if (statusByDate[d] === 'A') { run++; sm.longestAbsenceStreak = Math.max(sm.longestAbsenceStreak, run); }
+      else run = 0;
+    });
+    for (let i = openDates.length - 1; i >= 0; i--) {
+      if (statusByDate[openDates[i]] === 'A') sm.currentAbsenceStreak++;
+      else break;
+    }
+    sm.ratio = attendanceRatio(sm, timesOpen, false);
+    sm.className = classes[st.classId] || st.classId || '';
+    byId[st.id] = sm;
+    summary[st.id] = sm;
+  });
+  return { students, summary: byId };
+}
+
+function teacherAttendanceAnalysis(term, year, timesOpen) {
+  const teachers = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
+  const records = teacherAttendanceRecordsForTerm(term, year);
+  const openDates = openSchoolDatesForTerm(term, year);
+  const summary = {};
+  teachers.forEach(st => {
+    const sm = { present:0, late:0, total:0, absent:0, excused:0, leave:0, recorded:0, currentAbsenceStreak:0, longestAbsenceStreak:0 };
+    const statusByDate = {};
+    records.forEach(({date, record}) => {
+      if (attendanceDayType(term, year, date) !== 'open') return;
+      const entries = record.entries || record;
+      const status = String(entries && entries[st.id] || '').toUpperCase();
+      if (status) statusByDate[date] = status;
+      if (status) sm.recorded++;
+      if (status === 'P') sm.present++;
+      else if (status === 'L') sm.late++;
+      else if (status === 'A') sm.absent++;
+      else if (status === 'E') sm.excused++;
+      else if (status === 'O') sm.leave++;
+    });
+    sm.total = sm.present + sm.late;
+    let run = 0;
+    openDates.filter(d => statusByDate[d]).forEach(d => {
+      if (statusByDate[d] === 'A') { run++; sm.longestAbsenceStreak = Math.max(sm.longestAbsenceStreak, run); }
+      else run = 0;
+    });
+    for (let i = openDates.length - 1; i >= 0; i--) {
+      if (statusByDate[openDates[i]] === 'A') sm.currentAbsenceStreak++;
+      else break;
+    }
+    sm.ratio = attendanceRatio(sm, timesOpen, true);
+    summary[st.id] = sm;
+  });
+  return { teachers, summary };
+}
+
+function renderAttendanceAnalysis() {
+  const wrap = document.getElementById('attendanceAnalysisWrap');
+  if (!wrap) return;
+  const settings = DB.get(KEYS.settings, {});
+  const term = settings.currentTerm || '';
+  const year = settings.currentYear || '';
+  if (!term || !year) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
+  const timesOpen = calculateTimesOpen(term, year);
+  const mode = document.getElementById('attendanceAnalysisType')?.value || 'students';
+  const threshold = 75;
+  const below = [];
+  let html = `<div class="attendance-analysis-head"><div><h3>Attendance Analysis</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)} · Times Open: <strong>${timesOpen}</strong> day${timesOpen === 1 ? '' : 's'}</p></div><div class="attendance-analysis-controls">${isHeadTeacher() ? `<label>Analyse<select id="attendanceAnalysisType"><option value="students" ${mode==='students'?'selected':''}>Pupils</option><option value="teachers" ${mode==='teachers'?'selected':''}>Teachers</option></select></label>` : ''}${mode==='students' ? `<label>Class<select id="attendanceAnalysisClass"><option value="">All Classes</option>${getAccessibleClasses().map(c=>`<option value="${escapeHtml(c.id)}" ${classId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></label>` : ''}<label>Search<input type="search" id="attendanceAnalysisSearch" placeholder="Search name..."></label></div></div>`;
+  if (mode === 'students') {
+    const classId = document.getElementById('attendanceAnalysisClass')?.value || '';
+    const data = studentAttendanceAnalysis(classId, term, year, timesOpen);
+    const list = data.students.map(st => ({st, sm:data.summary[st.id]}));
+    const ratios = list.map(x=>x.sm.ratio).filter(Number.isFinite);
+    const avg = ratios.length ? ratios.reduce((a,b)=>a+b,0)/ratios.length : null;
+    const totalAbsent = list.reduce((a,x)=>a+x.sm.absent,0);
+    const totalLate = list.reduce((a,x)=>a+x.sm.late,0);
+    list.forEach(x=>{ if(Number.isFinite(x.sm.ratio) && x.sm.ratio < threshold) below.push(x); });
+    html += `<div class="attendance-analysis-cards"><div><span>Pupils</span><strong>${list.length}</strong></div><div><span>Average Ratio</span><strong>${formatAttendanceRatio(avg)}</strong></div><div><span>Below ${threshold}%</span><strong>${below.length}</strong></div><div><span>Total Late</span><strong>${totalLate}</strong></div><div><span>Total Absent</span><strong>${totalAbsent}</strong></div></div>`;
+    html += '<h4 class="attendance-analysis-section-title">Pupil Attendance Analysis</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Pupil</th><th>Class</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Ratio</th><th>Current Absence Streak</th><th>Longest Absence Streak</th></tr></thead><tbody>';
+    if (!list.length) html += '<tr><td colspan="9" class="empty">No pupils found.</td></tr>';
+    list.forEach(({st,sm})=>{ html += `<tr data-analysis-name="${escapeHtml(st.name)}"><td>${escapeHtml(st.name)}</td><td>${escapeHtml(sm.className)}</td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td><strong>${formatAttendanceRatio(sm.ratio)}</strong></td><td>${sm.currentAbsenceStreak}</td><td>${sm.longestAbsenceStreak}</td></tr>`; });
+    html += '</tbody></table></div>';
+  } else {
+    const data = teacherAttendanceAnalysis(term, year, timesOpen);
+    const list = data.teachers.map(st=>({st,sm:data.summary[st.id]}));
+    const ratios = list.map(x=>x.sm.ratio).filter(Number.isFinite);
+    const avg = ratios.length ? ratios.reduce((a,b)=>a+b,0)/ratios.length : null;
+    const totalAbsent=list.reduce((a,x)=>a+x.sm.absent,0), totalLate=list.reduce((a,x)=>a+x.sm.late,0);
+    list.forEach(x=>{if(Number.isFinite(x.sm.ratio)&&x.sm.ratio<threshold) below.push(x);});
+    html += `<div class="attendance-analysis-cards"><div><span>Teachers</span><strong>${list.length}</strong></div><div><span>Average Ratio</span><strong>${formatAttendanceRatio(avg)}</strong></div><div><span>Below ${threshold}%</span><strong>${below.length}</strong></div><div><span>Total Late</span><strong>${totalLate}</strong></div><div><span>Total Absent</span><strong>${totalAbsent}</strong></div></div>`;
+    html += '<h4 class="attendance-analysis-section-title">Teacher Attendance Analysis</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Ratio</th><th>Current Absence Streak</th><th>Longest Absence Streak</th></tr></thead><tbody>';
+    if (!list.length) html += '<tr><td colspan="11" class="empty">No teaching staff found.</td></tr>';
+    list.forEach(({st,sm})=>{ html += `<tr data-analysis-name="${escapeHtml(st.name)}"><td>${escapeHtml(st.name)}</td><td>${escapeHtml(st.role||'Teacher')}</td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(sm.ratio)}</strong></td><td>${sm.currentAbsenceStreak}</td><td>${sm.longestAbsenceStreak}</td></tr>`; });
+    html += '</tbody></table></div>';
+  }
+  if (below.length) {
+    html += `<div class="attendance-analysis-alert"><strong>Attendance Alert</strong><span>${below.length} ${mode==='students'?'pupil':'teacher'}${below.length===1?'':'s'} ${below.length===1?'has':'have'} attendance below ${threshold}%.</span></div>`;
+  }
+  html += '<p class="hint">Attendance ratio uses Present + Late as attendance. Holidays, Midterm and weekends are excluded from Times Open. An absence streak counts consecutive recorded open-school days marked Absent; an unrecorded day breaks the streak.</p>';
+  wrap.innerHTML = html;
+  const type = document.getElementById('attendanceAnalysisType');
+  const cls = document.getElementById('attendanceAnalysisClass');
+  const search = document.getElementById('attendanceAnalysisSearch');
+  if (type) type.addEventListener('change', renderAttendanceAnalysis);
+  if (cls) cls.addEventListener('change', renderAttendanceAnalysis);
+  if (search) search.addEventListener('input', () => {
+    const q = search.value.trim().toLowerCase();
+    wrap.querySelectorAll('tbody tr[data-analysis-name]').forEach(row => row.style.display = row.dataset.analysisName.toLowerCase().includes(q) ? '' : 'none');
+  });
 }
 
 function renderAttendanceSummary() {
