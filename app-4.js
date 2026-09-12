@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.10.1a';
+const APP_VERSION = 'v38.10.2';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -4675,8 +4675,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     const pw = 25, ph = 30;
     try { doc.addImage(photoImage, 'PNG', right - pw - 5, 11, pw, ph); }
     catch (e) { try { doc.addImage(photoImage, 'JPEG', right - pw - 5, 11, pw, ph); } catch (e2) {} }
-    setDraw(GOLD); doc.setLineWidth(0.75);
-    doc.roundedRect(right - pw - 5, 11, pw, ph, 2, 2, 'S');
+    // Student photo is intentionally borderless so no gold frame competes with the portrait.
   }
 
   const schoolName = (settings.schoolName && settings.schoolName.trim()) ? settings.schoolName.trim() : 'School Name Not Set';
@@ -4721,9 +4720,9 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 
   card(left, 'STUDENT INFORMATION', [
     ['Name:', result.student.name],
+    ['Roll / ID:', result.student.admissionId || result.student.id || '-'],
     ['Class:', classInfo ? classInfo.name : ''],
-    ['Position:', result.position ? ordinal(result.position) : '-'],
-    ['Roll / ID:', result.student.admissionId || result.student.id || '-']
+    ['Position:', result.position ? ordinal(result.position) : '-']
   ]);
   card(left + cardW + gap, 'TERM SUMMARY', [
     ['Academic Year:', settings.currentYear || '-'],
@@ -4737,10 +4736,13 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const headers = simple
     ? ['Subject', 'Score', 'Grade', 'Position', 'Remark']
     : ['Subject', ['Class', '(50%)'], ['Exam', '(50%)'], ['Total', '(100%)'], 'Grade', 'Position', 'Remark'];
-  const colW = simple ? [58, 22, 20, 23, 57] : [48, 20, 20, 21, 16, 19, 36];
+  const baseColW = simple ? [58, 22, 20, 23, 57] : [48, 20, 20, 21, 16, 19, 36];
+  const baseTableW = baseColW.reduce((a, b) => a + b, 0);
+  const tableW = contentW;
+  const tableScale = tableW / baseTableW;
+  const colW = baseColW.map(w => w * tableScale);
   const colX = [left];
   colW.forEach(w => colX.push(colX[colX.length - 1] + w));
-  const tableW = colX[colX.length - 1] - left;
   const headerH = simple ? 9 : 13;
   const rowH = 7.5;
   const centerCols = simple ? [1,2,3] : [1,2,3,4,5];
@@ -4829,38 +4831,37 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // naturally into the signature area instead of showing a coloured rectangle.
   const sig = getStaffSignatures(classInfo, settings, resolvedAssets);
   const sigGap = 5, sigW = (contentW - sigGap - 31) / 2;
-  const sigY = y, sigH = 28;
-  function signatureBox(x, title, name, image) {
+  const sigY = y, sigH = 21;
+  function signatureBox(x, title, image) {
     setFill(WHITE); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'F');
     setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'S');
     if (image) {
       try { doc.addImage(image, 'PNG', x + sigW/2 - 18, sigY + 2, 36, 11); }
       catch (e) { try { doc.addImage(image, 'JPEG', x + sigW/2 - 18, sigY + 2, 36, 11); } catch (e2) {} }
     }
-    setDraw(PRIMARY); doc.setLineWidth(0.35); doc.line(x + 12, sigY + 15, x + sigW - 12, sigY + 15);
-    setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(7.2); doc.text(title, x + sigW/2, sigY + 20, {align:'center'});
-    doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.text(safe(name), x + sigW/2, sigY + 25, {align:'center'});
+    setDraw(PRIMARY); doc.setLineWidth(0.35); doc.line(x + 12, sigY + 13.5, x + sigW - 12, sigY + 13.5);
+    setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(7.2); doc.text(title, x + sigW/2, sigY + 18.5, {align:'center'});
   }
-  signatureBox(left, 'CLASS TEACHER', sig.classTeacherName, sig.classTeacherSignature);
-  signatureBox(left + sigW + sigGap, 'HEAD TEACHER', sig.headTeacherName, sig.headTeacherSignature);
+  signatureBox(left, 'CLASS TEACHER', sig.classTeacherSignature);
+  signatureBox(left + sigW + sigGap, 'HEAD TEACHER', sig.headTeacherSignature);
 
   const dateX = right - 31;
   setFill(WHITE); doc.roundedRect(dateX, sigY, 31, sigH, 2.5, 2.5, 'F');
   setDraw(GOLD); doc.setLineWidth(0.5); doc.roundedRect(dateX, sigY, 31, sigH, 2.5, 2.5, 'S');
-  setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(6.8); doc.text('DATE OF ISSUE', dateX + 15.5, sigY + 9, {align:'center'});
-  doc.setFont('helvetica','normal'); doc.setFontSize(7.2); doc.text(new Date().toLocaleDateString(), dateX + 15.5, sigY + 17, {align:'center'});
-  setText(GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.text('SchoolHub', dateX + 15.5, sigY + 24, {align:'center'});
+  setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(6.8); doc.text('DATE OF ISSUE', dateX + 15.5, sigY + 8, {align:'center'});
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.2); doc.text(new Date().toLocaleDateString(), dateX + 15.5, sigY + 14.5, {align:'center'});
+  setText(GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.text('SchoolHub', dateX + 15.5, sigY + 19, {align:'center'});
 
   // Two-line grading and remarks guides, deliberately compact so each fits
   // completely inside its container.
   y = sigY + sigH + 5;
-  const legendGap = 4, legendW = (contentW - legendGap) / 2, legendH = 24;
+  const legendGap = 4, legendW = (contentW - legendGap) / 2, legendH = 18;
   function legendBox(x, title, lines) {
     setFill(WHITE); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'F');
     setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'S');
     setFill(PRIMARY); doc.roundedRect(x, y, legendW, 6.5, 2.5, 2.5, 'F'); doc.rect(x, y + 4, legendW, 2.5, 'F');
     setText(WHITE); doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.text(title, x + 4, y + 4.5);
-    let yy = y + 12;
+    let yy = y + 11;
     lines.forEach(line => { doc.setFont('helvetica','normal'); doc.setFontSize(5.8); setText(TEXT); doc.text(line, x + 4, yy); yy += 5; });
   }
   legendBox(left, 'GRADING SCALE', [
@@ -4877,9 +4878,9 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   setFill(PRIMARY_DARK); doc.rect(0, footerY, pageWidth, 14, 'F');
   setFill(GOLD); doc.rect(0, footerY, pageWidth, 1.5, 'F');
   setText(PAPER); doc.setFont('helvetica','normal'); doc.setFontSize(6.8);
-  doc.text('Generated with ', left, footerY + 8);
-  doc.setFont('helvetica','bold'); doc.text('AlatiphA SchoolHub', left + 20, footerY + 8);
-  doc.setFont('helvetica','normal'); doc.text('Efficient School Management  •  Brighter Learners  •  Stronger Communities', right, footerY + 8, {align:'right'});
+  doc.text('Phone: +233243443688', left, footerY + 8);
+  doc.setFont('helvetica','bold'); doc.text('Designed with AlatiphA SchoolHub', pageWidth / 2, footerY + 8, {align:'center'});
+  doc.setFont('helvetica','normal'); doc.text('Email: alatipha@ymail.com', right, footerY + 8, {align:'right'});
 }
 
 async function storageRefToDataUrl(ref) {
