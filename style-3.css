@@ -642,7 +642,7 @@ html.disabledAccess #disabledGate{
 .calendar-editor h3{margin:.1rem 0 .35rem;}
 .calendar-editor input,.calendar-editor select{width:100%;box-sizing:border-box;}
 #attendanceOutOf[readonly]{opacity:.85;font-weight:700;}
-@media(max-width:600px){.attendance-mode-bar{overflow-x:auto}.attendance-mode{white-space:nowrap}.attendance-summary-pills{display:block}.attendance-summary-pills .attendance-summary-pill{margin:.4rem 0;width:100%;}}
+@media(max-width:600px){.attendance-mode-bar{overflow-x:visible;display:flex;flex-wrap:wrap;gap:8px}.attendance-mode{white-space:nowrap;flex:0 1 auto}.attendance-summary-pills{display:block}.attendance-summary-pills .attendance-summary-pill{margin:.4rem 0;width:100%;}}
 
 
 /* v38.4 Attendance Summary / Report */
@@ -670,3 +670,23 @@ html.disabledAccess #disabledGate{
 .attendance-report-footnote{margin-top:18px;color:var(--muted);font-size:.85rem;}
 @media(max-width:600px){.attendance-summary-report-head{display:block}.attendance-summary-report-head .btn-primary{width:100%;margin-top:10px}.attendance-report-cards{grid-template-columns:repeat(2,minmax(0,1fr));}.attendance-report-cards strong{font-size:.95rem;}}
 @media print{.attendance-print-report{color:#111!important}.attendance-report-heading p,.attendance-report-footnote{color:#555!important}.attendance-report-cards>div{border:1px solid #999!important;background:#fff!important}.attendance-report-cards span{color:#555!important}.attendance-report-cards strong{color:#111!important}.attendance-report-note{border:1px solid #aaa!important;background:#fff!important;color:#333!important}.attendance-report-section-title{break-after:avoid}.attendance-report-table{border-collapse:collapse!important;width:100%}.attendance-report-table th,.attendance-report-table td{border:1px solid #bbb!important;color:#111!important;background:#fff!important;}}
+
+/* v38.4.2: keep all Attendance tabs accessible on small screens */
+@media(max-width:600px){
+  #attendanceModeBar{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    overflow:visible!important;
+    width:100%;
+    box-sizing:border-box;
+  }
+  #attendanceModeBar .attendance-mode{
+    width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+}

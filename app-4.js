@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.4.1';
+const APP_VERSION = 'v38.4.2';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2732,7 +2732,7 @@ function renderAttendanceSummary() {
   const calendar = schoolCalendarRecordsForTerm(term, year);
   const holidays = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'holiday').length;
   const midterms = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'midterm').length;
-  let html = `<div class="attendance-summary-report-head"><div><h3>Attendance Summary</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)}${timesOpen ? ` · ${timesOpen} school-open day(s)` : ''}</p></div><div class="attendance-summary-report-actions"><button type="button" id="printAttendanceSummaryBtn" class="btn-primary">Print Attendance Report</button><button type="button" id="pdfAttendanceSummaryBtn" class="btn-primary">PDF</button></div></div>`;
+  let html = `<div class="attendance-summary-report-head"><div><h3>Attendance Summary</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)}${timesOpen ? ` · ${timesOpen} school-open day(s)` : ''}</p></div><div class="attendance-summary-report-actions"><button type="button" id="printAttendanceSummaryBtn" class="btn-primary">Print Report</button><button type="button" id="pdfAttendanceSummaryBtn" class="btn-primary">Download Report</button></div></div>`;
   html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher() ? `<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>` : ''}</div>`;
   html += '<div class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Approved teacher Excused and On Leave days are excluded from the individual teacher denominator.</div>';
   html += '<h3 class="attendance-report-section-title">Class Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
@@ -2787,50 +2787,138 @@ function printAttendanceSummary() {
 
 async function downloadAttendanceSummaryPdf() {
   const pdfBtn = document.getElementById('pdfAttendanceSummaryBtn');
-  if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.textContent = 'Creating PDF…'; }
-  const host = buildAttendancePrintHost();
-  try {
-    if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('PDF library is not available.');
-    const JsPDF = window.jspdf.jsPDF;
-    const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const content = host.querySelector('.attendance-print-report');
-    if (!content) throw new Error('Attendance report content could not be prepared.');
+  if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.textContent = 'Preparing Report…'; }
 
-    if (typeof doc.html === 'function') {
-      await new Promise((resolve, reject) => {
-        doc.html(content, {
-          x: 8, y: 8, width: 194,
-          windowWidth: 1100,
-          autoPaging: 'text',
-          margin: [8, 8, 10, 8],
-          callback: resolve,
-          html2canvas: { scale: 0.65, useCORS: true, logging: false }
-        });
-      });
-    } else {
-      // Very old/blocked jsPDF fallback: produce a readable text PDF.
-      let y = 15;
-      const lines = content.innerText.split('\n').map(x => x.trim()).filter(Boolean);
-      doc.setFontSize(11);
-      lines.forEach(line => {
-        const wrapped = doc.splitTextToSize(line, 190);
-        if (y > 280) { doc.addPage(); y = 15; }
-        doc.text(wrapped, 10, y);
-        y += wrapped.length * 5 + 2;
-      });
+  try {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      throw new Error('PDF library is not available. Please refresh SchoolHub and try again.');
     }
 
     const settings = DB.get(KEYS.settings, {});
-    const term = String(settings.currentTerm || 'Term');
+    const term = String(settings.currentTerm || 'Term 1');
     const year = String(settings.currentYear || '');
+    const timesOpen = calculateTimesOpen(term, year);
+    const calendar = schoolCalendarRecordsForTerm(term, year);
+    const holidays = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'holiday').length;
+    const midterms = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'midterm').length;
+    const school = String(settings.schoolName || 'School');
+    const students = attendanceReportOverallStudent(term, year, timesOpen);
+    const teachers = attendanceReportOverallTeacher(term, year, timesOpen);
+    const classes = getAccessibleClasses();
+    const staff = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
+    const teacherMap = teacherAttendanceSummary(term, year).summary;
+
+    const JsPDF = window.jspdf.jsPDF;
+    const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 10;
+    const usableW = pageW - margin * 2;
+    let y = 14;
+
+    const addPageIfNeeded = (height = 8) => {
+      if (y + height > pageH - 12) { doc.addPage(); y = 14; }
+    };
+    const text = (value, x, yy, size = 9, bold = false) => {
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      doc.text(String(value ?? ''), x, yy);
+    };
+    const wrapped = (value, x, yy, width, size = 8.5, lineGap = 4.2) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(size);
+      const lines = doc.splitTextToSize(String(value ?? ''), width);
+      doc.text(lines, x, yy);
+      return lines.length * lineGap;
+    };
+    const section = (title) => {
+      addPageIfNeeded(10);
+      y += 3;
+      text(title, margin, y, 11, true);
+      y += 5;
+    };
+    const row = (cells, widths, opts = {}) => {
+      const fontSize = opts.fontSize || 7.4;
+      const lineHeight = opts.lineHeight || 3.6;
+      const cellPad = 1.2;
+      const lineSets = cells.map((cell, i) => {
+        doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+        doc.setFontSize(fontSize);
+        return doc.splitTextToSize(String(cell ?? ''), Math.max(5, widths[i] - cellPad * 2));
+      });
+      const maxLines = Math.max(...lineSets.map(a => a.length), 1);
+      const h = Math.max(6, maxLines * lineHeight + 2.5);
+      addPageIfNeeded(h + 1);
+      let x = margin;
+      for (let i = 0; i < cells.length; i++) {
+        doc.rect(x, y, widths[i], h);
+        doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+        doc.setFontSize(fontSize);
+        doc.text(lineSets[i], x + cellPad, y + 3.5);
+        x += widths[i];
+      }
+      y += h;
+    };
+    const table = (headers, rows, widths) => {
+      row(headers, widths, { bold: true, fontSize: 7.2 });
+      rows.forEach(r => row(r, widths, { fontSize: 7.1 }));
+      y += 2;
+    };
+
+    text(school, margin, y, 16, true); y += 6;
+    text('Attendance Summary Report', margin, y, 12, true); y += 5;
+    text(`${term} ${year} · Times Open: ${timesOpen} days`, margin, y, 9); y += 7;
+
+    const cards = [
+      ['Times Open', `${timesOpen} days`],
+      ['Holidays', holidays],
+      ['Midterm', midterms],
+      ['Pupils', students.pupils],
+      ['Average Pupil Ratio', formatAttendanceRatio(students.averageRatio)],
+      ['Teachers', teachers.teachers],
+      ['Average Teacher Ratio', formatAttendanceRatio(teachers.averageRatio)]
+    ];
+    const cardW = usableW / 2;
+    for (let i = 0; i < cards.length; i += 2) {
+      addPageIfNeeded(13);
+      const pair = cards.slice(i, i + 2);
+      pair.forEach((c, j) => {
+        const x = margin + j * cardW;
+        doc.rect(x, y, cardW - 2, 11);
+        text(c[0], x + 2, y + 4, 7.2, false);
+        text(c[1], x + 2, y + 8.5, 9, true);
+      });
+      y += 13;
+    }
+
+    section('Class Attendance');
+    const classWidths = [38, 20, 20, 17, 18, 20, 41];
+    table(['Class','Pupils','Present','Late','Total','Absent','Average Ratio'],
+      classes.map(c => { const x = attendanceSummaryClassStats(c.id, term, year, timesOpen); return [c.name,x.pupils,x.present,x.late,x.total,x.absent,formatAttendanceRatio(x.averageRatio)]; }), classWidths);
+
+    if (isHeadTeacher()) {
+      section('Teacher Attendance');
+      const teacherWidths = [35, 27, 18, 14, 16, 18, 18, 18, 30];
+      table(['Teacher','Role','Present','Late','Total','Absent','Excused','Leave','Ratio'],
+        staff.map(st => { const sm=teacherMap[st.id]||{present:0,late:0,total:0,absent:0,excused:0,leave:0}; return [st.name,st.role||'Teacher',sm.present,sm.late,sm.total,sm.absent,sm.excused,sm.leave,formatAttendanceRatio(attendanceRatio(sm,timesOpen,true))]; }), teacherWidths);
+    }
+
+    section('School Calendar Exceptions');
+    const exceptions = calendar.filter(x => String(x.record.type || '').toLowerCase() !== 'open');
+    table(['Date','Day','Type','Note'],
+      exceptions.map(x => { const d=parseDateOnly(x.date); const day=d?d.toLocaleDateString(undefined,{weekday:'short'}):''; return [x.date,day,calendarLabel(String(x.record.type||'').toLowerCase()),x.record.note||'']; }), [30,18,30,104]);
+
+    addPageIfNeeded(15);
+    y += 3;
+    wrapped('Attendance ratios use Times Open. Present and Late count as attendance. Approved teacher Excused and On Leave days are excluded from the individual teacher denominator. Holidays, midterm days and weekends are excluded from Times Open.', margin, y, usableW, 8, 4);
+
     const safe = `${term}-${year}`.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
     doc.save(`Attendance_Summary_${safe || 'Report'}.pdf`);
   } catch (e) {
     console.error('Attendance PDF generation failed:', e);
-    alert('Unable to create the PDF. Please try again. If the problem continues, refresh SchoolHub and try again.');
+    alert(e && e.message ? e.message : 'Unable to create the PDF. Please try again.');
   } finally {
-    if (host && host.parentNode) host.parentNode.removeChild(host);
-    if (pdfBtn) { pdfBtn.disabled = false; pdfBtn.textContent = 'PDF'; }
+    if (pdfBtn) { pdfBtn.disabled = false; pdfBtn.textContent = 'Download Report'; }
   }
 }
 

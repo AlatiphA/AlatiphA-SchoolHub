@@ -90,7 +90,13 @@ Ratio calculation:
 Adds an Attendance Summary tab with Times Open, holiday and midterm counts, class pupil attendance, teacher attendance, average attendance ratios, calendar exceptions, and a print-ready Attendance Summary Report.
 
 
-v38.4.1 - Attendance Summary Print/PDF fix:
+v38.4.2 - Attendance Summary Print/PDF fix:
 - Print Attendance Report no longer uses window.open(), avoiding about:blank failures on mobile browsers.
 - Added direct PDF export using jsPDF and html2canvas.
 - Updated service-worker cache version.
+
+
+## v38.4.2 UI/PDF updates
+- Renamed Summary actions to Print Report and Download Report.
+- Attendance tabs wrap on small screens so Summary is fully accessible without horizontal swiping.
+- Replaced HTML-based PDF rendering with a reliable native jsPDF text/table renderer.
