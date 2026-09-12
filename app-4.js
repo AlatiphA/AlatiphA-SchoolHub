@@ -4016,6 +4016,9 @@ function renderRemarksForm() {
       <label>Attitude
         <input type="text" class="rm-attitude" placeholder="e.g. Shows enthusiasm for classroom activities" value="${r.attitude ? escapeHtml(r.attitude) : ''}">
       </label>
+      <label>Interest
+        <input type="text" class="rm-interest" placeholder="e.g. Reading, Football, Drawing" value="${r.interest ? escapeHtml(r.interest) : ''}">
+      </label>
       <label>Form Teacher's Comment
         <input type="text" class="rm-comment" placeholder="e.g. Keep it up" value="${r.comment ? escapeHtml(r.comment) : ''}">
       </label>
@@ -4046,6 +4049,7 @@ document.getElementById('saveRemarksBtn').addEventListener('click', () => {
       feesDue: card.querySelector('.rm-fees').value.trim(),
       conduct: card.querySelector('.rm-conduct').value.trim(),
       attitude: card.querySelector('.rm-attitude').value.trim(),
+      interest: card.querySelector('.rm-interest').value.trim(),
       comment: card.querySelector('.rm-comment').value.trim()
     };
   });
@@ -4629,81 +4633,92 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const pageHeight = doc.internal.pageSize.getHeight();
   const left = 12, right = pageWidth - 12, contentW = right - left;
 
-  // AlatiphA SchoolHub PWA palette: deep green, parchment/paper and gold.
-  const PRIMARY = [22, 36, 28];
-  const PRIMARY2 = [30, 50, 38];
+  // AlatiphA SchoolHub PWA palette: teal/green primary, gold accent,
+  // warm paper and white content surfaces. Avoid pure black in the report.
+  const PRIMARY = [24, 112, 99];
+  const PRIMARY_DARK = [22, 80, 69];
+  const TEXT = [22, 36, 28];
   const GOLD = [201, 162, 39];
   const PAPER = [241, 239, 230];
-  const LIGHT = [247, 246, 239];
-  const PALE_GREEN = [231, 238, 232];
+  const LIGHT = [248, 249, 246];
+  const PALE_GREEN = [231, 242, 238];
   const MUTED = [92, 111, 99];
   const RED = [156, 58, 40];
   const WHITE = [255, 255, 255];
+  const RULE = [205, 220, 214];
 
   const setFill = c => doc.setFillColor(c[0], c[1], c[2]);
   const setText = c => doc.setTextColor(c[0], c[1], c[2]);
   const setDraw = c => doc.setDrawColor(c[0], c[1], c[2]);
   const safe = v => (v === undefined || v === null || v === '' ? '-' : String(v));
 
-  doc.setFillColor(PAPER[0], PAPER[1], PAPER[2]);
+  // Page background.
+  setFill(PAPER);
   doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
-  // Subtle top band and gold accent, matching the PWA identity.
-  setFill(PRIMARY);
-  doc.roundedRect(left, 8, contentW, 45, 4, 4, 'F');
+  // Compact branded header. Year and term are intentionally NOT repeated here;
+  // they are already shown in TERM SUMMARY.
+  setFill(PRIMARY_DARK);
+  doc.roundedRect(left, 8, contentW, 39, 4, 4, 'F');
   setFill(GOLD);
-  doc.roundedRect(left, 49, contentW, 3, 1.5, 1.5, 'F');
+  doc.roundedRect(left, 44, contentW, 3, 1.5, 1.5, 'F');
 
   const logoImage = resolvedAssets && resolvedAssets.logo !== undefined ? resolvedAssets.logo : settings.logo;
   const photoImage = resolvedAssets && resolvedAssets.photo !== undefined ? resolvedAssets.photo : result.student.photo;
 
   if (logoImage) {
-    try { doc.addImage(logoImage, 'PNG', left + 5, 13, 32, 32); }
-    catch (e) { try { doc.addImage(logoImage, 'JPEG', left + 5, 13, 32, 32); } catch (e2) {} }
+    try { doc.addImage(logoImage, 'PNG', left + 5, 12, 27, 27); }
+    catch (e) { try { doc.addImage(logoImage, 'JPEG', left + 5, 12, 27, 27); } catch (e2) {} }
   }
 
   if (photoImage) {
-    const pw = 28, ph = 34;
-    try { doc.addImage(photoImage, 'PNG', right - pw - 5, 12, pw, ph); }
-    catch (e) { try { doc.addImage(photoImage, 'JPEG', right - pw - 5, 12, pw, ph); } catch (e2) {} }
-    setDraw(GOLD); doc.setLineWidth(0.8);
-    doc.roundedRect(right - pw - 5, 12, pw, ph, 2, 2, 'S');
+    const pw = 25, ph = 30;
+    try { doc.addImage(photoImage, 'PNG', right - pw - 5, 11, pw, ph); }
+    catch (e) { try { doc.addImage(photoImage, 'JPEG', right - pw - 5, 11, pw, ph); } catch (e2) {} }
+    setDraw(GOLD); doc.setLineWidth(0.75);
+    doc.roundedRect(right - pw - 5, 11, pw, ph, 2, 2, 'S');
   }
 
   const schoolName = (settings.schoolName && settings.schoolName.trim()) ? settings.schoolName.trim() : 'School Name Not Set';
   const headerCenter = pageWidth / 2;
   setText(WHITE);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15.5);
+  doc.setFontSize(15);
   doc.text(schoolName, headerCenter, 19, { align: 'center' });
   doc.setFontSize(10);
   doc.text('TERMINAL REPORT CARD', headerCenter, 27, { align: 'center' });
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7.5);
-  let contact = [settings.address, settings.email].filter(Boolean).join('  •  ');
+  doc.setFontSize(7.4);
+  const contact = [settings.address, settings.email].filter(Boolean).join('  •  ');
   if (contact) doc.text(contact, headerCenter, 34, { align: 'center' });
-  doc.setFontSize(7.5);
-  doc.text(`${safe(settings.currentYear)}  •  ${safe(settings.currentTerm)}`, headerCenter, 41, { align: 'center' });
-  setText(PAPER);
-  doc.setFontSize(6.5);
-  doc.text('AlatiphA SchoolHub  •  Efficient School Management', headerCenter, 47, { align: 'center' });
+  setText([230, 245, 240]);
+  doc.setFontSize(6.4);
+  doc.text('AlatiphA SchoolHub  •  Efficient School Management', headerCenter, 42, { align: 'center' });
 
-  // Student summary cards.
-  const cardY = 58, cardH = 28, gap = 4, cardW = (contentW - gap) / 2;
+  // Reusable compact two-column card. Values are constrained to the card so
+  // long IDs, class names and totals can never spill outside the container.
+  const cardY = 52, cardH = 31, gap = 4, cardW = (contentW - gap) / 2;
   function card(x, title, rows, width = cardW) {
-    setFill(LIGHT); doc.roundedRect(x, title ? cardY : cardY, width, cardH, 2.5, 2.5, 'F');
-    setDraw([211, 219, 213]); doc.setLineWidth(0.25); doc.roundedRect(x, cardY, width, cardH, 2.5, 2.5, 'S');
-    setFill(PRIMARY2); doc.roundedRect(x, cardY, width, 6, 2.5, 2.5, 'F');
-    doc.rect(x, cardY + 3, width, 3, 'F');
-    setText(WHITE); doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.text(title, x + 4, cardY + 4.2);
-    let yy = cardY + 11;
+    setFill(WHITE); doc.roundedRect(x, cardY, width, cardH, 2.5, 2.5, 'F');
+    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, cardY, width, cardH, 2.5, 2.5, 'S');
+    setFill(PRIMARY); doc.roundedRect(x, cardY, width, 6.5, 2.5, 2.5, 'F');
+    doc.rect(x, cardY + 4, width, 2.5, 'F');
+    setText(WHITE); doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.text(title, x + 4, cardY + 4.5);
+
+    const labelW = 42;
+    const valueX = x + 4 + labelW;
+    const valueW = width - labelW - 8;
+    let yy = cardY + 12;
     rows.forEach(r => {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.8); setText(PRIMARY2); doc.text(r[0], x + 4, yy);
-      const lw = doc.getTextWidth(r[0] + ' ');
-      doc.setFont('helvetica', 'normal'); setText(PRIMARY); doc.text(safe(r[1]), x + 4 + lw, yy);
-      yy += 6;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(6.0); setText(PRIMARY_DARK);
+      doc.text(r[0], x + 4, yy);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.2); setText(TEXT);
+      const lines = doc.splitTextToSize(safe(r[1]), valueW);
+      doc.text(lines[0], valueX, yy);
+      yy += 5.6;
     });
   }
+
   card(left, 'STUDENT INFORMATION', [
     ['Name:', result.student.name],
     ['Class:', classInfo ? classInfo.name : ''],
@@ -4718,7 +4733,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   ]);
 
   const simple = settings.reportLayout === 'simple';
-  const tableY = 91;
+  const tableY = 88;
   const headers = simple
     ? ['Subject', 'Score', 'Grade', 'Position', 'Remark']
     : ['Subject', ['Class', '(50%)'], ['Exam', '(50%)'], ['Total', '(100%)'], 'Grade', 'Position', 'Remark'];
@@ -4730,7 +4745,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const rowH = 7.5;
   const centerCols = simple ? [1,2,3] : [1,2,3,4,5];
 
-  setFill(PRIMARY2); doc.roundedRect(left, tableY, tableW, headerH, 2.5, 2.5, 'F');
+  setFill(PRIMARY); doc.roundedRect(left, tableY, tableW, headerH, 2.5, 2.5, 'F');
   doc.rect(left, tableY + headerH - 2.5, tableW, 2.5, 'F');
   setText(WHITE); doc.setFont('helvetica', 'bold'); doc.setFontSize(7.3);
   headers.forEach((h, i) => {
@@ -4749,9 +4764,9 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     const pos = positions[en.subject.id] && positions[en.subject.id][result.student.id];
     setFill(idx % 2 === 0 ? WHITE : LIGHT);
     doc.rect(left, y, tableW, rowH, 'F');
-    setDraw([211, 219, 213]); doc.setLineWidth(0.22); doc.rect(left, y, tableW, rowH);
+    setDraw(RULE); doc.setLineWidth(0.22); doc.rect(left, y, tableW, rowH);
     for (let i = 1; i < colX.length - 1; i++) doc.line(colX[i], y, colX[i], y + rowH);
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.1); setText(PRIMARY);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.1); setText(TEXT);
 
     const values = simple
       ? [en.subject.name, en.total, en.grade, pos ? ordinal(pos.position) : '-', en.remark]
@@ -4765,27 +4780,34 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
         const lines = doc.splitTextToSize(safe(v), max);
         doc.text(lines[0], colX[i] + 2.5, y + 5);
       }
-      setText(PRIMARY);
+      setText(TEXT);
     });
     y += rowH;
   });
 
-  // Two compact information panels.
+  // School Information and Learner Profile use a fixed label/value grid.
+  // This prevents long labels or values from crossing the panel boundary.
   y += 5;
-  const infoY = y, infoH = 37, infoGap = 4, infoW = (contentW - infoGap) / 2;
+  const infoY = y, infoH = 36, infoGap = 4, infoW = (contentW - infoGap) / 2;
   function infoPanel(x, title, rows) {
     setFill(WHITE); doc.roundedRect(x, infoY, infoW, infoH, 2.5, 2.5, 'F');
-    setDraw([211,219,213]); doc.setLineWidth(0.25); doc.roundedRect(x, infoY, infoW, infoH, 2.5, 2.5, 'S');
-    setFill(PRIMARY2); doc.roundedRect(x, infoY, infoW, 7, 2.5, 2.5, 'F'); doc.rect(x, infoY + 4.5, infoW, 2.5, 'F');
+    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, infoY, infoW, infoH, 2.5, 2.5, 'S');
+    setFill(PRIMARY); doc.roundedRect(x, infoY, infoW, 7, 2.5, 2.5, 'F'); doc.rect(x, infoY + 4.5, infoW, 2.5, 'F');
     setText(WHITE); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.text(title, x + 4, infoY + 4.9);
+
+    const labelW = 52;
+    const valueX = x + 4 + labelW;
+    const valueW = infoW - labelW - 8;
     let yy = infoY + 13;
     rows.forEach(r => {
-      doc.setFont('helvetica','bold'); doc.setFontSize(6.7); setText(PRIMARY2); doc.text(r[0], x + 4, yy);
-      const lw = doc.getTextWidth(r[0] + ' ');
-      doc.setFont('helvetica','normal'); setText(PRIMARY); doc.text(safe(r[1]), x + 4 + lw, yy);
-      yy += 6;
+      doc.setFont('helvetica','bold'); doc.setFontSize(5.5); setText(PRIMARY_DARK); doc.text(r[0], x + 4, yy);
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.0); setText(TEXT);
+      const lines = doc.splitTextToSize(safe(r[1]), valueW);
+      doc.text(lines[0], valueX, yy);
+      yy += 5.2;
     });
   }
+
   const attOutOf = calculateTimesOpen(settings.currentTerm, settings.currentYear) || settings.attendanceOutOf || '-';
   infoPanel(left, 'SCHOOL INFORMATION', [
     ['Attendance:', `${studentRemarks.attendance || 0} out of ${attOutOf}`],
@@ -4802,19 +4824,21 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   ]);
   y = infoY + infoH + 5;
 
-  // Signatures and date.
+  // Signature panels are deliberately WHITE because uploaded signature images
+  // are normally saved with white backgrounds. This makes the signature blend
+  // naturally into the signature area instead of showing a coloured rectangle.
   const sig = getStaffSignatures(classInfo, settings, resolvedAssets);
   const sigGap = 5, sigW = (contentW - sigGap - 31) / 2;
   const sigY = y, sigH = 28;
   function signatureBox(x, title, name, image) {
-    setFill(LIGHT); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'F');
-    setDraw([211,219,213]); doc.setLineWidth(0.25); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'S');
+    setFill(WHITE); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'F');
+    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'S');
     if (image) {
       try { doc.addImage(image, 'PNG', x + sigW/2 - 18, sigY + 2, 36, 11); }
       catch (e) { try { doc.addImage(image, 'JPEG', x + sigW/2 - 18, sigY + 2, 36, 11); } catch (e2) {} }
     }
-    setDraw(PRIMARY2); doc.setLineWidth(0.35); doc.line(x + 12, sigY + 15, x + sigW - 12, sigY + 15);
-    setText(PRIMARY2); doc.setFont('helvetica','bold'); doc.setFontSize(7.2); doc.text(title, x + sigW/2, sigY + 20, {align:'center'});
+    setDraw(PRIMARY); doc.setLineWidth(0.35); doc.line(x + 12, sigY + 15, x + sigW - 12, sigY + 15);
+    setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(7.2); doc.text(title, x + sigW/2, sigY + 20, {align:'center'});
     doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.text(safe(name), x + sigW/2, sigY + 25, {align:'center'});
   }
   signatureBox(left, 'CLASS TEACHER', sig.classTeacherName, sig.classTeacherSignature);
@@ -4823,34 +4847,34 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const dateX = right - 31;
   setFill(WHITE); doc.roundedRect(dateX, sigY, 31, sigH, 2.5, 2.5, 'F');
   setDraw(GOLD); doc.setLineWidth(0.5); doc.roundedRect(dateX, sigY, 31, sigH, 2.5, 2.5, 'S');
-  setText(PRIMARY2); doc.setFont('helvetica','bold'); doc.setFontSize(6.8); doc.text('DATE OF ISSUE', dateX + 15.5, sigY + 9, {align:'center'});
+  setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(6.8); doc.text('DATE OF ISSUE', dateX + 15.5, sigY + 9, {align:'center'});
   doc.setFont('helvetica','normal'); doc.setFontSize(7.2); doc.text(new Date().toLocaleDateString(), dateX + 15.5, sigY + 17, {align:'center'});
   setText(GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.text('SchoolHub', dateX + 15.5, sigY + 24, {align:'center'});
 
-  // Grading and remarks guides.
+  // Two-line grading and remarks guides, deliberately compact so each fits
+  // completely inside its container.
   y = sigY + sigH + 5;
-  const legendGap = 4, legendW = (contentW - legendGap) / 2, legendH = 29;
+  const legendGap = 4, legendW = (contentW - legendGap) / 2, legendH = 24;
   function legendBox(x, title, lines) {
     setFill(WHITE); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'F');
-    setDraw([211,219,213]); doc.setLineWidth(0.25); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'S');
-    setFill(PRIMARY2); doc.roundedRect(x, y, legendW, 6.5, 2.5, 2.5, 'F'); doc.rect(x, y + 4, legendW, 2.5, 'F');
+    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'S');
+    setFill(PRIMARY); doc.roundedRect(x, y, legendW, 6.5, 2.5, 2.5, 'F'); doc.rect(x, y + 4, legendW, 2.5, 'F');
     setText(WHITE); doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.text(title, x + 4, y + 4.5);
-    let yy = y + 11.5;
-    lines.forEach(line => { doc.setFont('helvetica','normal'); doc.setFontSize(6.2); setText(PRIMARY); doc.text(line, x + 4, yy); yy += 4.2; });
+    let yy = y + 12;
+    lines.forEach(line => { doc.setFont('helvetica','normal'); doc.setFontSize(5.8); setText(TEXT); doc.text(line, x + 4, yy); yy += 5; });
   }
   legendBox(left, 'GRADING SCALE', [
-    '80-100 = 1    75-79 = 2    70-74 = 3    65-69 = 4    60-64 = 5',
-    '50-59 = 6     45-49 = 7     40-44 = 8     0-39 = 9'
+    '80-100 = 1   75-79 = 2   70-74 = 3   65-69 = 4   60-64 = 5',
+    '50-59 = 6    45-49 = 7   40-44 = 8   0-39 = 9'
   ]);
   legendBox(left + legendW + legendGap, 'REMARKS GUIDE', [
-    '80-100  Highly Proficient     54-79  Proficient',
-    '46-53  Approaching Proficiency   40-45  Developing',
-    '0-39  Emerging'
+    '80-100 Highly Proficient   54-79 Proficient',
+    '46-53 Approaching Proficiency   40-45 Developing   0-39 Emerging'
   ]);
 
   // Footer branding.
   const footerY = pageHeight - 14;
-  setFill(PRIMARY); doc.roundedRect(0, footerY, pageWidth, 14, 0, 0, 'F');
+  setFill(PRIMARY_DARK); doc.rect(0, footerY, pageWidth, 14, 'F');
   setFill(GOLD); doc.rect(0, footerY, pageWidth, 1.5, 'F');
   setText(PAPER); doc.setFont('helvetica','normal'); doc.setFontSize(6.8);
   doc.text('Generated with ', left, footerY + 8);
