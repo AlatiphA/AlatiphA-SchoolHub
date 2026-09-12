@@ -1,4 +1,4 @@
-# AlatiphA SchoolHub Phase 3 v38.10.3
+# AlatiphA SchoolHub Phase 3 v38.11.0
 
 ## Report Card Visual Refinements
 
@@ -31,3 +31,12 @@ If there is no authenticated session, the normal Sign In screen is shown.
 ## v38.10.3 Report Card Bottom Layout
 - Signature/date cards are equally spaced: Class Teacher | Date of Issue | Head Teacher.
 - Footer height reduced for more printable space.
+
+
+## v38.11.0 Report Card Themes
+- Added a school-level Report Card Theme selector.
+- Added four visual themes: SchoolHub Professional, Modern Academic, Classic Academic, and Executive.
+- The selected theme is stored in school settings and follows the existing Firestore/local sync model.
+- Report calculations and data remain centralized and unchanged; themes affect presentation only.
+- Added theme cards with Apply/Active states and PDF Preview for the selected class.
+- Existing v38.10.3 SchoolHub Professional design remains the default/fallback theme.

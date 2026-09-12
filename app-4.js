@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.10.3';
+const APP_VERSION = 'v38.11.0';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -304,7 +304,7 @@ function ensureDefaults() {
     DB.set(KEYS.settings, {
       teacherName: '', schoolName: '', address: '', email: '', logo: '',
       currentTerm: 'Term 1', currentYear: '', attendanceOutOf: '', nextTermBegins: '',
-      reportLayout: 'standard', headTeacherId: '', termDates: {}
+      reportLayout: 'standard', reportTheme: 'schoolhub', headTeacherId: '', termDates: {}
     });
   }
   if (DB.get(KEYS.classes, null) === null) DB.set(KEYS.classes, []);
@@ -1086,6 +1086,7 @@ function loadSettingsForm() {
   document.getElementById('attendanceOutOf').value = calculateTimesOpen(s.currentTerm || 'Term 1', s.currentYear || '') || '';
   document.getElementById('nextTermBegins').value = s.nextTermBegins || '';
   document.getElementById('reportLayout').value = s.reportLayout || 'standard';
+  if (document.getElementById('reportThemeSelect')) document.getElementById('reportThemeSelect').value = s.reportTheme || 'schoolhub';
   const wrap = document.getElementById('logoPreviewWrap');
   const img = document.getElementById('logoPreview');
   if (s.logo) { img.src = s.logo; wrap.classList.remove('hidden'); }
@@ -1173,6 +1174,7 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   s.attendanceOutOf = String(calculateTimesOpen(s.currentTerm, s.currentYear) || '');
   s.nextTermBegins = document.getElementById('nextTermBegins').value;
   s.reportLayout = document.getElementById('reportLayout').value;
+  s.reportTheme = document.getElementById('reportThemeSelect') ? document.getElementById('reportThemeSelect').value : (s.reportTheme || 'schoolhub');
   s.headTeacherId = document.getElementById('headTeacherSelect').value;
   DB.set(KEYS.settings, s);
   auditAction('update', 'settings', 'school', 'Updated school and report settings');
@@ -4171,7 +4173,26 @@ function computeSubjectPositions(classId, term, year) {
   return positions;
 }
 
+/* ---------- Report Card Themes ---------- */
+const REPORT_THEMES={
+ schoolhub:{id:'schoolhub',name:'Theme 1',title:'SchoolHub Professional',description:'The current AlatiphA SchoolHub design with teal, green, gold and clean white cards.',primary:[24,112,99],dark:[22,80,69],accent:[201,162,39],paper:[241,239,230],light:[248,249,246],pale:[231,242,238],text:[22,36,28],muted:[92,111,99],rule:[205,220,214],white:[255,255,255],red:[156,58,40],headerH:39,headerRadius:4,tableRadius:2.5,cardRadius:2.5,footerH:9,footerAccent:1,headerTitleSize:15,bodyFont:'helvetica',cardTitle:7,panelTitle:7.5,tableFont:7.1,signatureH:21,legendH:18,infoH:36,cardH:31},
+ modern:{id:'modern',name:'Theme 2',title:'Modern Academic',description:'A contemporary blue-green layout with crisp panels and a lighter visual hierarchy.',primary:[36,108,125],dark:[24,58,76],accent:[226,170,64],paper:[246,248,247],light:[238,244,246],pale:[229,241,243],text:[25,40,48],muted:[88,105,114],rule:[205,218,222],white:[255,255,255],red:[175,65,55],headerH:37,headerRadius:3,tableRadius:1.5,cardRadius:3,footerH:8,footerAccent:.8,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7.2,panelTitle:7.4,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30},
+ classic:{id:'classic',name:'Theme 3',title:'Classic Academic',description:'A formal traditional report card with warm paper, structured borders and academic typography.',primary:[105,74,55],dark:[63,55,46],accent:[164,126,55],paper:[247,243,233],light:[251,249,244],pale:[240,233,218],text:[42,39,34],muted:[101,94,82],rule:[211,201,183],white:[255,255,255],red:[151,58,45],headerH:38,headerRadius:1.5,tableRadius:.8,cardRadius:1.5,footerH:8,footerAccent:.8,headerTitleSize:15,bodyFont:'times',cardTitle:7.1,panelTitle:7.2,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30},
+ executive:{id:'executive',name:'Theme 4',title:'Executive',description:'A premium compact presentation with deep navy, gold accents and high-contrast information panels.',primary:[31,65,92],dark:[20,37,55],accent:[198,156,48],paper:[242,244,244],light:[247,248,249],pale:[232,237,241],text:[25,34,43],muted:[90,101,111],rule:[204,212,218],white:[255,255,255],red:[166,58,52],headerH:39,headerRadius:4,tableRadius:2,cardRadius:2,footerH:8,footerAccent:.8,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7.2,panelTitle:7.5,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30}
+};
+function getReportTheme(settings){return REPORT_THEMES[(settings&&settings.reportTheme)||'schoolhub']||REPORT_THEMES.schoolhub;}
+function renderReportThemePicker(){const host=document.getElementById('reportThemePicker');if(!host)return;const activeId=DB.get(KEYS.settings,{}).reportTheme||'schoolhub';host.innerHTML=`<div class="report-theme-active"><div class="report-theme-active-icon">✦</div><div><span class="report-theme-kicker">ACTIVE THEME</span><h3>${escapeHtml(REPORT_THEMES[activeId].title)}</h3><p>${escapeHtml(REPORT_THEMES[activeId].description)}</p></div></div><div class="report-theme-grid">${Object.values(REPORT_THEMES).map(t=>`<article class="report-theme-card ${t.id===activeId?'active':''}"><div class="report-theme-preview" data-theme="${t.id}"><div class="rtp-head"><span></span><b>${escapeHtml(t.title)}</b><i></i></div><div class="rtp-meta"><span></span><span></span></div><div class="rtp-table"><b></b><b></b><b></b><b></b><b></b></div><div class="rtp-bottom"><span></span><span></span></div><div class="rtp-footer"></div></div><div class="report-theme-card-body"><h3>${escapeHtml(t.name)} <small>${escapeHtml(t.title)}</small></h3><p>${escapeHtml(t.description)}</p><div class="report-theme-actions"><button type="button" class="report-theme-preview-btn" data-theme-preview="${t.id}">⌕ Preview</button><button type="button" class="btn-primary report-theme-apply" data-theme-apply="${t.id}">${t.id===activeId?'✓ Active':'Apply'}</button></div></div></article>`).join('')}</div>`;host.querySelectorAll('[data-theme-apply]').forEach(b=>b.addEventListener('click',()=>applyReportTheme(b.dataset.themeApply)));host.querySelectorAll('[data-theme-preview]').forEach(b=>b.addEventListener('click',()=>previewReportTheme(b.dataset.themePreview)));}
+function applyReportTheme(themeId){if(!REPORT_THEMES[themeId])return;if(!requireHeadTeacher('change the report card theme'))return;const s=DB.get(KEYS.settings,{});s.reportTheme=themeId;DB.set(KEYS.settings,s);const sel=document.getElementById('reportThemeSelect');if(sel)sel.value=themeId;auditAction('update','report-theme',themeId,`Applied report card theme: ${REPORT_THEMES[themeId].title}`);renderReportThemePicker();}
+async function previewReportTheme(themeId){const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,remarksAll[result.student.id]||{},assets);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
+
 /* ---------- Reports ---------- */
+document.getElementById('reportThemesBtn')?.addEventListener('click', () => {
+  const picker = document.getElementById('reportThemePicker');
+  if (!picker) return;
+  picker.classList.toggle('hidden');
+  if (!picker.classList.contains('hidden')) renderReportThemePicker();
+});
+
 function renderReportsClassSelect() {
   const sel = document.getElementById('reportsClassSelect');
   fillClassSelect(sel);
@@ -4635,17 +4656,18 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 
   // AlatiphA SchoolHub PWA palette: teal/green primary, gold accent,
   // warm paper and white content surfaces. Avoid pure black in the report.
-  const PRIMARY = [24, 112, 99];
-  const PRIMARY_DARK = [22, 80, 69];
-  const TEXT = [22, 36, 28];
-  const GOLD = [201, 162, 39];
-  const PAPER = [241, 239, 230];
-  const LIGHT = [248, 249, 246];
-  const PALE_GREEN = [231, 242, 238];
-  const MUTED = [92, 111, 99];
-  const RED = [156, 58, 40];
-  const WHITE = [255, 255, 255];
-  const RULE = [205, 220, 214];
+  const theme = getReportTheme(settings);
+  const PRIMARY = theme.primary;
+  const PRIMARY_DARK = theme.dark;
+  const TEXT = theme.text;
+  const GOLD = theme.accent;
+  const PAPER = theme.paper;
+  const LIGHT = theme.light;
+  const PALE_GREEN = theme.pale;
+  const MUTED = theme.muted;
+  const RED = theme.red;
+  const WHITE = theme.white;
+  const RULE = theme.rule;
 
   const setFill = c => doc.setFillColor(c[0], c[1], c[2]);
   const setText = c => doc.setTextColor(c[0], c[1], c[2]);
@@ -4659,9 +4681,9 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // Compact branded header. Year and term are intentionally NOT repeated here;
   // they are already shown in TERM SUMMARY.
   setFill(PRIMARY_DARK);
-  doc.roundedRect(left, 8, contentW, 39, 4, 4, 'F');
+  doc.roundedRect(left, 8, contentW, theme.headerH, theme.headerRadius, theme.headerRadius, 'F');
   setFill(GOLD);
-  doc.roundedRect(left, 44, contentW, 3, 1.5, 1.5, 'F');
+  doc.roundedRect(left, 8 + theme.headerH - 3, contentW, 3, 1.5, 1.5, 'F');
 
   const logoImage = resolvedAssets && resolvedAssets.logo !== undefined ? resolvedAssets.logo : settings.logo;
   const photoImage = resolvedAssets && resolvedAssets.photo !== undefined ? resolvedAssets.photo : result.student.photo;
@@ -4696,7 +4718,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 
   // Reusable compact two-column card. Values are constrained to the card so
   // long IDs, class names and totals can never spill outside the container.
-  const cardY = 52, cardH = 31, gap = 4, cardW = (contentW - gap) / 2;
+  const cardY = 52, cardH = theme.cardH, gap = 4, cardW = (contentW - gap) / 2;
   function card(x, title, rows, width = cardW) {
     setFill(WHITE); doc.roundedRect(x, cardY, width, cardH, 2.5, 2.5, 'F');
     setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, cardY, width, cardH, 2.5, 2.5, 'S');
@@ -4790,7 +4812,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // School Information and Learner Profile use a fixed label/value grid.
   // This prevents long labels or values from crossing the panel boundary.
   y += 5;
-  const infoY = y, infoH = 36, infoGap = 4, infoW = (contentW - infoGap) / 2;
+  const infoY = y, infoH = theme.infoH, infoGap = 4, infoW = (contentW - infoGap) / 2;
   function infoPanel(x, title, rows) {
     setFill(WHITE); doc.roundedRect(x, infoY, infoW, infoH, 2.5, 2.5, 'F');
     setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, infoY, infoW, infoH, 2.5, 2.5, 'S');
@@ -4832,7 +4854,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // have white backgrounds, while the Head Teacher card sits on the right.
   const sig = getStaffSignatures(classInfo, settings, resolvedAssets);
   const sigGap = 5, sigW = (contentW - (sigGap * 2)) / 3;
-  const sigY = y, sigH = 21;
+  const sigY = y, sigH = theme.signatureH;
   function signatureBox(x, title, image) {
     setFill(WHITE); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'F');
     setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'S');
@@ -4857,7 +4879,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   // Two-line grading and remarks guides, deliberately compact so each fits
   // completely inside its container.
   y = sigY + sigH + 5;
-  const legendGap = 4, legendW = (contentW - legendGap) / 2, legendH = 18;
+  const legendGap = 4, legendW = (contentW - legendGap) / 2, legendH = theme.legendH;
   function legendBox(x, title, lines) {
     setFill(WHITE); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'F');
     setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'S');
@@ -4876,10 +4898,10 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   ]);
 
   // Compact footer branding.
-  const footerH = 9;
+  const footerH = theme.footerH;
   const footerY = pageHeight - footerH;
   setFill(PRIMARY_DARK); doc.rect(0, footerY, pageWidth, footerH, 'F');
-  setFill(GOLD); doc.rect(0, footerY, pageWidth, 1.0, 'F');
+  setFill(GOLD); doc.rect(0, footerY, pageWidth, theme.footerAccent, 'F');
   setText(PAPER); doc.setFont('helvetica','normal'); doc.setFontSize(6.4);
   doc.text('Phone: +233243443688', left, footerY + 6);
   doc.setFont('helvetica','bold'); doc.text('Designed with AlatiphA SchoolHub', pageWidth / 2, footerY + 6, {align:'center'});

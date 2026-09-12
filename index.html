@@ -230,6 +230,14 @@
         <option value="simple">Simple (Exam Score only — Class Score hidden and unused)</option>
       </select>
     </label>
+    <label>Report Card Theme
+      <select id="reportThemeSelect">
+        <option value="schoolhub">Theme 1 · SchoolHub Professional</option>
+        <option value="modern">Theme 2 · Modern Academic</option>
+        <option value="classic">Theme 3 · Classic Academic</option>
+        <option value="executive">Theme 4 · Executive</option>
+      </select>
+    </label>
     <label>Head Teacher (for signatures on report cards)
       <select id="headTeacherSelect"></select>
     </label>
@@ -433,6 +441,8 @@
   <!-- REPORTS -->
   <section id="view-reports" class="view hidden">
     <h2>Reports</h2>
+    <div class="report-themes-launch"><div><strong>Report Card Themes</strong><span>Choose and apply the visual style used when generating report cards.</span></div><button type="button" id="reportThemesBtn" class="btn-primary">Choose Theme</button></div>
+    <div id="reportThemePicker" class="report-theme-picker hidden"></div>
     <label>Class
       <select id="reportsClassSelect"></select>
     </label>
