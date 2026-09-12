@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.6.1';
+const APP_VERSION = 'v38.7';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2431,14 +2431,233 @@ function formatAttendanceRatio(value) {
   return Number.isFinite(value) ? `${value.toFixed(1)}%` : '—';
 }
 
+
+/* ---------- v38.7 Attendance Reports ---------- */
+function attendanceOpenDates(term, year, throughDate) {
+  const td = getTermDates(term, year);
+  if (!td) return [];
+  const start = parseDateOnly(td.start), end0 = parseDateOnly(td.end);
+  if (!start || !end0 || start > end0) return [];
+  let end = end0;
+  if (throughDate) {
+    const t = parseDateOnly(throughDate);
+    if (t && t < end) end = t;
+  } else {
+    const today = parseDateOnly(attendanceDateToday());
+    if (today && today < end && today >= start) end = today;
+    if (today && today < start) return [];
+  }
+  const out = [];
+  const exceptions = new Map(schoolCalendarRecordsForTerm(term, year).map(x => [x.date, String(x.record.type || '').toLowerCase()]));
+  for (let d = new Date(start); d <= end; d = addDaysDateOnly(d, 1)) {
+    if (!isWeekdayDate(d)) continue;
+    const date = dateOnlyString(d);
+    const type = exceptions.get(date);
+    if (type === 'holiday' || type === 'midterm') continue;
+    out.push(date);
+  }
+  return out;
+}
+
+function attendanceStatusLabel(status) {
+  return ({P:'Present', L:'Late', A:'Absent', E:'Excused', O:'On Leave'})[String(status || '').toUpperCase()] || 'Not recorded';
+}
+
+function attendanceStatusCodeForStudent(classId, term, year, date, studentId) {
+  const rec = DB.get(KEYS.attendance, {})[attendanceKey(classId, term, year, date)] || {};
+  const entries = rec.entries || rec;
+  return entries && entries[studentId] ? String(entries[studentId]).toUpperCase() : '';
+}
+
+function attendanceStatusCodeForTeacher(term, year, date, staffId) {
+  const rec = DB.get(KEYS.teacherAttendance, {})[teacherAttendanceKey(term, year, date)] || {};
+  const entries = rec.entries || rec;
+  return entries && entries[staffId] ? String(entries[staffId]).toUpperCase() : '';
+}
+
+function attendanceReportDateDefault() {
+  const settings = DB.get(KEYS.settings, {});
+  const today = attendanceDateToday();
+  const dates = attendanceOpenDates(settings.currentTerm, settings.currentYear, today);
+  return dates.length ? dates[dates.length - 1] : today;
+}
+
+function attendanceReportPupilHistory(student, term, year) {
+  const dates = attendanceOpenDates(term, year);
+  const rows = [];
+  dates.forEach(date => {
+    const status = attendanceStatusCodeForStudent(student.classId, term, year, date, student.id);
+    rows.push({ date, status, label: attendanceStatusLabel(status) });
+  });
+  return rows;
+}
+
+function attendanceReportTeacherHistory(staff, term, year) {
+  const dates = attendanceOpenDates(term, year);
+  return dates.map(date => {
+    const status = attendanceStatusCodeForTeacher(term, year, date, staff.id);
+    return { date, status, label: attendanceStatusLabel(status) };
+  });
+}
+
+function attendanceReportPupilStats(student, term, year, timesOpen) {
+  const history = attendanceReportPupilHistory(student, term, year);
+  let present=0, late=0, absent=0, recorded=0;
+  history.forEach(r => { if (!r.status) return; recorded++; if(r.status==='P')present++; else if(r.status==='L')late++; else if(r.status==='A')absent++; });
+  const total = present + late;
+  const ratio = attendanceRatio({present,late,total,absent}, timesOpen, false);
+  let current=0, longest=0, run=0;
+  history.forEach(r => { if(r.status==='A'){run++; longest=Math.max(longest,run);} else {run=0;} });
+  current=run;
+  return { present, late, total, absent, recorded, ratio, currentAbsenceStreak:current, longestAbsenceStreak:longest, history };
+}
+
+function attendanceReportTeacherStats(staff, term, year, timesOpen) {
+  const history = attendanceReportTeacherHistory(staff, term, year);
+  let present=0, late=0, absent=0, excused=0, leave=0, recorded=0;
+  history.forEach(r => { if(!r.status)return; recorded++; if(r.status==='P')present++; else if(r.status==='L')late++; else if(r.status==='A')absent++; else if(r.status==='E')excused++; else if(r.status==='O')leave++; });
+  const total=present+late;
+  const ratio=attendanceRatio({present,late,total,absent,excused,leave},timesOpen,true);
+  let current=0,longest=0,run=0;
+  history.forEach(r=>{if(r.status==='A'){run++;longest=Math.max(longest,run);}else{run=0;}}); current=run;
+  return {present,late,total,absent,excused,leave,recorded,ratio,currentAbsenceStreak:current,longestAbsenceStreak:longest,history};
+}
+
+function attendanceReportClassRows(classId, term, year, timesOpen) {
+  const students = DB.get(KEYS.students, []).filter(s => s.classId === classId);
+  return students.map(st => ({ student:st, stats:attendanceReportPupilStats(st,term,year,timesOpen) }));
+}
+
+function attendanceReportTeacherRows(term, year, timesOpen) {
+  return DB.get(KEYS.staff, []).filter(isTeacherStaffRecord).map(st => ({ staff:st, stats:attendanceReportTeacherStats(st,term,year,timesOpen) }));
+}
+
+function attendanceReportDaily(date, term, year, classId, kind) {
+  const dayType = attendanceDayType(term, year, date);
+  if (dayType !== 'open') return { dayType, rows:[] };
+  if (kind === 'teachers') {
+    return { dayType, rows: DB.get(KEYS.staff,[]).filter(isTeacherStaffRecord).map(st=>({name:st.name,role:st.role||'Teacher',status:attendanceStatusCodeForTeacher(term,year,date,st.id),className:''})) };
+  }
+  const classes = classId ? getAccessibleClasses().filter(c=>c.id===classId) : getAccessibleClasses();
+  const rows=[];
+  classes.forEach(c=>DB.get(KEYS.students,[]).filter(s=>s.classId===c.id).forEach(st=>rows.push({name:st.name,className:c.name,status:attendanceStatusCodeForStudent(c.id,term,year,date,st.id)})));
+  return {dayType,rows};
+}
+
+function attendanceReportEscapeLines(text) { return String(text||'').split(/\n/); }
+
+function renderAttendanceReports() {
+  const wrap=document.getElementById('attendanceReportsWrap');
+  if(!wrap) return;
+  const settings=DB.get(KEYS.settings,{});
+  const term=String(settings.currentTerm||'Term 1');
+  const year=String(settings.currentYear||'');
+  const timesOpen=calculateTimesOpen(term,year);
+  let mode=document.getElementById('attendanceReportType')?.value||'term';
+  if (!isHeadTeacher() && (mode==='daily-teachers' || mode==='teacher')) mode='term';
+  const savedClass=document.getElementById('attendanceReportClass')?.value||'';
+  const savedPerson=document.getElementById('attendanceReportPerson')?.value||'';
+  const savedDate=document.getElementById('attendanceReportDate')?.value||attendanceReportDateDefault();
+  let html=`<div class="attendance-report-builder"><div class="attendance-report-builder-head"><div><h3>Attendance Reports</h3><p class="hint">Generate daily, class, individual, teacher, or term attendance reports.</p></div><div class="attendance-report-actions"><button type="button" id="printAttendanceReportBtn" class="btn-primary">Print Report</button><button type="button" id="downloadAttendanceReportBtn" class="btn-primary">Download Report</button></div></div>`;
+  html+=`<div class="attendance-report-controls"><label>Report Type<select id="attendanceReportType"><option value="term" ${mode==='term'?'selected':''}>Term Summary</option><option value="daily-students" ${mode==='daily-students'?'selected':''}>Daily Pupil Report</option>${isHeadTeacher()?`<option value="daily-teachers" ${mode==='daily-teachers'?'selected':''}>Daily Teacher Report</option>`:''}<option value="class" ${mode==='class'?'selected':''}>Class Attendance Report</option><option value="pupil" ${mode==='pupil'?'selected':''}>Individual Pupil Report</option>${isHeadTeacher()?`<option value="teacher" ${mode==='teacher'?'selected':''}>Individual Teacher Report</option>`:''}</select></label>`;
+  if(mode.startsWith('daily')) html+=`<label>Date<input type="date" id="attendanceReportDate" value="${escapeHtml(savedDate)}"></label>`;
+  if(['class','pupil'].includes(mode)) html+=`<label>Class<select id="attendanceReportClass"><option value="">Select Class</option>${getAccessibleClasses().map(c=>`<option value="${escapeHtml(c.id)}" ${savedClass===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></label>`;
+  if(mode==='pupil') { const cls=savedClass?DB.get(KEYS.students,[]).filter(s=>s.classId===savedClass):getAccessibleStudents(); html+=`<label>Pupil<select id="attendanceReportPerson"><option value="">Select Pupil</option>${cls.map(s=>`<option value="${escapeHtml(s.id)}" ${savedPerson===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></label>`; }
+  if(mode==='teacher') html+=`<label>Teacher<select id="attendanceReportPerson"><option value="">Select Teacher</option>${DB.get(KEYS.staff,[]).filter(isTeacherStaffRecord).map(s=>`<option value="${escapeHtml(s.id)}" ${savedPerson===s.id?'selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></label>`;
+  if(mode==='daily-students') html+=`<label>Class<select id="attendanceReportClass"><option value="">All Classes</option>${getAccessibleClasses().map(c=>`<option value="${escapeHtml(c.id)}" ${savedClass===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}</select></label>`;
+  html+='</div>';
+
+  if(mode==='term') {
+    const students=attendanceReportOverallStudent(term,year,timesOpen), teachers=attendanceReportOverallTeacher(term,year,timesOpen);
+    html+=`<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>String(x.record.type||'').toLowerCase()==='holiday').length}</strong></div><div><span>Midterm</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>String(x.record.type||'').toLowerCase()==='midterm').length}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher()?`<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>`:''}</div>`;
+    html+='<h4 class="attendance-report-section-title">Class Attendance</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
+    getAccessibleClasses().forEach(c=>{const x=attendanceSummaryClassStats(c.id,term,year,timesOpen);html+=`<tr><td>${escapeHtml(c.name)}</td><td>${x.pupils}</td><td>${x.present}</td><td>${x.late}</td><td>${x.total}</td><td>${x.absent}</td><td>${formatAttendanceRatio(x.averageRatio)}</td></tr>`;});
+    html+='</tbody></table></div>';
+    if(isHeadTeacher()){html+='<h4 class="attendance-report-section-title">Teacher Attendance</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Ratio</th></tr></thead><tbody>';attendanceReportTeacherRows(term,year,timesOpen).forEach(x=>html+=`<tr><td>${escapeHtml(x.staff.name)}</td><td>${escapeHtml(x.staff.role||'Teacher')}</td><td>${x.stats.present}</td><td>${x.stats.late}</td><td>${x.stats.total}</td><td>${x.stats.absent}</td><td>${x.stats.excused}</td><td>${x.stats.leave}</td><td>${formatAttendanceRatio(x.stats.ratio)}</td></tr>`);html+='</tbody></table></div>';}
+  } else if(mode==='daily-students' || mode==='daily-teachers') {
+    const date=savedDate; const kind=mode==='daily-teachers'?'teachers':'students'; const data=attendanceReportDaily(date,term,year,savedClass,kind); const d=parseDateOnly(date); const day=d?d.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}):date;
+    html+=`<div class="attendance-report-note"><strong>${escapeHtml(day)}</strong> · ${escapeHtml(calendarLabel(data.dayType))}${data.dayType==='open'?'':' · Attendance is not recorded on this date.'}</div>`;
+    if(data.dayType==='open'){let p=0,l=0,a=0,e=0,o=0,m=0;data.rows.forEach(r=>{if(r.status)m++;if(r.status==='P')p++;else if(r.status==='L')l++;else if(r.status==='A')a++;else if(r.status==='E')e++;else if(r.status==='O')o++;});html+=`<div class="attendance-report-cards"><div><span>Recorded</span><strong>${m} / ${data.rows.length}</strong></div><div><span>Present</span><strong>${p}</strong></div><div><span>Late</span><strong>${l}</strong></div><div><span>Absent</span><strong>${a}</strong></div>${kind==='teachers'?`<div><span>Excused</span><strong>${e}</strong></div><div><span>On Leave</span><strong>${o}</strong></div>`:''}</div>`;html+='<div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Name</th>'+ (kind==='students'?'<th>Class</th>':'<th>Role</th>') +'<th>Status</th></tr></thead><tbody>';data.rows.forEach(r=>html+=`<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(kind==='students'?r.className:r.role)}</td><td>${escapeHtml(r.status?attendanceStatusLabel(r.status):'Not recorded')}</td></tr>`);html+='</tbody></table></div>';}
+  } else if(mode==='class') {
+    const cls=DB.get(KEYS.classes,[]).find(c=>c.id===savedClass); if(!cls) html+='<p class="empty">Select a class to generate the report.</p>'; else {const rows=attendanceReportClassRows(cls.id,term,year,timesOpen);const avg=rows.map(x=>x.stats.ratio).filter(Number.isFinite);const ar=avg.length?avg.reduce((a,b)=>a+b,0)/avg.length:null;html+=`<div class="attendance-report-cards"><div><span>Class</span><strong>${escapeHtml(cls.name)}</strong></div><div><span>Pupils</span><strong>${rows.length}</strong></div><div><span>Times Open</span><strong>${timesOpen}</strong></div><div><span>Average Ratio</span><strong>${formatAttendanceRatio(ar)}</strong></div></div><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Pupil</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Ratio</th><th>Current Streak</th><th>Longest Streak</th></tr></thead><tbody>`;rows.forEach(x=>html+=`<tr><td>${escapeHtml(x.student.name)}</td><td>${x.stats.present}</td><td>${x.stats.late}</td><td>${x.stats.total}</td><td>${x.stats.absent}</td><td>${formatAttendanceRatio(x.stats.ratio)}</td><td>${x.stats.currentAbsenceStreak}</td><td>${x.stats.longestAbsenceStreak}</td></tr>`);html+='</tbody></table></div>';}
+  } else if(mode==='pupil') {
+    const st=DB.get(KEYS.students,[]).find(s=>s.id===savedPerson && canAccessClass(s.classId)); if(!st) html+='<p class="empty">Select a class and pupil to generate the report.</p>'; else {const cls=DB.get(KEYS.classes,[]).find(c=>c.id===st.classId);const x=attendanceReportPupilStats(st,term,year,timesOpen);html+=`<div class="attendance-report-cards"><div><span>Pupil</span><strong>${escapeHtml(st.name)}</strong></div><div><span>Class</span><strong>${escapeHtml(cls?cls.name:'')}</strong></div><div><span>Times Open</span><strong>${timesOpen}</strong></div><div><span>Present</span><strong>${x.present}</strong></div><div><span>Late</span><strong>${x.late}</strong></div><div><span>Absent</span><strong>${x.absent}</strong></div><div><span>Attendance Ratio</span><strong>${formatAttendanceRatio(x.ratio)}</strong></div><div><span>Current Absence Streak</span><strong>${x.currentAbsenceStreak}</strong></div><div><span>Longest Absence Streak</span><strong>${x.longestAbsenceStreak}</strong></div></div><h4 class="attendance-report-section-title">Attendance History</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Status</th></tr></thead><tbody>`;x.history.forEach(r=>{const d=parseDateOnly(r.date);html+=`<tr><td>${escapeHtml(r.date)}</td><td>${d?escapeHtml(d.toLocaleDateString(undefined,{weekday:'short'})):''}</td><td>${escapeHtml(r.label)}</td></tr>`;});html+='</tbody></table></div>';}
+  } else if(mode==='teacher') {
+    const st=DB.get(KEYS.staff,[]).find(s=>s.id===savedPerson && isTeacherStaffRecord(s)); if(!st) html+='<p class="empty">Select a teacher to generate the report.</p>'; else {const x=attendanceReportTeacherStats(st,term,year,timesOpen);html+=`<div class="attendance-report-cards"><div><span>Teacher</span><strong>${escapeHtml(st.name)}</strong></div><div><span>Role</span><strong>${escapeHtml(st.role||'Teacher')}</strong></div><div><span>Times Open</span><strong>${timesOpen}</strong></div><div><span>Present</span><strong>${x.present}</strong></div><div><span>Late</span><strong>${x.late}</strong></div><div><span>Absent</span><strong>${x.absent}</strong></div><div><span>Excused</span><strong>${x.excused}</strong></div><div><span>On Leave</span><strong>${x.leave}</strong></div><div><span>Attendance Ratio</span><strong>${formatAttendanceRatio(x.ratio)}</strong></div><div><span>Current Absence Streak</span><strong>${x.currentAbsenceStreak}</strong></div><div><span>Longest Absence Streak</span><strong>${x.longestAbsenceStreak}</strong></div></div><h4 class="attendance-report-section-title">Attendance History</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Status</th></tr></thead><tbody>`;x.history.forEach(r=>{const d=parseDateOnly(r.date);html+=`<tr><td>${escapeHtml(r.date)}</td><td>${d?escapeHtml(d.toLocaleDateString(undefined,{weekday:'short'})):''}</td><td>${escapeHtml(r.label)}</td></tr>`;});html+='</tbody></table></div>';}
+  }
+  html+=`<p class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Holidays, Midterm and weekends are excluded from Times Open. Unrecorded attendance is shown as Not recorded and is not counted as Present or Absent.</p></div>`;
+  wrap.innerHTML=html;
+  const type=document.getElementById('attendanceReportType'); if(type)type.addEventListener('change',renderAttendanceReports);
+  const cls=document.getElementById('attendanceReportClass'); if(cls)cls.addEventListener('change',()=>{ if(mode==='pupil') { renderAttendanceReports(); } else renderAttendanceReports(); });
+  const person=document.getElementById('attendanceReportPerson'); if(person)person.addEventListener('change',renderAttendanceReports);
+  const date=document.getElementById('attendanceReportDate'); if(date)date.addEventListener('change',renderAttendanceReports);
+  const pb=document.getElementById('printAttendanceReportBtn');if(pb)pb.addEventListener('click',printAttendanceReport);
+  const db=document.getElementById('downloadAttendanceReportBtn');if(db)db.addEventListener('click',downloadAttendanceReportPdf);
+}
+
+function attendanceReportCurrentSelection() {
+  const settings=DB.get(KEYS.settings,{}); const term=String(settings.currentTerm||'Term 1'); const year=String(settings.currentYear||'');
+  return {settings,term,year,type:document.getElementById('attendanceReportType')?.value||'term',classId:document.getElementById('attendanceReportClass')?.value||'',personId:document.getElementById('attendanceReportPerson')?.value||'',date:document.getElementById('attendanceReportDate')?.value||attendanceReportDateDefault()};
+}
+
+function attendanceReportTitle(sel) {
+  const names={term:'Term Attendance Summary', 'daily-students':'Daily Pupil Attendance Report','daily-teachers':'Daily Teacher Attendance Report',class:'Class Attendance Report',pupil:'Individual Pupil Attendance Report',teacher:'Individual Teacher Attendance Report'};
+  return names[sel.type] || 'Attendance Report';
+}
+
+function buildAttendanceReportPrintHost() {
+  const host=document.createElement('div'); host.className='attendance-print-host';
+  const wrap=document.getElementById('attendanceReportsWrap');
+  host.innerHTML=`<div class="attendance-print-report"><div class="attendance-report-heading"><h2>${escapeHtml(DB.get(KEYS.settings,{}).schoolName||'School')}</h2><h3>${escapeHtml(attendanceReportTitle(attendanceReportCurrentSelection()))}</h3><p>${escapeHtml(DB.get(KEYS.settings,{}).currentTerm||'')} ${escapeHtml(DB.get(KEYS.settings,{}).currentYear||'')}</p></div>${wrap?wrap.innerHTML:''}</div>`;
+  const actions=host.querySelector('.attendance-report-actions'); if(actions)actions.remove();
+  const controls=host.querySelector('.attendance-report-controls'); if(controls)controls.remove();
+  host.querySelectorAll('button').forEach(b=>b.remove());
+  document.body.appendChild(host); return host;
+}
+
+function printAttendanceReport(){
+  const host=buildAttendanceReportPrintHost(); document.body.classList.add('attendance-print-mode');
+  const cleanup=()=>{document.body.classList.remove('attendance-print-mode');if(host.parentNode)host.parentNode.removeChild(host);window.removeEventListener('afterprint',cleanup);};
+  window.addEventListener('afterprint',cleanup,{once:true}); setTimeout(()=>{try{window.print();}catch(e){cleanup();alert('Unable to open the print dialog. Please try again.');}setTimeout(cleanup,15000);},100);
+}
+
+function downloadAttendanceReportPdf(){
+  const btn=document.getElementById('downloadAttendanceReportBtn'); if(btn){btn.disabled=true;btn.textContent='Preparing Report…';}
+  try{
+    if(!window.jspdf||!window.jspdf.jsPDF)throw new Error('PDF library is not available. Please refresh SchoolHub and try again.');
+    const sel=attendanceReportCurrentSelection(); const timesOpen=calculateTimesOpen(sel.term,sel.year); const doc=new window.jspdf.jsPDF({orientation:'portrait',unit:'mm',format:'a4'}); const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),m=10; let y=14;
+    const txt=(v,x,yy,size=9,b=false)=>{doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(size);doc.text(String(v??''),x,yy);};
+    const need=(h=8)=>{if(y+h>H-12){doc.addPage();y=14;}};
+    const section=t=>{need(10);y+=3;txt(t,m,y,11,true);y+=5;};
+    const table=(heads,rows,widths)=>{const row=(cells,b)=>{const lh=3.6,pad=1.1;const ls=cells.map((c,i)=>{doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(7);return doc.splitTextToSize(String(c??''),Math.max(5,widths[i]-pad*2));});const h=Math.max(6,Math.max(...ls.map(a=>a.length),1)*lh+2.4);need(h+1);let x=m;cells.forEach((c,i)=>{doc.rect(x,y,widths[i],h);doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(7);doc.text(ls[i],x+pad,y+3.5);x+=widths[i];});y+=h;};row(heads,true);rows.forEach(r=>row(r,false));y+=2;};
+    const settings=sel.settings; txt(settings.schoolName||'School',m,y,16,true);y+=6;txt(attendanceReportTitle(sel),m,y,12,true);y+=5;txt(`${sel.term} ${sel.year} · Times Open: ${timesOpen} days`,m,y,9);y+=7;
+    if(sel.type==='term'){
+      const s=attendanceReportOverallStudent(sel.term,sel.year,timesOpen),t=attendanceReportOverallTeacher(sel.term,sel.year,timesOpen);section('Overall Summary');table(['Metric','Value'],[['Times Open',timesOpen+' days'],['Holidays',schoolCalendarRecordsForTerm(sel.term,sel.year).filter(x=>String(x.record.type||'').toLowerCase()==='holiday').length],['Midterm',schoolCalendarRecordsForTerm(sel.term,sel.year).filter(x=>String(x.record.type||'').toLowerCase()==='midterm').length],['Pupils',s.pupils],['Average Pupil Ratio',formatAttendanceRatio(s.averageRatio)],['Teachers',t.teachers],['Average Teacher Ratio',formatAttendanceRatio(t.averageRatio)]],[80,95]);section('Class Attendance');table(['Class','Pupils','Present','Late','Total','Absent','Avg Ratio'],getAccessibleClasses().map(c=>{const x=attendanceSummaryClassStats(c.id,sel.term,sel.year,timesOpen);return[c.name,x.pupils,x.present,x.late,x.total,x.absent,formatAttendanceRatio(x.averageRatio)];}),[40,20,20,18,18,20,39]);if(isHeadTeacher()){section('Teacher Attendance');table(['Teacher','Role','Present','Late','Total','Absent','Excused','Leave','Ratio'],attendanceReportTeacherRows(sel.term,sel.year,timesOpen).map(x=>[x.staff.name,x.staff.role||'Teacher',x.stats.present,x.stats.late,x.stats.total,x.stats.absent,x.stats.excused,x.stats.leave,formatAttendanceRatio(x.stats.ratio)]),[33,26,17,13,15,17,17,17,25]);}
+    } else if(sel.type==='daily-students'||sel.type==='daily-teachers'){
+      const data=attendanceReportDaily(sel.date,sel.term,sel.year,sel.classId,sel.type==='daily-teachers'?'teachers':'students');section(`Daily Attendance · ${sel.date}`);table(['Name',sel.type==='daily-students'?'Class':'Role','Status'],data.rows.map(r=>[r.name,sel.type==='daily-students'?r.className:r.role,r.status?attendanceStatusLabel(r.status):'Not recorded']),[65,55,60]);
+    } else if(sel.type==='class'){
+      const c=DB.get(KEYS.classes,[]).find(x=>x.id===sel.classId);if(!c)throw new Error('Select a class first.');section(c.name);const rows=attendanceReportClassRows(c.id,sel.term,sel.year,timesOpen);table(['Pupil','Present','Late','Total','Absent','Ratio','Current','Longest'],rows.map(x=>[x.student.name,x.stats.present,x.stats.late,x.stats.total,x.stats.absent,formatAttendanceRatio(x.stats.ratio),x.stats.currentAbsenceStreak,x.stats.longestAbsenceStreak]),[42,17,14,15,16,23,22,22]);
+    } else if(sel.type==='pupil'){
+      const st=DB.get(KEYS.students,[]).find(x=>x.id===sel.personId);if(!st||!canAccessClass(st.classId))throw new Error('Select a pupil first.');const x=attendanceReportPupilStats(st,sel.term,sel.year,timesOpen);section(st.name);table(['Metric','Value'],[['Class',(DB.get(KEYS.classes,[]).find(c=>c.id===st.classId)||{}).name||''],['Times Open',timesOpen],['Present',x.present],['Late',x.late],['Total',x.total],['Absent',x.absent],['Attendance Ratio',formatAttendanceRatio(x.ratio)],['Current Absence Streak',x.currentAbsenceStreak],['Longest Absence Streak',x.longestAbsenceStreak]],[85,90]);section('Attendance History');table(['Date','Day','Status'],x.history.map(r=>{const d=parseDateOnly(r.date);return[r.date,d?d.toLocaleDateString(undefined,{weekday:'short'}):'',r.label];}),[40,25,110]);
+    } else if(sel.type==='teacher'){
+      const st=DB.get(KEYS.staff,[]).find(x=>x.id===sel.personId&&isTeacherStaffRecord(x));if(!st)throw new Error('Select a teacher first.');const x=attendanceReportTeacherStats(st,sel.term,sel.year,timesOpen);section(st.name);table(['Metric','Value'],[['Role',st.role||'Teacher'],['Times Open',timesOpen],['Present',x.present],['Late',x.late],['Total',x.total],['Absent',x.absent],['Excused',x.excused],['On Leave',x.leave],['Attendance Ratio',formatAttendanceRatio(x.ratio)],['Current Absence Streak',x.currentAbsenceStreak],['Longest Absence Streak',x.longestAbsenceStreak]],[85,90]);section('Attendance History');table(['Date','Day','Status'],x.history.map(r=>{const d=parseDateOnly(r.date);return[r.date,d?d.toLocaleDateString(undefined,{weekday:'short'}):'',r.label];}),[40,25,110]);
+    }
+    need(10);y+=4;txt('Attendance ratios use Times Open. Present and Late count as attendance. Holidays, Midterm and weekends are excluded from Times Open.',m,y,8,false);
+    const safe=attendanceReportTitle(sel).replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'');doc.save(`${safe}_${sel.term}_${sel.year}`.replace(/[^a-z0-9_]+/gi,'_')+'.pdf');
+  }catch(e){console.error(e);alert(e.message||'Unable to create the attendance report PDF.');}finally{if(btn){btn.disabled=false;btn.textContent='Download Report';}}
+}
+
+
 function renderAttendanceView() {
   const studentOption = document.getElementById('attendanceStudentOption');
   const teacherOption = document.getElementById('attendanceTeacherOption');
   const calendarOption = document.getElementById('attendanceCalendarOption');
   const summaryOption = document.getElementById('attendanceSummaryOption');
   const analysisOption = document.getElementById('attendanceAnalysisOption');
-  if (!studentOption || !teacherOption || !calendarOption || !summaryOption || !analysisOption) return;
+  const reportsOption = document.getElementById('attendanceReportsOption');
+  if (!studentOption || !teacherOption || !calendarOption || !summaryOption || !analysisOption || !reportsOption) return;
   teacherOption.classList.toggle('hidden', !isHeadTeacher());
+  reportsOption.classList.toggle('hidden', false);
   const active = document.querySelector('#attendanceModeBar .attendance-mode.active');
   const mode = (active && active.dataset.mode) || 'students';
   if (mode === 'teachers' && !isHeadTeacher()) return setAttendanceMode('students');
@@ -2453,16 +2672,19 @@ function setAttendanceMode(mode) {
   const calendarPanel = document.getElementById('schoolCalendarPanel');
   const summaryPanel = document.getElementById('attendanceSummaryPanel');
   const analysisPanel = document.getElementById('attendanceAnalysisPanel');
+  const reportsPanel = document.getElementById('attendanceReportsPanel');
   if (studentPanel) studentPanel.classList.toggle('hidden', mode !== 'students');
   if (teacherPanel) teacherPanel.classList.toggle('hidden', mode !== 'teachers');
   if (calendarPanel) calendarPanel.classList.toggle('hidden', mode !== 'calendar');
   if (summaryPanel) summaryPanel.classList.toggle('hidden', mode !== 'summary');
   if (analysisPanel) analysisPanel.classList.toggle('hidden', mode !== 'analysis');
+  if (reportsPanel) reportsPanel.classList.toggle('hidden', mode !== 'reports');
   if (mode === 'students') renderAttendanceClassSelect();
   else if (mode === 'teachers') renderTeacherAttendanceForm();
   else if (mode === 'calendar') renderSchoolCalendar();
   else if (mode === 'summary') renderAttendanceSummary();
-  else renderAttendanceAnalysis();
+  else if (mode === 'analysis') renderAttendanceAnalysis();
+  else renderAttendanceReports();
 }
 
 function renderAttendanceClassSelect() {
