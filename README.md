@@ -77,10 +77,14 @@ Ratio calculation:
 - Backup and restore includes school calendar.
 
 
-## v38.3.2 Attendance correction
+## v38.4 Attendance correction
 - Restored the teacher-staff filter used by Teacher Attendance.
 - Setup now reloads saved Term Opens and Term Closes values correctly.
 - Legacy `termStartDate` / `termEndDate` values are accepted when present.
 - Student and teacher ratios use calculated Times Open.
 - Teacher Excused and On Leave days are excluded from the individual ratio denominator.
 - Service-worker cache version bumped to force the corrected attendance code to load.
+
+
+## v38.4 Attendance Summary / Report
+Adds an Attendance Summary tab with Times Open, holiday and midterm counts, class pupil attendance, teacher attendance, average attendance ratios, calendar exceptions, and a print-ready Attendance Summary Report.

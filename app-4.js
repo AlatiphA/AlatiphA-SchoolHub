@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.3.2';
+const APP_VERSION = 'v38.4';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2433,7 +2433,8 @@ function renderAttendanceView() {
   const studentOption = document.getElementById('attendanceStudentOption');
   const teacherOption = document.getElementById('attendanceTeacherOption');
   const calendarOption = document.getElementById('attendanceCalendarOption');
-  if (!studentOption || !teacherOption || !calendarOption) return;
+  const summaryOption = document.getElementById('attendanceSummaryOption');
+  if (!studentOption || !teacherOption || !calendarOption || !summaryOption) return;
   teacherOption.classList.toggle('hidden', !isHeadTeacher());
   const active = document.querySelector('#attendanceModeBar .attendance-mode.active');
   const mode = (active && active.dataset.mode) || 'students';
@@ -2447,12 +2448,15 @@ function setAttendanceMode(mode) {
   const studentPanel = document.getElementById('studentAttendancePanel');
   const teacherPanel = document.getElementById('teacherAttendancePanel');
   const calendarPanel = document.getElementById('schoolCalendarPanel');
+  const summaryPanel = document.getElementById('attendanceSummaryPanel');
   if (studentPanel) studentPanel.classList.toggle('hidden', mode !== 'students');
   if (teacherPanel) teacherPanel.classList.toggle('hidden', mode !== 'teachers');
   if (calendarPanel) calendarPanel.classList.toggle('hidden', mode !== 'calendar');
+  if (summaryPanel) summaryPanel.classList.toggle('hidden', mode !== 'summary');
   if (mode === 'students') renderAttendanceClassSelect();
   else if (mode === 'teachers') renderTeacherAttendanceForm();
-  else renderSchoolCalendar();
+  else if (mode === 'calendar') renderSchoolCalendar();
+  else renderAttendanceSummary();
 }
 
 function renderAttendanceClassSelect() {
@@ -2630,6 +2634,138 @@ function renderSchoolCalendar() {
     auditAction('delete', 'schoolCalendar', calendarKey(term, year, date), `Set ${date} as School Open`);
     refreshAttendanceAfterCalendarChange();
   });
+}
+
+function attendanceSummaryClassStats(classId, term, year, timesOpen) {
+  const students = getAccessibleStudents().filter(s => s.classId === classId);
+  const result = { pupils: students.length, present: 0, late: 0, total: 0, absent: 0, averageRatio: null };
+  const smap = attendanceSummary(classId, term, year).summary;
+  const ratios = [];
+  students.forEach(st => {
+    const sm = smap[st.id] || { present: 0, late: 0, total: 0, absent: 0 };
+    result.present += Number(sm.present || 0);
+    result.late += Number(sm.late || 0);
+    result.total += Number(sm.total || 0);
+    result.absent += Number(sm.absent || 0);
+    const ratio = attendanceRatio(sm, timesOpen, false);
+    if (Number.isFinite(ratio)) ratios.push(ratio);
+  });
+  result.averageRatio = ratios.length ? ratios.reduce((a,b) => a+b, 0) / ratios.length : null;
+  return result;
+}
+
+function attendanceReportOverallStudent(term, year, timesOpen) {
+  const classes = getAccessibleClasses();
+  let pupils = 0, present = 0, late = 0, total = 0, absent = 0;
+  const ratios = [];
+  classes.forEach(c => {
+    const x = attendanceSummaryClassStats(c.id, term, year, timesOpen);
+    pupils += x.pupils; present += x.present; late += x.late; total += x.total; absent += x.absent;
+    if (Number.isFinite(x.averageRatio)) ratios.push(x.averageRatio);
+  });
+  return { pupils, present, late, total, absent, averageRatio: ratios.length ? ratios.reduce((a,b)=>a+b,0)/ratios.length : null };
+}
+
+function attendanceReportOverallTeacher(term, year, timesOpen) {
+  const teachers = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
+  const smap = teacherAttendanceSummary(term, year).summary;
+  let present = 0, late = 0, total = 0, absent = 0, excused = 0, leave = 0;
+  const ratios = [];
+  teachers.forEach(st => {
+    const sm = smap[st.id] || { present:0, late:0, total:0, absent:0, excused:0, leave:0 };
+    present += Number(sm.present || 0); late += Number(sm.late || 0); total += Number(sm.total || 0);
+    absent += Number(sm.absent || 0); excused += Number(sm.excused || 0); leave += Number(sm.leave || 0);
+    const ratio = attendanceRatio(sm, timesOpen, true);
+    if (Number.isFinite(ratio)) ratios.push(ratio);
+  });
+  return { teachers: teachers.length, present, late, total, absent, excused, leave, averageRatio: ratios.length ? ratios.reduce((a,b)=>a+b,0)/ratios.length : null };
+}
+
+function attendanceSummaryPrintHtml() {
+  const settings = DB.get(KEYS.settings, {});
+  const term = settings.currentTerm || 'Term 1';
+  const year = settings.currentYear || '';
+  const timesOpen = calculateTimesOpen(term, year);
+  const calendar = schoolCalendarRecordsForTerm(term, year);
+  const holidays = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'holiday').length;
+  const midterms = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'midterm').length;
+  const school = DB.get(KEYS.settings, {}).schoolName || 'School';
+  const students = attendanceReportOverallStudent(term, year, timesOpen);
+  const teachers = attendanceReportOverallTeacher(term, year, timesOpen);
+  const classes = getAccessibleClasses();
+  const staff = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
+  const teacherMap = teacherAttendanceSummary(term, year).summary;
+
+  const esc = escapeHtml;
+  let html = `<div class="attendance-print-report"><div class="attendance-report-heading"><h2>${esc(school)}</h2><h3>Attendance Summary Report</h3><p>${esc(term)} ${esc(year)}${timesOpen ? ` · Times Open: ${timesOpen} days` : ''}</p></div>`;
+  html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Avg Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div><div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Avg Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div></div>`;
+
+  html += '<h3 class="attendance-report-section-title">Class Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
+  if (!classes.length) html += '<tr><td colspan="7" class="empty">No accessible classes.</td></tr>';
+  classes.forEach(c => { const x=attendanceSummaryClassStats(c.id,term,year,timesOpen); html += `<tr><td>${esc(c.name)}</td><td>${x.pupils}</td><td>${x.present}</td><td>${x.late}</td><td><strong>${x.total}</strong></td><td>${x.absent}</td><td><strong>${formatAttendanceRatio(x.averageRatio)}</strong></td></tr>`; });
+  html += '</tbody></table></div>';
+
+  if (isHeadTeacher()) {
+    html += '<h3 class="attendance-report-section-title">Teacher Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Ratio</th></tr></thead><tbody>';
+    if (!staff.length) html += '<tr><td colspan="9" class="empty">No teaching staff.</td></tr>';
+    staff.forEach(st => { const sm=teacherMap[st.id] || {present:0,late:0,total:0,absent:0,excused:0,leave:0}; html += `<tr><td>${esc(st.name)}</td><td>${esc(st.role || 'Teacher')}</td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm,timesOpen,true))}</strong></td></tr>`; });
+    html += '</tbody></table></div>';
+  }
+
+  html += '<h3 class="attendance-report-section-title">School Calendar Exceptions</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Note</th></tr></thead><tbody>';
+  if (!calendar.filter(x => String(x.record.type || '').toLowerCase() !== 'open').length) html += '<tr><td colspan="4" class="empty">No holidays or midterm days recorded.</td></tr>';
+  calendar.filter(x => String(x.record.type || '').toLowerCase() !== 'open').forEach(x => { const d=parseDateOnly(x.date); const day=d?d.toLocaleDateString(undefined,{weekday:'short'}):''; html += `<tr><td>${esc(x.date)}</td><td>${esc(day)}</td><td>${esc(calendarLabel(String(x.record.type||'').toLowerCase()))}</td><td>${esc(x.record.note||'')}</td></tr>`; });
+  html += '</tbody></table></div><p class="attendance-report-footnote">Generated from SchoolHub attendance records. Late counts as attendance. Holidays, midterm days and weekends are excluded from Times Open.</p></div>';
+  return html;
+}
+
+function renderAttendanceSummary() {
+  const wrap = document.getElementById('attendanceSummaryWrap');
+  if (!wrap) return;
+  const settings = DB.get(KEYS.settings, {});
+  const term = settings.currentTerm || '';
+  const year = settings.currentYear || '';
+  if (!term || !year) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
+  const timesOpen = calculateTimesOpen(term, year);
+  const students = attendanceReportOverallStudent(term, year, timesOpen);
+  const teachers = attendanceReportOverallTeacher(term, year, timesOpen);
+  const calendar = schoolCalendarRecordsForTerm(term, year);
+  const holidays = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'holiday').length;
+  const midterms = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'midterm').length;
+  let html = `<div class="attendance-summary-report-head"><div><h3>Attendance Summary</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)}${timesOpen ? ` · ${timesOpen} school-open day(s)` : ''}</p></div><button type="button" id="printAttendanceSummaryBtn" class="btn-primary">Print Attendance Report</button></div>`;
+  html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher() ? `<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>` : ''}</div>`;
+  html += '<div class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Approved teacher Excused and On Leave days are excluded from the individual teacher denominator.</div>';
+  html += '<h3 class="attendance-report-section-title">Class Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
+  const classes=getAccessibleClasses();
+  if (!classes.length) html += '<tr><td colspan="7" class="empty">No accessible classes.</td></tr>';
+  classes.forEach(c=>{const x=attendanceSummaryClassStats(c.id,term,year,timesOpen); html += `<tr><td>${escapeHtml(c.name)}</td><td>${x.pupils}</td><td>${x.present}</td><td>${x.late}</td><td><strong>${x.total}</strong></td><td>${x.absent}</td><td><strong>${formatAttendanceRatio(x.averageRatio)}</strong></td></tr>`;});
+  html += '</tbody></table></div>';
+  if (isHeadTeacher()) {
+    const staff=DB.get(KEYS.staff,[]).filter(isTeacherStaffRecord); const smap=teacherAttendanceSummary(term,year).summary;
+    html += '<h3 class="attendance-report-section-title">Teacher Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Ratio</th></tr></thead><tbody>';
+    if(!staff.length) html += '<tr><td colspan="9" class="empty">No teaching staff.</td></tr>';
+    staff.forEach(st=>{const sm=smap[st.id]||{present:0,late:0,total:0,absent:0,excused:0,leave:0}; html += `<tr><td>${escapeHtml(st.name)}</td><td>${escapeHtml(st.role||'Teacher')}</td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm,timesOpen,true))}</strong></td></tr>`;});
+    html += '</tbody></table></div>';
+  }
+  html += '<h3 class="attendance-report-section-title">Calendar Exceptions</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Note</th></tr></thead><tbody>';
+  const exceptions=calendar.filter(x=>String(x.record.type||'').toLowerCase()!=='open');
+  if(!exceptions.length) html += '<tr><td colspan="4" class="empty">No holidays or midterm days recorded.</td></tr>';
+  exceptions.forEach(x=>{const d=parseDateOnly(x.date); const day=d?d.toLocaleDateString(undefined,{weekday:'short'}):''; html += `<tr><td>${escapeHtml(x.date)}</td><td>${escapeHtml(day)}</td><td>${escapeHtml(calendarLabel(String(x.record.type||'').toLowerCase()))}</td><td>${escapeHtml(x.record.note||'')}</td></tr>`;});
+  html += '</tbody></table></div>';
+  wrap.innerHTML=html;
+  const printBtn=document.getElementById('printAttendanceSummaryBtn');
+  if(printBtn) printBtn.addEventListener('click', printAttendanceSummary);
+}
+
+function printAttendanceSummary() {
+  const report = attendanceSummaryPrintHtml();
+  const win = window.open('', '_blank', 'noopener,noreferrer');
+  if (!win) { alert('Please allow pop-ups to print the attendance report.'); return; }
+  const css = Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).map(el => el.outerHTML).join('\n');
+  win.document.open();
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Attendance Summary Report</title>${css}<style>@media print{body{background:#fff!important}.attendance-print-report{max-width:none!important}.attendance-report-heading{text-align:center}.attendance-report-cards{grid-template-columns:repeat(4,1fr)!important}.attendance-report-table{font-size:11px!important}.attendance-summary-report-head,#attendanceModeBar,.topbar,button{display:none!important}} body{background:#fff!important;color:#16241C!important;padding:20px}.attendance-print-report{max-width:1100px;margin:auto}</style></head><body>${report}</body></html>`);
+  win.document.close();
+  setTimeout(()=>{win.focus(); win.print();},300);
 }
 
 function refreshAttendanceAfterCalendarChange() {
