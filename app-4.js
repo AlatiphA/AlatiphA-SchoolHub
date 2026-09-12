@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.4.2';
+const APP_VERSION = 'v38.5';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2243,6 +2243,8 @@ function calculateTimesOpen(term, year, throughDate) {
 function calendarLabel(type) {
   if (type === 'holiday') return 'Holiday';
   if (type === 'midterm') return 'Midterm';
+  if (type === 'weekend') return 'Weekend';
+  if (type === 'outside') return 'Outside Term';
   return 'School Open';
 }
 
@@ -2719,6 +2721,102 @@ function attendanceSummaryPrintHtml() {
   return html;
 }
 
+
+function attendanceCompletionForDate(term, year, date) {
+  const parsedDate = parseDateOnly(date);
+  let dayType = attendanceDayType(term, year, date);
+  const termDates = getTermDates(term, year);
+  if (parsedDate && !isWeekdayDate(parsedDate)) dayType = 'weekend';
+  else if (termDates) {
+    const ts = parseDateOnly(termDates.start);
+    const te = parseDateOnly(termDates.end);
+    if (ts && te && (parsedDate < ts || parsedDate > te)) dayType = 'outside';
+  }
+  const result = {
+    date,
+    dayType,
+    student: { total: 0, full: 0, partial: 0, missing: 0, marked: 0, students: 0 },
+    teacher: { total: 0, full: 0, partial: 0, missing: 0, marked: 0, teachers: 0 }
+  };
+  if (result.dayType !== 'open') return result;
+
+  const attendance = DB.get(KEYS.attendance, {});
+  const classes = getAccessibleClasses();
+  classes.forEach(c => {
+    const students = getAccessibleStudents().filter(st => st.classId === c.id);
+    if (!students.length) return;
+    result.student.total++;
+    result.student.students += students.length;
+    const key = attendanceKey(c.id, term, year, date);
+    const record = attendance[key] || {};
+    const entries = record.entries || record;
+    const marked = students.filter(st => String(entries && entries[st.id] || '').trim() !== '').length;
+    result.student.marked += marked;
+    if (marked === students.length) result.student.full++;
+    else if (marked > 0) result.student.partial++;
+    else result.student.missing++;
+  });
+
+  if (isHeadTeacher()) {
+    const teachers = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
+    result.teacher.total = teachers.length ? 1 : 0;
+    result.teacher.teachers = teachers.length;
+    if (teachers.length) {
+      const key = teacherAttendanceKey(term, year, date);
+      const record = DB.get(KEYS.teacherAttendance, {})[key] || {};
+      const entries = record.entries || record;
+      const marked = teachers.filter(st => String(entries && entries[st.id] || '').trim() !== '').length;
+      result.teacher.marked = marked;
+      if (marked === teachers.length) result.teacher.full = 1;
+      else if (marked > 0) result.teacher.partial = 1;
+      else result.teacher.missing = 1;
+    }
+  }
+  return result;
+}
+
+function attendanceCompletionTermSummary(term, year) {
+  const result = {
+    openDaysElapsed: calculateTimesOpen(term, year),
+    student: { recordedDays: 0, fullyRecordedDays: 0, totalClassDays: 0, fullClassDays: 0, partialClassDays: 0, missingClassDays: 0 },
+    teacher: { recordedDays: 0, fullyRecordedDays: 0 }
+  };
+  const dates = getTermDates(term, year);
+  if (!dates) return result;
+  const start = parseDateOnly(dates.start), end = parseDateOnly(dates.end);
+  if (!start || !end) return result;
+  let limit = end;
+  const today = parseDateOnly(new Date());
+  if (today && today < limit && today >= start) limit = today;
+  if (!today || today < start) return result;
+
+  for (let d = new Date(start); d <= limit; d = addDaysDateOnly(d, 1)) {
+    if (!isWeekdayDate(d)) continue;
+    const date = dateOnlyString(d);
+    if (attendanceDayType(term, year, date) !== 'open') continue;
+    const day = attendanceCompletionForDate(term, year, date);
+    if (day.student.total) {
+      result.student.totalClassDays += day.student.total;
+      result.student.fullClassDays += day.student.full;
+      result.student.partialClassDays += day.student.partial;
+      result.student.missingClassDays += day.student.missing;
+      if (day.student.full > 0) result.student.recordedDays++;
+      if (day.student.full === day.student.total) result.student.fullyRecordedDays++;
+    }
+    if (isHeadTeacher() && day.teacher.total) {
+      if (day.teacher.full) result.teacher.recordedDays++;
+      if (day.teacher.full === day.teacher.total) result.teacher.fullyRecordedDays++;
+    }
+  }
+  return result;
+}
+
+function attendanceCompletionBadge(state) {
+  if (state === 'complete') return '<span class="attendance-completion-badge complete">Complete</span>';
+  if (state === 'partial') return '<span class="attendance-completion-badge partial">Partial</span>';
+  return '<span class="attendance-completion-badge missing">Not recorded</span>';
+}
+
 function renderAttendanceSummary() {
   const wrap = document.getElementById('attendanceSummaryWrap');
   if (!wrap) return;
@@ -2727,12 +2825,46 @@ function renderAttendanceSummary() {
   const year = settings.currentYear || '';
   if (!term || !year) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
   const timesOpen = calculateTimesOpen(term, year);
+  const monitoringDate = document.getElementById('attendanceSummaryDate')?.value || attendanceDateToday();
+  const completion = attendanceCompletionForDate(term, year, monitoringDate);
+  const completionTerm = attendanceCompletionTermSummary(term, year);
   const students = attendanceReportOverallStudent(term, year, timesOpen);
   const teachers = attendanceReportOverallTeacher(term, year, timesOpen);
   const calendar = schoolCalendarRecordsForTerm(term, year);
   const holidays = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'holiday').length;
   const midterms = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'midterm').length;
-  let html = `<div class="attendance-summary-report-head"><div><h3>Attendance Summary</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)}${timesOpen ? ` · ${timesOpen} school-open day(s)` : ''}</p></div><div class="attendance-summary-report-actions"><button type="button" id="printAttendanceSummaryBtn" class="btn-primary">Print Report</button><button type="button" id="pdfAttendanceSummaryBtn" class="btn-primary">Download Report</button></div></div>`;
+  let html = `<div class="attendance-dashboard"><div class="attendance-dashboard-head"><div><h3>Attendance Dashboard</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)} · completion monitoring</p></div><label>Monitoring Date<input type="date" id="attendanceSummaryDate" value="${escapeHtml(monitoringDate)}"></label></div>`;
+  html += `<div class="attendance-dashboard-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong><small>school-open days elapsed</small></div><div><span>Student Attendance Days</span><strong>${completionTerm.student.fullyRecordedDays} / ${timesOpen}</strong><small>fully recorded school days</small></div><div><span>Class Completion</span><strong>${completionTerm.student.fullClassDays} / ${completionTerm.student.totalClassDays || 0}</strong><small>class-days fully recorded</small></div>${isHeadTeacher() ? `<div><span>Teacher Attendance Days</span><strong>${completionTerm.teacher.fullyRecordedDays} / ${timesOpen}</strong><small>fully recorded school days</small></div>` : ''}</div>`;
+  if (completion.dayType !== 'open') {
+    html += `<div class="attendance-dashboard-alert"><strong>${escapeHtml(calendarLabel(completion.dayType))}</strong><span>No attendance is expected on ${escapeHtml(monitoringDate)}. ${escapeHtml((calendarRecord(term, year, monitoringDate) || {}).note || '')}</span></div>`;
+  } else {
+    html += `<div class="attendance-completion-grid"><div><h4>Student Attendance Completion</h4><div class="completion-progress"><span style="width:${completion.student.total ? Math.round((completion.student.full / completion.student.total) * 100) : 0}%"></span></div><p><strong>${completion.student.full}</strong> complete · <strong>${completion.student.partial}</strong> partial · <strong>${completion.student.missing}</strong> not recorded of ${completion.student.total} class(es)</p></div>`;
+    if (isHeadTeacher()) html += `<div><h4>Teacher Attendance Completion</h4><div class="completion-progress"><span style="width:${completion.teacher.total ? Math.round((completion.teacher.full / completion.teacher.total) * 100) : 0}%"></span></div><p><strong>${completion.teacher.full}</strong> complete · <strong>${completion.teacher.partial}</strong> partial · <strong>${completion.teacher.missing}</strong> not recorded</p></div>`;
+    html += '</div>';
+    html += '<h4 class="attendance-dashboard-section-title">Daily Class Completion</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Marked</th><th>Status</th></tr></thead><tbody>';
+    const attendanceAll = DB.get(KEYS.attendance, {});
+    const dashClasses = getAccessibleClasses();
+    if (!dashClasses.length) html += '<tr><td colspan="4" class="empty">No accessible classes.</td></tr>';
+    dashClasses.forEach(c => {
+      const pupils = getAccessibleStudents().filter(st => st.classId === c.id);
+      const rec = attendanceAll[attendanceKey(c.id, term, year)] || {};
+      const entries = rec.entries || rec;
+      const marked = pupils.filter(st => String(entries && entries[st.id] || '').trim() !== '').length;
+      const state = marked === pupils.length && pupils.length ? 'complete' : (marked > 0 ? 'partial' : 'missing');
+      html += `<tr><td>${escapeHtml(c.name)}</td><td>${pupils.length}</td><td>${marked} / ${pupils.length}</td><td>${attendanceCompletionBadge(state)}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+    if (isHeadTeacher()) {
+      const teachers = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
+      const rec = DB.get(KEYS.teacherAttendance, {})[teacherAttendanceKey(term, year, monitoringDate)] || {};
+      const entries = rec.entries || rec;
+      const marked = teachers.filter(st => String(entries && entries[st.id] || '').trim() !== '').length;
+      const state = marked === teachers.length && teachers.length ? 'complete' : (marked > 0 ? 'partial' : 'missing');
+      html += `<h4 class="attendance-dashboard-section-title">Daily Teacher Completion</h4><div class="attendance-dashboard-inline"><span>${marked} / ${teachers.length} teachers marked</span>${attendanceCompletionBadge(state)}</div>`;
+    }
+  }
+  html += '</div>';
+  html += `<div class="attendance-summary-report-head"><div><h3>Attendance Summary</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)}${timesOpen ? ` · ${timesOpen} school-open day(s)` : ''}</p></div><div class="attendance-summary-report-actions"><button type="button" id="printAttendanceSummaryBtn" class="btn-primary">Print Report</button><button type="button" id="pdfAttendanceSummaryBtn" class="btn-primary">Download Report</button></div></div>`;
   html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher() ? `<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>` : ''}</div>`;
   html += '<div class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Approved teacher Excused and On Leave days are excluded from the individual teacher denominator.</div>';
   html += '<h3 class="attendance-report-section-title">Class Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
@@ -2753,6 +2885,8 @@ function renderAttendanceSummary() {
   exceptions.forEach(x=>{const d=parseDateOnly(x.date); const day=d?d.toLocaleDateString(undefined,{weekday:'short'}):''; html += `<tr><td>${escapeHtml(x.date)}</td><td>${escapeHtml(day)}</td><td>${escapeHtml(calendarLabel(String(x.record.type||'').toLowerCase()))}</td><td>${escapeHtml(x.record.note||'')}</td></tr>`;});
   html += '</tbody></table></div>';
   wrap.innerHTML=html;
+  const summaryDateInput = document.getElementById('attendanceSummaryDate');
+  if (summaryDateInput) summaryDateInput.addEventListener('change', renderAttendanceSummary);
   const printBtn=document.getElementById('printAttendanceSummaryBtn');
   if(printBtn) printBtn.addEventListener('click', printAttendanceSummary);
   const pdfBtn=document.getElementById('pdfAttendanceSummaryBtn');
