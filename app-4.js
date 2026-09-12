@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.9.1';
+const APP_VERSION = 'v38.9.2';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -7458,7 +7458,10 @@ function initAuth() {
           // neutral loading state and no previous session's records.
           sessionReady = true;
           sessionDataReady = false;
-          hideSessionRestoring();
+          // Keep the boot gate visible until the current school's data has
+          // finished loading. Do not briefly expose Home while restoring a
+          // saved page. The saved location is revealed only after
+          // pullCloudData() completes below.
           hideSyncingMessage(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
           initLockScreen();
           if (!appStarted) { appStarted = true; proceedToApp(); }
@@ -7488,6 +7491,24 @@ function initAuth() {
           }).catch(err => {
             if (!isCurrentSession(token, user.uid, data.schoolId)) return;
             console.warn('Core cloud synchronization failed:', err);
+
+            // Do not leave the user behind a permanent boot screen if cloud
+            // sync fails. Allow the already-restored local workspace to open
+            // at the saved page, while clearly indicating that cloud sync
+            // needs attention.
+            sessionDataReady = true;
+            hideSessionRestoring();
+            loadSettingsForm();
+            refreshProfileMenu();
+            renderHome();
+            renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
+            const restored = getSavedNavigation();
+            if (restored.view === 'attendance') {
+              showView('attendance');
+              setAttendanceMode(restored.attendanceTab);
+            } else {
+              showView(restored.view);
+            }
             const sub = document.getElementById('welcomeSubtext');
             if (sub) sub.textContent = 'Cloud sync is taking longer than expected. You can retry from the profile menu.';
           });
@@ -7666,7 +7687,10 @@ function proceedToApp() {
       showView(restored.view);
     }
   } else {
-    showView('home');
+    // Firebase session is authenticated, but school data is still loading.
+    // Keep the session-restoration gate on screen instead of showing Home.
+    // The saved page is restored by the pullCloudData() completion handler.
+    return;
   }
 }
 
