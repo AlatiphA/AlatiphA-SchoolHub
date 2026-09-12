@@ -48,7 +48,7 @@
 }
 
 *{box-sizing:border-box;}
-html,body{margin:0;padding:0;overscroll-behavior-y:contain;}
+html,body{margin:0;padding:0;overscroll-behavior-y:auto;}
 body{
   background:var(--ink);
   color:var(--paper);
@@ -459,11 +459,13 @@ table.grades-table input:focus{border-bottom-color:var(--gold);}
    via the matching html.* class so the correct state is applied
    synchronously before first paint (see the inline script in <head>),
    with no flash of unlocked/unauthenticated/unapproved content. */
-#lockOverlay,#authGate,#schoolChoiceGate,#pendingGate,#disabledGate{display:none;}
+#lockOverlay,#authGate,#schoolChoiceGate,#pendingGate,#disabledGate,#sessionRestoreGate{display:none;}
 html.locked #app,
 html.locked .topbar,
 html.authing #app,
 html.authing .topbar,
+html.sessionRestoring #app,
+html.sessionRestoring .topbar,
 html.schoolChoice #app,
 html.schoolChoice .topbar,
 html.pendingApproval #app,
@@ -472,9 +474,11 @@ html.disabledAccess #app,
 html.disabledAccess .topbar{display:none;}
 html.locked #lockOverlay,
 html.authing #authGate,
+html.sessionRestoring #sessionRestoreGate,
 html.schoolChoice #schoolChoiceGate,
 html.pendingApproval #pendingGate,
-html.disabledAccess #disabledGate{
+html.disabledAccess #disabledGate,
+html.sessionRestoring #sessionRestoreGate{
   display:flex;
   position:fixed;inset:0;
   z-index:1000;

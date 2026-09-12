@@ -21,13 +21,21 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
       if (localStorage.getItem('arc_pin_hash')) document.documentElement.classList.add('locked');
       if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey && window.FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY') {
-        document.documentElement.classList.add('authing');
+        document.documentElement.classList.add('sessionRestoring');
       }
     } catch (e) {}
   })();
 </script>
 </head>
 <body>
+
+<div id="sessionRestoreGate" aria-live="polite" aria-busy="true">
+  <div class="lock-box session-restore-box">
+    <img src="icon.svg" alt="AlatiphA SchoolHub" class="lock-seal">
+    <h2>Restoring your session…</h2>
+    <p class="hint">Please wait while SchoolHub securely restores your signed-in session.</p>
+  </div>
+</div>
 
 <div id="authGate">
   <div class="lock-box">

@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.8.1';
+const APP_VERSION = 'v38.9';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -3177,7 +3177,7 @@ function teacherAttendanceAnalysis(term, year, timesOpen) {
 
 function attendanceAnalyticsBuild(term, year, timesOpen) {
   /*
-   * v38.8.1 UNIFIED ATTENDANCE ENGINE
+   * v38.9 UNIFIED ATTENDANCE ENGINE
    * ---------------------------------
    * Analytics must consume the same authoritative summaries used by the
    * Attendance and Reports tabs. The previous v38.8 implementation rebuilt
@@ -6731,7 +6731,18 @@ document.getElementById('syncNowBtn').addEventListener('click', () => {
   }).catch(err => alert('Sync failed: ' + err.message));
 });
 
-function showAuthGate() { document.documentElement.classList.add('authing'); }
+function showSessionRestoring() {
+  document.documentElement.classList.add('sessionRestoring');
+  document.documentElement.classList.remove('authing');
+  const heading = document.getElementById('authHeading');
+  if (heading) heading.textContent = 'Restoring your session…';
+  const fields = document.getElementById('authFormFields');
+  if (fields) fields.classList.add('hidden');
+  const msg = document.getElementById('authSyncingMsg');
+  if (msg) { msg.textContent = 'Please wait while SchoolHub restores your session.'; msg.classList.remove('hidden'); }
+}
+function hideSessionRestoring() { document.documentElement.classList.remove('sessionRestoring'); }
+function showAuthGate() { document.documentElement.classList.add('authing'); document.documentElement.classList.remove('sessionRestoring'); }
 function hideAuthGate() { document.documentElement.classList.remove('authing'); }
 function showSchoolChoiceGate() { document.documentElement.classList.add('schoolChoice'); }
 function hideSchoolChoiceGate() { document.documentElement.classList.remove('schoolChoice'); }
@@ -7249,6 +7260,15 @@ function initAuth() {
 
   firebase.initializeApp(window.FIREBASE_CONFIG);
 
+  // v38.9: explicitly persist Firebase authentication locally. This makes
+  // reopening or refreshing the PWA a session restoration event, not a new
+  // login event. The login form is kept hidden until Firebase has definitively
+  // reported the authentication state.
+  const authPersistenceReady = firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .catch(err => {
+      console.warn('Could not set LOCAL auth persistence; Firebase will use its current persistence mode.', err);
+    });
+
   const pwInput = document.getElementById('authPassword');
   const pwToggle = document.getElementById('authPasswordToggle');
   pwToggle.addEventListener('click', () => {
@@ -7335,7 +7355,8 @@ function initAuth() {
     }).catch(err => setSchoolChoiceError(err.message));
   });
 
-  firebase.auth().onAuthStateChanged(user => {
+  authPersistenceReady.finally(() => {
+    firebase.auth().onAuthStateChanged(user => {
     // During an explicit logout, never let the transient persisted Firebase
     // user state re-enter the authentication loading path. The sign-out
     // handler has already shown a clean login form immediately.
@@ -7353,8 +7374,10 @@ function initAuth() {
       currentUserData = null;
       sessionReady = false;
       localStorage.removeItem(GUEST_MODE_KEY);
-      showSyncingMessage();
-      showAuthGate();
+      // v38.9: auth state is still unknown to the UI until the account profile
+      // has been resolved. Keep the sign-in form completely hidden during this
+      // short restoration window.
+      showSessionRestoring();
 
       firebase.firestore().collection('users').doc(currentUid).get().then(userDoc => {
         if (!isCurrentSession(token, user.uid, null)) return;
@@ -7374,19 +7397,19 @@ function initAuth() {
 
         if (!data || !data.schoolId) {
           currentSchoolId = null; currentRole = null; currentStatus = null;
-          hideSyncingMessage(); hideAuthGate(); hideDisabledGate();
+          hideSessionRestoring(); hideSyncingMessage(); hideAuthGate(); hideDisabledGate();
           showSchoolChoiceGate();
           return;
         }
         if (data.status === 'pending') {
           currentSchoolId = null; currentRole = data.role; currentStatus = 'pending';
-          hideSyncingMessage(); hideAuthGate(); hideDisabledGate();
+          hideSessionRestoring(); hideSyncingMessage(); hideAuthGate(); hideDisabledGate();
           showPendingGate();
           return;
         }
         if (data.status !== 'active') {
           currentSchoolId = null; currentRole = data.role; currentStatus = data.status || 'disabled';
-          hideSyncingMessage(); hideAuthGate(); hidePendingGate();
+          hideSessionRestoring(); hideSyncingMessage(); hideAuthGate(); hidePendingGate();
           showDisabledGate();
           return;
         }
@@ -7405,6 +7428,7 @@ function initAuth() {
           // neutral loading state and no previous session's records.
           sessionReady = true;
           sessionDataReady = false;
+          hideSessionRestoring();
           hideSyncingMessage(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
           initLockScreen();
           if (!appStarted) { appStarted = true; proceedToApp(); }
@@ -7431,10 +7455,14 @@ function initAuth() {
       }).catch(err => {
         if (!isCurrentSession(token, user.uid, currentSchoolId)) return;
         sessionReady = false;
+        hideSessionRestoring();
         hideSyncingMessage();
+        renderAuthForm();
+        showAuthGate();
         setAuthError('Could not load your account: ' + err.message);
       });
     } else {
+      hideSessionRestoring();
       // The Firebase callback is the final authority that no account is signed
       // in. Invalidate every pending operation from the previous account.
       resetWorkspaceState();
@@ -7450,6 +7478,7 @@ function initAuth() {
         showAuthGate();
       }
     }
+  });
   });
 }
 
