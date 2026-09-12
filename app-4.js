@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.4';
+const APP_VERSION = 'v38.4.1';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -2732,7 +2732,7 @@ function renderAttendanceSummary() {
   const calendar = schoolCalendarRecordsForTerm(term, year);
   const holidays = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'holiday').length;
   const midterms = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'midterm').length;
-  let html = `<div class="attendance-summary-report-head"><div><h3>Attendance Summary</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)}${timesOpen ? ` · ${timesOpen} school-open day(s)` : ''}</p></div><button type="button" id="printAttendanceSummaryBtn" class="btn-primary">Print Attendance Report</button></div>`;
+  let html = `<div class="attendance-summary-report-head"><div><h3>Attendance Summary</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)}${timesOpen ? ` · ${timesOpen} school-open day(s)` : ''}</p></div><div class="attendance-summary-report-actions"><button type="button" id="printAttendanceSummaryBtn" class="btn-primary">Print Attendance Report</button><button type="button" id="pdfAttendanceSummaryBtn" class="btn-primary">PDF</button></div></div>`;
   html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher() ? `<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>` : ''}</div>`;
   html += '<div class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Approved teacher Excused and On Leave days are excluded from the individual teacher denominator.</div>';
   html += '<h3 class="attendance-report-section-title">Class Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
@@ -2755,17 +2755,83 @@ function renderAttendanceSummary() {
   wrap.innerHTML=html;
   const printBtn=document.getElementById('printAttendanceSummaryBtn');
   if(printBtn) printBtn.addEventListener('click', printAttendanceSummary);
+  const pdfBtn=document.getElementById('pdfAttendanceSummaryBtn');
+  if(pdfBtn) pdfBtn.addEventListener('click', downloadAttendanceSummaryPdf);
+}
+
+function buildAttendancePrintHost() {
+  const host = document.createElement('div');
+  host.className = 'attendance-print-host';
+  host.innerHTML = attendanceSummaryPrintHtml();
+  document.body.appendChild(host);
+  return host;
 }
 
 function printAttendanceSummary() {
-  const report = attendanceSummaryPrintHtml();
-  const win = window.open('', '_blank', 'noopener,noreferrer');
-  if (!win) { alert('Please allow pop-ups to print the attendance report.'); return; }
-  const css = Array.from(document.querySelectorAll('link[rel="stylesheet"], style')).map(el => el.outerHTML).join('\n');
-  win.document.open();
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Attendance Summary Report</title>${css}<style>@media print{body{background:#fff!important}.attendance-print-report{max-width:none!important}.attendance-report-heading{text-align:center}.attendance-report-cards{grid-template-columns:repeat(4,1fr)!important}.attendance-report-table{font-size:11px!important}.attendance-summary-report-head,#attendanceModeBar,.topbar,button{display:none!important}} body{background:#fff!important;color:#16241C!important;padding:20px}.attendance-print-report{max-width:1100px;margin:auto}</style></head><body>${report}</body></html>`);
-  win.document.close();
-  setTimeout(()=>{win.focus(); win.print();},300);
+  // Do not use window.open(). Mobile browsers may turn that into an
+  // about:blank page or block the print window. Print the report in-place.
+  const host = buildAttendancePrintHost();
+  document.body.classList.add('attendance-print-mode');
+  const cleanup = () => {
+    document.body.classList.remove('attendance-print-mode');
+    if (host && host.parentNode) host.parentNode.removeChild(host);
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(() => {
+    try { window.print(); }
+    catch (e) { cleanup(); alert('Unable to open the print dialog. Please try again.'); }
+    setTimeout(cleanup, 15000);
+  }, 100);
+}
+
+async function downloadAttendanceSummaryPdf() {
+  const pdfBtn = document.getElementById('pdfAttendanceSummaryBtn');
+  if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.textContent = 'Creating PDF…'; }
+  const host = buildAttendancePrintHost();
+  try {
+    if (!window.jspdf || !window.jspdf.jsPDF) throw new Error('PDF library is not available.');
+    const JsPDF = window.jspdf.jsPDF;
+    const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const content = host.querySelector('.attendance-print-report');
+    if (!content) throw new Error('Attendance report content could not be prepared.');
+
+    if (typeof doc.html === 'function') {
+      await new Promise((resolve, reject) => {
+        doc.html(content, {
+          x: 8, y: 8, width: 194,
+          windowWidth: 1100,
+          autoPaging: 'text',
+          margin: [8, 8, 10, 8],
+          callback: resolve,
+          html2canvas: { scale: 0.65, useCORS: true, logging: false }
+        });
+      });
+    } else {
+      // Very old/blocked jsPDF fallback: produce a readable text PDF.
+      let y = 15;
+      const lines = content.innerText.split('\n').map(x => x.trim()).filter(Boolean);
+      doc.setFontSize(11);
+      lines.forEach(line => {
+        const wrapped = doc.splitTextToSize(line, 190);
+        if (y > 280) { doc.addPage(); y = 15; }
+        doc.text(wrapped, 10, y);
+        y += wrapped.length * 5 + 2;
+      });
+    }
+
+    const settings = DB.get(KEYS.settings, {});
+    const term = String(settings.currentTerm || 'Term');
+    const year = String(settings.currentYear || '');
+    const safe = `${term}-${year}`.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+    doc.save(`Attendance_Summary_${safe || 'Report'}.pdf`);
+  } catch (e) {
+    console.error('Attendance PDF generation failed:', e);
+    alert('Unable to create the PDF. Please try again. If the problem continues, refresh SchoolHub and try again.');
+  } finally {
+    if (host && host.parentNode) host.parentNode.removeChild(host);
+    if (pdfBtn) { pdfBtn.disabled = false; pdfBtn.textContent = 'PDF'; }
+  }
 }
 
 function refreshAttendanceAfterCalendarChange() {

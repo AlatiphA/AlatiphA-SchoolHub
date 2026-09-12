@@ -647,6 +647,13 @@ html.disabledAccess #disabledGate{
 
 /* v38.4 Attendance Summary / Report */
 .attendance-summary-report-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:.5rem 0 1rem;}
+.attendance-summary-report-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.attendance-summary-report-actions .btn-primary{min-width:120px;}
+.attendance-print-host{position:fixed;left:-100000px;top:0;width:1100px;background:#fff;z-index:-1;}
+.attendance-print-mode > *:not(.attendance-print-host){display:none!important;}
+.attendance-print-mode .attendance-print-host{position:static;left:auto;top:auto;width:auto;display:block!important;z-index:999999;background:#fff;min-height:100vh;padding:20px;}
+@media(max-width:600px){.attendance-summary-report-actions{width:100%;}.attendance-summary-report-actions .btn-primary{flex:1;min-width:0;}}
+@media print{.attendance-print-host{position:static!important;left:auto!important;top:auto!important;width:auto!important;display:block!important;z-index:auto!important;}.attendance-print-host .attendance-print-report{max-width:none!important;}.attendance-summary-report-head,#attendanceModeBar,.topbar,button{display:none!important;}}
 .attendance-summary-report-head h3{margin:0 0 .2rem;}
 .attendance-report-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:1rem 0;}
 .attendance-report-cards>div{padding:13px 15px;border:1px solid var(--gold);border-radius:14px;background:color-mix(in srgb,var(--gold) 9%,var(--surface));display:flex;flex-direction:column;gap:4px;min-width:0;}
