@@ -316,7 +316,14 @@
   <!-- CLASSES -->
   <section id="view-classes" class="view hidden">
     <h2>Classes</h2>
-    <div class="stack">
+    <div class="class-add-toolbar">
+      <div>
+        <strong>Add Class</strong>
+        <p class="hint">Create a class only when needed. You can assign a Class Teacher when adding or editing it.</p>
+      </div>
+      <button type="button" id="toggleAddClassBtn" class="class-toggle-btn" aria-expanded="false">Expand</button>
+    </div>
+    <div id="addClassForm" class="stack class-add-form hidden">
       <input type="text" id="newClassName" placeholder="e.g. Basic One (1)">
       <label>Class Teacher
         <select id="newClassTeacherSelect"></select>

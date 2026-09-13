@@ -916,3 +916,23 @@ html.sessionRestoring #sessionRestoreGate{
   .staff-list-actions{gap:4px;}
   .staff-list-actions button{min-width:44px;padding:0 3px;}
 }
+/* v38.11.9 Classes management cleanup */
+.class-add-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--rule);margin-bottom:12px;}
+.class-add-toolbar strong{font-size:15px;font-weight:600;color:var(--text);}
+.class-add-toolbar .hint{margin:3px 0 0;max-width:280px;}
+.class-toggle-btn{flex:none;border:1px solid var(--rule);background:var(--surface);color:var(--gold);padding:8px 16px;border-radius:7px;font:600 12px 'IBM Plex Sans',sans-serif;cursor:pointer;min-height:38px;}
+.class-toggle-btn:active{background:var(--surface-alt);}
+.class-add-form.hidden{display:none;}
+.class-list-main{min-width:0;flex:1;}
+.class-list-main strong{display:block;font-size:15px;font-weight:600;color:var(--text);}
+.class-list-main .meta{font-size:12px;color:var(--muted);margin-top:3px;}
+.class-teacher-line{font-size:12px;color:var(--muted);margin-top:2px;}
+.class-list-actions{display:flex;align-items:center;gap:8px;flex:none;}
+.class-list-actions button{min-width:48px;}
+@media(max-width:480px){
+  .class-add-toolbar{align-items:flex-start;}
+  .class-add-toolbar .hint{max-width:220px;}
+  .class-list-actions{gap:4px;}
+  .class-list-actions button{min-width:44px;padding:0 3px;}
+}
+

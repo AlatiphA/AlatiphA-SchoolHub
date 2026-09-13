@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.8';
+const APP_VERSION = 'v38.11.9';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -1285,11 +1285,15 @@ function renderClasses() {
       </div>`;
     } else {
       const teacher = c.classTeacherId ? staffById[c.classTeacherId] : null;
-      const teacherPart = teacher ? ` · Class Teacher: ${escapeHtml(teacher.name)}` : '';
-      li.innerHTML = `<div><strong>${escapeHtml(c.name)}</strong><div class="meta">${students.length} student(s) on roll${teacherPart}</div></div>
-        <div class="actions">
-          <button data-id="${c.id}" class="edit-class">Edit</button>
-          <button data-id="${c.id}" class="del-class">Delete</button>
+      const teacherPart = teacher ? `Class Teacher: ${escapeHtml(teacher.name)}` : 'Class Teacher: —';
+      li.innerHTML = `<div class="class-list-main">
+          <strong>${escapeHtml(c.name)}</strong>
+          <div class="meta">${students.length} student(s) on roll</div>
+          <div class="class-teacher-line">${teacherPart}</div>
+        </div>
+        <div class="class-list-actions">
+          <button data-id="${c.id}" class="edit-class" type="button">Edit</button>
+          <button data-id="${c.id}" class="del-class" type="button">Delete</button>
         </div>`;
     }
     list.appendChild(li);
@@ -1342,17 +1346,36 @@ function renderClasses() {
   });
 }
 
+const toggleAddClassBtn = document.getElementById('toggleAddClassBtn');
+const addClassForm = document.getElementById('addClassForm');
+if (toggleAddClassBtn && addClassForm) {
+  toggleAddClassBtn.addEventListener('click', () => {
+    const open = addClassForm.classList.toggle('hidden') === false;
+    toggleAddClassBtn.textContent = open ? 'Collapse' : 'Expand';
+    toggleAddClassBtn.setAttribute('aria-expanded', String(open));
+    if (open) document.getElementById('newClassName')?.focus();
+  });
+}
+
 document.getElementById('addClassBtn').addEventListener('click', () => {
   if (!requireHeadTeacher('manage classes')) return;
   const input = document.getElementById('newClassName');
   const name = input.value.trim();
-  if (!name) return;
+  if (!name) {
+    input.focus();
+    return;
+  }
   const classTeacherId = document.getElementById('newClassTeacherSelect').value;
   const classes = DB.get(KEYS.classes, []);
   classes.push({ id: uid(), name, classTeacherId });
   DB.set(KEYS.classes, classes);
   auditAction('create', 'class', classes[classes.length - 1].id, `Created class: ${name}`);
   input.value = '';
+  if (addClassForm && toggleAddClassBtn) {
+    addClassForm.classList.add('hidden');
+    toggleAddClassBtn.textContent = 'Expand';
+    toggleAddClassBtn.setAttribute('aria-expanded', 'false');
+  }
   renderClasses();
 });
 
