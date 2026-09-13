@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — service worker
 // Keep CACHE_NAME's version in sync with APP_VERSION in app-4.js
-const CACHE_NAME = 'schoolhub-cache-v38.11.15';
+const CACHE_NAME = 'schoolhub-cache-v38.11.16';
 
 const APP_SHELL = [
   './',
@@ -20,6 +20,8 @@ const APP_SHELL = [
   'https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js',
   'https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js',
+  'https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js',
+  'https://js.paystack.co/v2/inline.js',
   'https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap'
 ];
 

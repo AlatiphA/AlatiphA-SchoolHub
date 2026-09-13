@@ -14,6 +14,8 @@
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
 <link rel="stylesheet" href="style-3.css">
 <script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
+<script src="https://js.paystack.co/v2/inline.js"></script>
 <script>
   (function () {
     try {
@@ -141,6 +143,7 @@
         <button type="button" id="profileAboutBtn" class="profile-link">About SchoolHub</button>
         <button type="button" id="profileSyncCenterBtn" class="profile-link">Sync Center</button>
         <button type="button" id="profileSystemHealthBtn" class="profile-link">System Health</button>
+        <button type="button" id="profileBillingBtn" class="profile-link">Billing &amp; Credits</button>
         <button type="button" id="profileLoginBtn" class="profile-link hidden">Log In</button>
         <button type="button" id="logoutBtn" class="profile-link profile-link-danger hidden">Log Out</button>
       </div>
@@ -504,10 +507,17 @@
     </div>
   </section>
 
+  <!-- BILLING -->
+  <section id="view-billing" class="view hidden">
+    <h2>Billing &amp; Credits</h2>
+    <div id="billingWrap"></div>
+  </section>
+
   <!-- REPORTS -->
   <section id="view-reports" class="view hidden">
     <h2>Reports</h2>
     <div class="report-themes-launch"><div><strong>Report Card Themes</strong><span>Choose and apply the visual style used when generating report cards.</span></div><button type="button" id="reportThemesBtn" class="btn-primary">Choose Theme</button></div>
+    <div id="reportCreditStatus" class="report-credit-status"></div>
     <div id="reportThemePicker" class="report-theme-picker hidden"></div>
     <label>Class
       <select id="reportsClassSelect"></select>

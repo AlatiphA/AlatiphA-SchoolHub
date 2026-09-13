@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.15';
+const APP_VERSION = 'v38.11.16';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -234,7 +234,8 @@ const KEYS = {
   get schoolCalendar() { return ns('arc_school_calendar'); },
   get remarks() { return ns('arc_remarks'); },
   get staff() { return ns('arc_staff'); },
-  get activity() { return ns('arc_activity'); }
+  get activity() { return ns('arc_activity'); },
+  get billing() { return ns('arc_billing'); }
 };
 
 /* ---------- audit trail / activity log ---------- */
@@ -315,6 +316,7 @@ function ensureDefaults() {
   if (DB.get(KEYS.schoolCalendar, null) === null) DB.set(KEYS.schoolCalendar, {});
   if (DB.get(KEYS.remarks, null) === null) DB.set(KEYS.remarks, {});
   if (DB.get(KEYS.staff, null) === null) DB.set(KEYS.staff, []);
+  if (DB.get(KEYS.billing, null) === null) DB.set(KEYS.billing, { balance: 0, currency: 'GHS', updatedAt: null });
 }
 
 // Shared helper: fill a <select> with staff options ("— None —" first),
@@ -397,7 +399,7 @@ function saveAttendanceTabState(mode) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'history', 'manage-teachers', 'activity'];
+const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
   // Never render role-sensitive views while an authenticated session is still
   // being resolved. Guest mode explicitly marks itself ready before calling
@@ -443,6 +445,7 @@ function showView(name) {
   if (name === 'grades') renderGradesClassSelect();
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
+  if (name === 'billing') renderBilling();
   if (name === 'history') renderHistoryTermYearSelect();
   if (name === 'manage-teachers') renderManageTeachers();
   if (name === 'activity') loadActivityLog();
@@ -461,7 +464,7 @@ function refreshHeadTeacherSelect() {
 function sectionTitle(name) {
   const titles = {
     setup: 'Setup', staff: 'Staff', classes: 'Classes', students: 'Students', subjects: 'Subjects',
-    attendance: 'Attendance', grades: 'Grades', remarks: 'Remarks', reports: 'Reports', history: 'Term History',
+    attendance: 'Attendance', grades: 'Grades', remarks: 'Remarks', reports: 'Reports', billing: 'Billing & Credits', history: 'Term History',
     'manage-teachers': 'Manage Teachers', activity: 'Activity Log'
   };
   return titles[name] || 'AlatiphA SchoolHub';
@@ -491,6 +494,8 @@ const QUICK_ACCESS_CARDS = [
     icon: '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>' },
   { view: 'reports', title: 'Reports', description: 'Generate PDFs, CSV, and view statistics',
     icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="9" y2="17"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="15" y1="15" x2="15" y2="17"/>' },
+  { view: 'billing', title: 'Billing & Credits', description: 'Buy and manage school report credits',
+    icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 14h4"/><circle cx="17" cy="14" r="1"/>' },
   { view: 'activity', title: 'Activity Log', description: 'See who changed school data and when',
     icon: '<path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h6M8 17h4"/>' },
   { view: 'history', title: 'Term History', description: 'Browse and export past terms',
@@ -991,6 +996,10 @@ document.getElementById('profileSyncCenterBtn').addEventListener('click', () => 
 document.getElementById('profileSystemHealthBtn').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
   showSystemHealth();
+});
+document.getElementById('profileBillingBtn')?.addEventListener('click', () => {
+  document.getElementById('profileDropdown').classList.add('hidden');
+  showView('billing');
 });
 document.getElementById('syncCenterCloseBtn').addEventListener('click', hideSyncCenter);
 document.getElementById('syncCenterDialog').addEventListener('click', e => { if (e.target.id === 'syncCenterDialog') hideSyncCenter(); });
@@ -4509,7 +4518,7 @@ const REPORT_THEMES={
 };
 function getReportTheme(settings){return REPORT_THEMES[(settings&&settings.reportTheme)||'bw']||REPORT_THEMES.bw;}
 function renderReportThemePicker(){const host=document.getElementById('reportThemePicker');if(!host)return;const activeId=DB.get(KEYS.settings,{}).reportTheme||'bw';host.innerHTML=`<div class="report-theme-active"><div class="report-theme-active-icon">✦</div><div><span class="report-theme-kicker">ACTIVE THEME</span><h3>${escapeHtml(REPORT_THEMES[activeId].title)}</h3><p>${escapeHtml(REPORT_THEMES[activeId].description)}</p></div></div><div class="report-theme-grid">${Object.values(REPORT_THEMES).map(t=>`<article class="report-theme-card ${t.id===activeId?'active':''}"><div class="report-theme-preview" data-theme="${t.id}"><div class="rtp-head"><span></span><b>${escapeHtml(t.title)}</b><i></i></div><div class="rtp-meta"><span></span><span></span></div><div class="rtp-table"><b></b><b></b><b></b><b></b><b></b></div><div class="rtp-bottom"><span></span><span></span></div><div class="rtp-footer"></div></div><div class="report-theme-card-body"><h3>${escapeHtml(t.name)} <small>${escapeHtml(t.title)}</small></h3><p>${escapeHtml(t.description)}</p><div class="report-theme-actions"><button type="button" class="report-theme-preview-btn" data-theme-preview="${t.id}">⌕ Preview</button><button type="button" class="btn-primary report-theme-apply" data-theme-apply="${t.id}">${t.id===activeId?'✓ Active':'Apply'}</button></div></div></article>`).join('')}</div>`;host.querySelectorAll('[data-theme-apply]').forEach(b=>b.addEventListener('click',()=>applyReportTheme(b.dataset.themeApply)));host.querySelectorAll('[data-theme-preview]').forEach(b=>b.addEventListener('click',()=>previewReportTheme(b.dataset.themePreview)));}
-function applyReportTheme(themeId){if(!REPORT_THEMES[themeId])return;if(!requireHeadTeacher('change the report card theme'))return;const s=DB.get(KEYS.settings,{});s.reportTheme=themeId;DB.set(KEYS.settings,s);const sel=document.getElementById('reportThemeSelect');if(sel)sel.value=themeId;auditAction('update','report-theme',themeId,`Applied report card theme: ${REPORT_THEMES[themeId].title}`);renderReportThemePicker();}
+async function applyReportTheme(themeId){if(!REPORT_THEMES[themeId])return;if(!requireHeadTeacher('change the report card theme'))return;if(themeId!=='bw' && !(await ensureCreditsAvailable(1,'using a premium report theme')))return;const s=DB.get(KEYS.settings,{});s.reportTheme=themeId;DB.set(KEYS.settings,s);const sel=document.getElementById('reportThemeSelect');if(sel)sel.value=themeId;auditAction('update','report-theme',themeId,`Applied report card theme: ${REPORT_THEMES[themeId].title}`);renderReportThemePicker();}
 async function previewReportTheme(themeId){const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,remarksAll[result.student.id]||{},assets);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
 
 /* ---------- Reports ---------- */
@@ -4527,7 +4536,21 @@ function renderReportsClassSelect() {
   renderClassStatistics();
 }
 
+function renderReportCreditStatus() {
+  const host = document.getElementById('reportCreditStatus');
+  if (!host) return;
+  if (!FIREBASE_ENABLED || !currentSchoolId) {
+    host.innerHTML = '<span><strong>Report credits</strong> require a signed-in school account.</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>';
+  } else {
+    const balance = localBillingBalance();
+    host.innerHTML = `<span><strong>${balance} report credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} value</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
+  }
+  document.getElementById('reportBillingLink')?.addEventListener('click', () => showView('billing'));
+}
+
 function renderReportsStudentList() {
+  renderReportCreditStatus();
+  refreshBillingAccount(true).then(() => renderReportCreditStatus());
   const classId = document.getElementById('reportsClassSelect').value;
   if (classId && !canAccessClass(classId)) { document.getElementById('reportsStudentList').innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
   const list = document.getElementById('reportsStudentList');
@@ -4951,6 +4974,153 @@ document.getElementById('startNewTermBtn').addEventListener('click', () => {
   renderHistoryTermYearSelect();
   alert(`Current term is now ${newTerm}, ${newYear}.`);
 });
+
+/* ---------- Phase 4: School Billing & Report Credits ---------- */
+const REPORT_CREDIT_PRICE_GHS = 0.20;
+const REPORT_CREDIT_PACKAGES = [
+  { id: '10', credits: 10, amount: 2.00 },
+  { id: '50', credits: 50, amount: 10.00 },
+  { id: '100', credits: 100, amount: 20.00 },
+  { id: '250', credits: 250, amount: 50.00 },
+  { id: '500', credits: 500, amount: 100.00 },
+  { id: '1000', credits: 1000, amount: 200.00 }
+];
+
+function billingFunctions() {
+  if (!FIREBASE_ENABLED || !firebase.functions) throw new Error('Billing services are not available.');
+  return firebase.functions();
+}
+function localBillingBalance() {
+  const b = DB.get(KEYS.billing, { balance: 0 });
+  return Math.max(0, Number(b.balance || 0));
+}
+function setLocalBillingBalance(balance) {
+  const b = DB.get(KEYS.billing, {});
+  b.balance = Math.max(0, Number(balance || 0));
+  b.currency = 'GHS';
+  b.updatedAt = new Date().toISOString();
+  DB.set(KEYS.billing, b);
+}
+async function refreshBillingAccount(silent = true) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !firebase.firestore) return null;
+  try {
+    const snap = await schoolRef().collection('billing').doc('account').get();
+    const data = snap.exists ? snap.data() : { balance: 0, currency: 'GHS' };
+    setLocalBillingBalance(Number(data.balance || 0));
+    return data;
+  } catch (e) {
+    if (!silent) alert('Unable to load the school billing balance: ' + (e.message || e));
+    return null;
+  }
+}
+function hasSchoolBillingAccount() {
+  return !!(FIREBASE_ENABLED && currentSchoolId && currentUid);
+}
+function requireSchoolAccountForPaidFeature(actionText) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !currentUid) {
+    alert(`Please sign in to your school account before ${actionText}.`);
+    return false;
+  }
+  return true;
+}
+async function ensureCreditsAvailable(count = 1, actionText = 'continue') {
+  if (!requireSchoolAccountForPaidFeature(actionText)) return false;
+  const balance = localBillingBalance();
+  if (balance >= count) return true;
+  await refreshBillingAccount(true);
+  if (localBillingBalance() >= count) return true;
+  alert(`This action requires ${count} report credit${count === 1 ? '' : 's'}. Your school currently has ${localBillingBalance()} credit${localBillingBalance() === 1 ? '' : 's'}. The Head Teacher can buy more from Billing & Credits.`);
+  return false;
+}
+async function consumeReportCredits(count) {
+  if (!Number.isInteger(count) || count < 1) throw new Error('Invalid report credit count.');
+  if (!requireSchoolAccountForPaidFeature('generating report cards')) throw new Error('School account required.');
+  if (!firebase.functions) throw new Error('Billing service is not available.');
+  const fn = billingFunctions().httpsCallable('consumeReportCredits');
+  const result = await fn({ count });
+  const balance = Number(result.data?.balance || 0);
+  setLocalBillingBalance(balance);
+  auditAction('consume', 'report-credit', '', `Used ${count} report credit${count === 1 ? '' : 's'} to generate report card${count === 1 ? '' : 's'}.`);
+  return result.data;
+}
+async function buyReportCredits(packageId) {
+  if (!isHeadTeacher()) { alert('Only the Head Teacher can purchase report credits for the school.'); return; }
+  const pack = REPORT_CREDIT_PACKAGES.find(p => p.id === String(packageId));
+  if (!pack) return;
+  if (!window.PAYSTACK_PUBLIC_KEY) {
+    alert('Payment is not configured yet. Add your Paystack public key to firebase-config.js, then reload SchoolHub.');
+    return;
+  }
+  if (!firebase.functions || !window.PaystackPop) {
+    alert('Payment services are still loading. Please refresh and try again.');
+    return;
+  }
+  const btn = document.querySelector(`[data-buy-credits="${pack.id}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening payment…'; }
+  try {
+    const init = await billingFunctions().httpsCallable('initializeReportCreditPurchase')({ packageId: pack.id });
+    const data = init.data || {};
+    if (!data.accessCode) throw new Error('Payment initialization did not return an access code.');
+    const popup = new PaystackPop();
+    popup.resumeTransaction(data.accessCode);
+    // The success callback is attached through the transaction event hooks by
+    // Paystack Popup V2. The verify button remains available if a popup closes
+    // after payment before the callback reaches the app.
+    window.__schoolHubPendingPayment = data.reference;
+    alert(`Payment window opened for ${pack.credits} report credits. After payment, return to SchoolHub and use Verify Payment if needed.`);
+    renderBilling();
+  } catch (e) {
+    console.error('Credit purchase initialization failed:', e);
+    alert(e.message || 'Unable to start payment.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = `Buy ${pack.credits}`; }
+  }
+}
+async function verifyPendingCreditPayment(reference) {
+  reference = String(reference || window.__schoolHubPendingPayment || '').trim();
+  if (!reference) { alert('No pending payment reference was found.'); return; }
+  if (!isHeadTeacher()) { alert('Only the Head Teacher can verify a purchase.'); return; }
+  try {
+    const result = await billingFunctions().httpsCallable('verifyReportCreditPurchase')({ reference });
+    setLocalBillingBalance(Number(result.data?.balance || 0));
+    window.__schoolHubPendingPayment = '';
+    auditAction('purchase', 'report-credit', reference, `Purchased report credits. Payment reference: ${reference}.`);
+    await renderBilling();
+    alert(`Payment verified successfully. Your school now has ${Number(result.data?.balance || 0)} report credits.`);
+  } catch (e) {
+    console.error('Payment verification failed:', e);
+    alert(e.message || 'Payment could not be verified yet. If you just paid, wait a moment and try Verify Payment again.');
+  }
+}
+async function renderBilling() {
+  const wrap = document.getElementById('billingWrap');
+  if (!wrap) return;
+  if (!FIREBASE_ENABLED || !currentSchoolId) {
+    wrap.innerHTML = `<div class="billing-card"><h3>School Billing</h3><p class="hint">Billing and report credits are available after you sign in to a school account.</p></div>`;
+    return;
+  }
+  await refreshBillingAccount(true);
+  const balance = localBillingBalance();
+  const school = DB.get(KEYS.settings, {}).schoolName || 'Your School';
+  const head = isHeadTeacher();
+  const pending = window.__schoolHubPendingPayment || '';
+  wrap.innerHTML = `
+    <div class="billing-summary-card">
+      <div><span class="billing-kicker">${escapeHtml(school)}</span><h3>Report Credits</h3><p class="hint">School-owned credits shared by authorized teachers.</p></div>
+      <div class="billing-balance"><strong>${balance}</strong><span>credits</span><small>GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} remaining value</small></div>
+    </div>
+    <div class="billing-info-grid">
+      <div class="billing-info-card"><strong>GH₵0.20</strong><span>per generated report card</span></div>
+      <div class="billing-info-card"><strong>Free</strong><span>students, classes, grades, attendance and remarks</span></div>
+      <div class="billing-info-card"><strong>Free preview</strong><span>report themes can be previewed before purchase</span></div>
+    </div>
+    ${head ? `<div class="billing-section"><div class="billing-section-head"><div><h3>Buy Report Credits</h3><p class="hint">The Head Teacher purchases credits for the whole school. Teachers never pay individually.</p></div></div><div class="billing-packages">${REPORT_CREDIT_PACKAGES.map(p => `<article class="billing-package"><strong>${p.credits}</strong><span>report credits</span><b>GH₵${p.amount.toFixed(2)}</b><small>GH₵0.20 each</small><button type="button" class="btn-primary" data-buy-credits="${p.id}">Buy ${p.credits}</button></article>`).join('')}</div></div>` : `<div class="billing-section"><h3>School Credits</h3><p class="hint">Your Head Teacher manages purchases for the school. Your report generation uses the school's shared credit balance.</p></div>`}
+    ${head && pending ? `<div class="billing-pending"><strong>Payment pending</strong><span>Reference: ${escapeHtml(pending)}</span><button type="button" id="verifyBillingPaymentBtn" class="btn-primary">Verify Payment</button></div>` : ''}
+    <div class="billing-note"><strong>How it works</strong><span>One generated report card uses one credit. Printing or downloading that generated report does not charge another credit. Credits belong to the school and can be used by authorized teachers.</span></div>
+  `;
+  wrap.querySelectorAll('[data-buy-credits]').forEach(b => b.addEventListener('click', () => buyReportCredits(b.dataset.buyCredits)));
+  document.getElementById('verifyBillingPaymentBtn')?.addEventListener('click', () => verifyPendingCreditPayment());
+}
 
 /* ---------- PDF generation ---------- */
 const INK = [22, 36, 28];
@@ -5441,6 +5611,7 @@ async function prepareReportAssets(result, settings, classInfo) {
 
 async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
   if (!result.entries.length) { alert('No grades entered for this student yet.'); return; }
+  if (!await ensureCreditsAvailable(1, 'generating a report card')) return;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
@@ -5452,12 +5623,14 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
     assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
   }
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
+  try { await consumeReportCredits(1); } catch (creditError) { alert(creditError.message || 'Report credits could not be charged. The report was not downloaded.'); return; }
   doc.save(`${result.student.name.replace(/\s+/g, '_')}_report.pdf`);
 }
 
 async function generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settingsOverride) {
   const usable = results.filter(r => r.entries.length > 0);
   if (!usable.length) { alert('No grades entered for this class yet.'); return; }
+  if (!await ensureCreditsAvailable(usable.length, 'generating the class report batch')) return;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
@@ -5473,6 +5646,7 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
     }
     drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, assets);
   }
+  try { await consumeReportCredits(usable.length); } catch (creditError) { alert(creditError.message || 'Report credits could not be charged. The batch was not downloaded.'); return; }
   doc.save('class_report_cards.pdf');
 }
 

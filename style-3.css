@@ -631,7 +631,7 @@ html.sessionRestoring #sessionRestoreGate{
 }
 
 /* v34 image synchronization diagnostics */
-.sync-diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;background:color-mix(in srgb,var(--rule) 35%,transparent);border:1px solid var(--rule);border-radius:8px;padding:10px;margin:8px 0 14px;font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--text);max-height:220px;overflow:auto;}
+.sync-diagnostics{white-space:pre-wrap;overflow-wrap:anywhere;text-align:left;background:color-mix(in srgb,var(--rule) 35%,transparent);border:1px solid var(--rule);border-radius:8px;padding:10px;margin:8px 0 14px;font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:inherit;max-height:220px;overflow:auto;}
 
 
 /* v35 Activity Log */
@@ -655,8 +655,8 @@ html.sessionRestoring #sessionRestoreGate{
 .teacher-attendance-status{min-width:135px}
 
 /* v38.2 attendance ratios */
-.attendance-summary-pill{display:flex;align-items:center;justify-content:space-between;gap:12px;width:fit-content;max-width:100%;margin:.75rem 0 1rem;padding:9px 14px;border:1px solid var(--gold);border-radius:999px;background:color-mix(in srgb,var(--gold) 12%,var(--surface));color:var(--text);box-sizing:border-box;}
-.attendance-summary-pill span{font-size:.88rem;font-weight:600;color:var(--text);}
+.attendance-summary-pill{display:flex;align-items:center;justify-content:space-between;gap:12px;width:fit-content;max-width:100%;margin:.75rem 0 1rem;padding:9px 14px;border:1px solid var(--gold);border-radius:999px;background:color-mix(in srgb,var(--gold) 12%,var(--surface));color:inherit;box-sizing:border-box;}
+.attendance-summary-pill span{font-size:.88rem;font-weight:600;color:inherit;}
 .attendance-summary-pill strong{font-size:.95rem;font-weight:800;color:var(--gold);white-space:nowrap;}
 .attendance-table th:last-child,.attendance-table td:last-child{white-space:nowrap;}
 @media(max-width:600px){.attendance-summary-pill{width:100%;}.attendance-summary-pill span{font-size:.82rem;}.attendance-summary-pill strong{font-size:.9rem;}}
@@ -664,10 +664,10 @@ html.sessionRestoring #sessionRestoreGate{
 
 /* v38.3 school calendar + theme-safe attendance tabs */
 .attendance-mode.active{background:var(--gold);color:#fff;border-color:var(--gold);}
-.attendance-mode:not(.active){color:var(--text);}
+.attendance-mode:not(.active){color:inherit;}
 .attendance-summary-pills{display:flex;flex-wrap:wrap;gap:8px;margin:.75rem 0 1rem;}
 .attendance-summary-pills .attendance-summary-pill{margin:0;}
-.attendance-non-school-day{display:flex;flex-direction:column;gap:4px;padding:14px 16px;margin:.75rem 0 1rem;border:1px solid var(--gold);border-radius:12px;background:color-mix(in srgb,var(--gold) 10%,var(--surface));color:var(--text);}
+.attendance-non-school-day{display:flex;flex-direction:column;gap:4px;padding:14px 16px;margin:.75rem 0 1rem;border:1px solid var(--gold);border-radius:12px;background:color-mix(in srgb,var(--gold) 10%,var(--surface));color:inherit;}
 .attendance-non-school-day strong{color:var(--gold);font-size:1rem;}
 .calendar-editor{padding:14px;border:1px solid var(--rule);border-radius:14px;background:var(--surface-alt);margin-bottom:16px;}
 .calendar-editor h3{margin:.1rem 0 .35rem;}
@@ -747,7 +747,7 @@ html.sessionRestoring #sessionRestoreGate{
 .attendance-dashboard-inline{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border:1px solid var(--rule);border-radius:12px;background:var(--surface);}
 .attendance-completion-badge{display:inline-flex;align-items:center;justify-content:center;padding:4px 9px;border-radius:999px;font-size:.75rem;font-weight:800;white-space:nowrap;}
 .attendance-completion-badge.complete{background:color-mix(in srgb,var(--gold) 18%,var(--surface));color:var(--gold);border:1px solid var(--gold);}
-.attendance-completion-badge.partial{background:color-mix(in srgb,var(--text) 8%,var(--surface));color:var(--text);border:1px solid var(--rule);}
+.attendance-completion-badge.partial{background:color-mix(in srgb,inherit 8%,var(--surface));color:inherit;border:1px solid var(--rule);}
 .attendance-completion-badge.missing{background:color-mix(in srgb,#a33 9%,var(--surface));color:#933; border:1px solid color-mix(in srgb,#a33 35%,var(--rule));}
 @media(max-width:600px){
   .attendance-dashboard{padding:11px;}
@@ -838,13 +838,13 @@ html.sessionRestoring #sessionRestoreGate{
 .report-themes-launch span{display:block;margin-top:3px;color:var(--muted);font-size:.86rem}
 .report-theme-picker{margin:0 0 18px}
 .report-theme-active{display:flex;gap:14px;align-items:flex-start;padding:18px;border:1px solid var(--rule);border-radius:18px;background:var(--surface);margin-bottom:16px}
-.report-theme-active-icon{width:42px;height:42px;flex:0 0 42px;border-radius:50%;display:grid;place-items:center;background:var(--accent);color:#fff;font-size:1.25rem}
+.report-theme-active-icon{width:42px;height:42px;flex:0 0 42px;border-radius:50%;display:grid;place-items:center;background:var(--rule);color:#fff;font-size:1.25rem}
 .report-theme-kicker{font-size:.72rem;font-weight:800;letter-spacing:.12em;color:var(--muted)}
 .report-theme-active h3{margin:4px 0 5px;font-size:1.45rem;color:var(--paper);font-weight:800}
 .report-theme-active p{margin:0;color:var(--muted);line-height:1.45}
 .report-theme-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .report-theme-card{overflow:hidden;border:1px solid var(--rule);border-radius:18px;background:var(--surface);box-shadow:0 5px 18px rgba(0,0,0,.04)}
-.report-theme-card.active{outline:2px solid var(--accent);outline-offset:1px}
+.report-theme-card.active{outline:2px solid var(--rule);outline-offset:1px}
 .report-theme-preview{height:185px;padding:13px;background:#f3f0e8;position:relative;overflow:hidden}
 .report-theme-preview[data-theme="bw"]{--rt-primary:#141414;--rt-dark:#0a0a0a;--rt-accent:#141414}
 .report-theme-preview[data-theme="schoolhub"]{--rt-primary:#187063;--rt-dark:#165045;--rt-accent:#c9a227}
@@ -892,7 +892,7 @@ html.sessionRestoring #sessionRestoreGate{
 
 /* v38.11.8 Staff management cleanup */
 .staff-add-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--rule);margin-bottom:12px;}
-.staff-add-toolbar strong{font-size:15px;font-weight:600;color:var(--text);}
+.staff-add-toolbar strong{font-size:15px;font-weight:600;color:inherit;}
 .staff-add-toolbar .hint{margin:3px 0 0;max-width:260px;}
 .staff-toggle-btn{flex:none;border:1px solid var(--rule);background:var(--surface);color:var(--gold);padding:8px 16px;border-radius:7px;font:600 12px 'IBM Plex Sans',sans-serif;cursor:pointer;min-height:38px;}
 .staff-toggle-btn:active{background:var(--surface-alt);}
@@ -901,7 +901,7 @@ html.sessionRestoring #sessionRestoreGate{
 .form-validation{display:none;color:var(--red);font-size:12px;line-height:1.5;margin:0;}
 .form-validation.show{display:block;}
 .staff-list-main{min-width:0;flex:1;}
-.staff-list-main strong{display:block;font-size:15px;font-weight:600;color:var(--text);}
+.staff-list-main strong{display:block;font-size:15px;font-weight:600;color:inherit;}
 .staff-list-main .meta{font-size:12px;color:var(--muted);margin-top:3px;}
 .staff-list-main .staff-id-line{font-size:12px;color:var(--muted);margin-top:2px;}
 .staff-list-actions{display:flex;align-items:center;gap:8px;flex:none;}
@@ -911,7 +911,7 @@ html.sessionRestoring #sessionRestoreGate{
 .staff-details-content{overflow:auto;max-height:65vh;padding:4px 2px 10px;}
 .staff-detail-row{display:flex;justify-content:space-between;gap:16px;padding:10px 2px;border-bottom:1px solid var(--rule);font-size:12px;}
 .staff-detail-row span{color:var(--muted);flex:0 0 42%;}
-.staff-detail-row strong{font-weight:600;text-align:right;overflow-wrap:anywhere;color:var(--text);}
+.staff-detail-row strong{font-weight:600;text-align:right;overflow-wrap:anywhere;color:inherit;}
 .staff-detail-signature{display:block;max-width:220px;max-height:90px;margin:12px auto;background:#fff;border:1px solid var(--rule);border-radius:6px;padding:8px;object-fit:contain;}
 .staff-details-box .about-actions{justify-content:center;padding-top:8px;}
 .staff-details-box .about-actions .btn-primary{flex:0 0 120px;}
@@ -923,13 +923,13 @@ html.sessionRestoring #sessionRestoreGate{
 }
 /* v38.11.9 Classes management cleanup */
 .class-add-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--rule);margin-bottom:12px;}
-.class-add-toolbar strong{font-size:15px;font-weight:600;color:var(--text);}
+.class-add-toolbar strong{font-size:15px;font-weight:600;color:inherit;}
 .class-add-toolbar .hint{margin:3px 0 0;max-width:280px;}
 .class-toggle-btn{flex:none;border:1px solid var(--rule);background:var(--surface);color:var(--gold);padding:8px 16px;border-radius:7px;font:600 12px 'IBM Plex Sans',sans-serif;cursor:pointer;min-height:38px;}
 .class-toggle-btn:active{background:var(--surface-alt);}
 .class-add-form.hidden{display:none;}
 .class-list-main{min-width:0;flex:1;}
-.class-list-main strong{display:block;font-size:15px;font-weight:600;color:var(--text);}
+.class-list-main strong{display:block;font-size:15px;font-weight:600;color:inherit;}
 .class-list-main .meta{font-size:12px;color:var(--muted);margin-top:3px;}
 .class-teacher-line{font-size:12px;color:var(--muted);margin-top:2px;}
 .class-list-actions{display:flex;align-items:center;gap:8px;flex:none;}
@@ -944,13 +944,13 @@ html.sessionRestoring #sessionRestoreGate{
 
 /* v38.11.10 Students management cleanup */
 .student-add-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--rule);margin-bottom:12px;}
-.student-add-toolbar strong{font-size:15px;font-weight:600;color:var(--text);}
+.student-add-toolbar strong{font-size:15px;font-weight:600;color:inherit;}
 .student-add-toolbar .hint{margin:3px 0 0;max-width:280px;}
 .student-toggle-btn{flex:none;border:1px solid var(--rule);background:var(--surface);color:var(--gold);padding:8px 16px;border-radius:7px;font:600 12px 'IBM Plex Sans',sans-serif;cursor:pointer;min-height:38px;}
 .student-toggle-btn:active{background:var(--surface-alt);}
 .student-add-form.hidden{display:none;}
 .student-list-main{min-width:0;flex:1;}
-.student-list-main strong{display:block;font-size:15px;font-weight:600;color:var(--text);}
+.student-list-main strong{display:block;font-size:15px;font-weight:600;color:inherit;}
 .student-list-main .meta{font-size:12px;color:var(--muted);margin-top:3px;}
 .student-list-actions{display:flex;align-items:center;gap:8px;flex:none;}
 .student-list-actions button{min-width:48px;}
@@ -982,7 +982,7 @@ input[type="tel"]{
   border-bottom:2px solid var(--rule);
   border-radius:0;
   background:transparent;
-  color:var(--text);
+  color:inherit;
   font-family:'IBM Plex Sans',sans-serif;
   font-size:17px;
   min-height:44px;
@@ -990,7 +990,7 @@ input[type="tel"]{
   appearance:none;
 }
 input[type="date"]{
-  color:var(--text);
+  color:inherit;
 }
 .student-list-identity{display:flex;align-items:center;gap:10px;min-width:0;}
 .student-list-copy{min-width:0;}
@@ -1039,12 +1039,12 @@ input[type="date"]{
 /* v38.11.14: compact one-student-at-a-time Remarks workflow */
 .remarks-student-toolbar{margin:12px 0 8px;padding:12px 0 4px;border-bottom:1px solid var(--rule);}
 .remarks-progress-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;font-size:13px;color:var(--muted);}
-.remarks-progress-row strong{color:var(--text);font-weight:600;white-space:nowrap;}
+.remarks-progress-row strong{color:inherit;font-weight:600;white-space:nowrap;}
 .remarks-student-toolbar label{margin-bottom:8px;}
 .remarks-search-label input,.remarks-student-label select{width:100%;}
 .remarks-nav-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin:8px 0 2px;text-align:center;}
 .remarks-nav-row span{font-size:13px;color:var(--muted);font-weight:600;}
-.remarks-nav-btn{border:1px solid var(--rule);background:var(--surface);color:var(--text);border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;min-height:34px;}
+.remarks-nav-btn{border:1px solid var(--rule);background:var(--surface);color:inherit;border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;min-height:34px;}
 .remarks-nav-btn:disabled{opacity:.45;cursor:not-allowed;}
 .remarks-card-single{padding:10px 4px 8px;border-bottom:none;}
 .remarks-student-heading{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 0 10px;}
@@ -1060,3 +1060,25 @@ input[type="date"]{
   .remarks-save-actions{gap:8px;}
   .remarks-save-actions .btn-primary,.remarks-save-actions .btn-secondary{min-width:0;flex:0 1 auto;padding:8px 12px;font-size:13px;}
 }
+
+/* ---------- Phase 4 Billing & Credits ---------- */
+.billing-summary-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px;border:1px solid var(--rule);border-radius:14px;background:var(--surface);margin:12px 0 14px}
+.billing-kicker{display:block;font-size:.78rem;color:var(--muted);margin-bottom:4px}
+.billing-summary-card h3{margin:0 0 4px;font-size:1.1rem}
+.billing-balance{min-width:150px;text-align:center;padding:12px 16px;border-radius:12px;background:var(--surface-alt);border:1px solid var(--rule)}
+.billing-balance strong{display:block;font-size:2rem;line-height:1.05}
+.billing-balance span{display:block;font-size:.8rem;color:var(--muted)}
+.billing-balance small{display:block;margin-top:5px;color:var(--muted);font-size:.72rem}
+.billing-info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.billing-info-card{padding:13px;border:1px solid var(--rule);border-radius:11px;background:var(--surface);display:flex;flex-direction:column;gap:4px}
+.billing-info-card strong{font-size:1rem}.billing-info-card span{font-size:.78rem;color:var(--muted);line-height:1.35}
+.billing-section{padding:16px;border:1px solid var(--rule);border-radius:14px;background:var(--surface);margin-bottom:14px}
+.billing-section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.billing-section-head h3{margin:0 0 4px}
+.billing-packages{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.billing-package{border:1px solid var(--rule);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:3px;background:var(--surface)}
+.billing-package strong{font-size:1.35rem}.billing-package span,.billing-package small{font-size:.75rem;color:var(--muted)}.billing-package b{font-size:1.05rem;margin:5px 0}.billing-package button{margin-top:8px}
+.billing-pending{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--rule);border-radius:12px;background:var(--surface-alt);margin-bottom:14px}.billing-pending strong{margin-right:auto}.billing-pending span{font-size:.75rem;color:var(--muted);font-family:monospace}
+.billing-note{display:flex;gap:8px;align-items:flex-start;padding:12px 14px;border-radius:11px;background:var(--surface-alt);color:inherit;font-size:.8rem;line-height:1.45}.billing-note strong{white-space:nowrap}
+@media(max-width:720px){.billing-summary-card{align-items:stretch;flex-direction:column}.billing-balance{min-width:0}.billing-info-grid,.billing-packages{grid-template-columns:1fr}.billing-package{padding:12px}.billing-section{padding:13px}}
+
+.report-credit-status{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;background:var(--surface-alt);margin:10px 0 14px;font-size:.8rem}.report-credit-status strong{font-size:.95rem}.report-credit-status .credit-actions{display:flex;gap:7px;align-items:center}@media(max-width:560px){.report-credit-status{align-items:flex-start;flex-direction:column}.report-credit-status .credit-actions{width:100%}.report-credit-status .credit-actions button{flex:1}}

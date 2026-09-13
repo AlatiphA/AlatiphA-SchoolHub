@@ -13,3 +13,7 @@ window.FIREBASE_CONFIG = {
   projectId: "alatipha-schoolhub",
   storageBucket: "alatipha-schoolhub.firebasestorage.app"
 };
+
+// Paystack public key only. Never place the Paystack secret key in this file.
+// Use a test public key while testing, then replace it with the live public key.
+window.PAYSTACK_PUBLIC_KEY = "";
