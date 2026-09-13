@@ -989,13 +989,13 @@ input[type="date"]{
 }
 .student-list-identity{display:flex;align-items:center;gap:10px;min-width:0;}
 .student-list-copy{min-width:0;}
-.student-list-photo{width:42px;height:52px;flex:none;object-fit:cover;border-radius:6px;border:1px solid var(--rule);background:#fff;display:block;}
-.student-list-photo-empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600;font-size:16px;}
+.student-list-photo{width:58px;height:58px;flex:0 0 58px;object-fit:cover;border-radius:50%;border:1px solid var(--rule);background:#fff;display:block;}
+.student-list-photo-empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:700;font-size:18px;}
 .student-list-main strong{font-size:16px;font-weight:600;}
 .student-list-actions{gap:5px;}
 .student-list-actions button{min-width:0;padding:7px 10px;}
 @media(max-width:480px){
-  .student-list-photo{width:40px;height:50px;}
+  .student-list-photo{width:52px;height:52px;flex-basis:52px;}
   .student-list-actions{gap:4px;}
   .student-list-actions button{padding:6px 9px;font-size:13px;}
 }
