@@ -10,4 +10,4 @@ Staff management cleanup.
 - Staff form automatically collapses after a successful save.
 
 
-Version 38.11.12: Restored circular student photo/initials presentation in the Students list.
+Version 38.11.13: Compact student list with restored circular photos/initials and student-details photo recovery.

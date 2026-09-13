@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.12a';
+const APP_VERSION = 'v38.11.13';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -1751,13 +1751,14 @@ document.getElementById('bulkAddStudentsBtn').addEventListener('click', () => {
   alert(`Added ${lines.length} student(s).`);
 });
 
-function showStudentDetails(studentId) {
+async function showStudentDetails(studentId) {
   const st = DB.get(KEYS.students, []).find(x => x.id === studentId);
   if (!st) return;
   const classes = DB.get(KEYS.classes, []);
   const cls = classes.find(c => c.id === st.classId);
   const content = document.getElementById('studentDetailsContent');
   if (!content) return;
+
   const rows = [
     ['Full name', st.name || '—'],
     ['Student ID', st.admissionId || '—'],
@@ -1767,8 +1768,32 @@ function showStudentDetails(studentId) {
     ['Class', cls ? cls.name : '—'],
     ['Parent phone', st.parentPhone || '—']
   ];
-  content.innerHTML = rows.map(([label, value]) => `<div class="staff-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('') +
-    (st.photo ? `<img src="${st.photo}" alt="Student photo" class="student-detail-photo">` : '');
+
+  // Student photos are stored in IndexedDB rather than the structured student
+  // record. Resolve the local cache first, then recover the image from Storage
+  // when it is not yet cached on this browser.
+  let photo = isDataImage(st.photo) ? st.photo : '';
+  if (!photo) {
+    try {
+      photo = await getOrSyncReportImage(
+        'student',
+        st.id,
+        st.photoStoragePath || '',
+        st.photoUrl || '',
+        st.classId && currentSchoolId
+          ? `schools/${currentSchoolId}/student-photos/${st.classId}/${st.id}`
+          : ''
+      );
+    } catch (e) {
+      console.warn('Could not load student photo for details:', e);
+    }
+  }
+
+  content.innerHTML = (photo
+      ? `<div class="student-detail-photo-wrap"><img src="${escapeHtml(photo)}" alt="Student photo" class="student-detail-photo"></div>`
+      : '') +
+    rows.map(([label, value]) => `<div class="staff-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
+
   document.getElementById('studentDetailsDialog').classList.remove('hidden');
 }
 

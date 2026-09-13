@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — service worker
 // Keep CACHE_NAME's version in sync with APP_VERSION in app-4.js
-const CACHE_NAME = 'schoolhub-cache-v38.11.12a';
+const CACHE_NAME = 'schoolhub-cache-v38.11.13';
 
 const APP_SHELL = [
   './',
