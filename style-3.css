@@ -965,3 +965,37 @@ html.sessionRestoring #sessionRestoreGate{
 .student-dob-age-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(90px,1fr);gap:10px;}
 .student-dob-age-grid label{margin:0;}
 @media(max-width:420px){.student-dob-age-grid{grid-template-columns:minmax(0,1.7fr) minmax(80px,1fr);gap:8px;}}
+
+/* v38.11.11 Student list/photo and form refinement */
+input[type="tel"]{
+  display:block;
+  width:100%;
+  box-sizing:border-box;
+  margin-top:8px;
+  padding:10px 2px;
+  border:none;
+  border-bottom:2px solid var(--rule);
+  border-radius:0;
+  background:transparent;
+  color:var(--text);
+  font-family:'IBM Plex Sans',sans-serif;
+  font-size:17px;
+  min-height:44px;
+  -webkit-appearance:none;
+  appearance:none;
+}
+input[type="date"]{
+  color:var(--text);
+}
+.student-list-identity{display:flex;align-items:center;gap:10px;min-width:0;}
+.student-list-copy{min-width:0;}
+.student-list-photo{width:42px;height:52px;flex:none;object-fit:cover;border-radius:6px;border:1px solid var(--rule);background:#fff;display:block;}
+.student-list-photo-empty{display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600;font-size:16px;}
+.student-list-main strong{font-size:16px;font-weight:600;}
+.student-list-actions{gap:5px;}
+.student-list-actions button{min-width:0;padding:7px 10px;}
+@media(max-width:480px){
+  .student-list-photo{width:40px;height:50px;}
+  .student-list-actions{gap:4px;}
+  .student-list-actions button{padding:6px 9px;font-size:13px;}
+}

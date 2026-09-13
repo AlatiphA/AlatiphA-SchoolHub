@@ -1449,6 +1449,13 @@ function renderStudents() {
         <label>Full name <span class="required-mark">*</span>
           <input type="text" class="edit-student-name" value="${escapeHtml(st.name)}" placeholder="Full name" required>
         </label>
+        <label>Sex <span class="required-mark">*</span>
+          <select class="edit-student-gender" required>
+            <option value="">Select sex</option>
+            <option value="M" ${st.gender === 'M' ? 'selected' : ''}>Male</option>
+            <option value="F" ${st.gender === 'F' ? 'selected' : ''}>Female</option>
+          </select>
+        </label>
         <div class="student-dob-age-grid">
           <label>Date of Birth <span class="required-mark">*</span>
             <input type="date" class="edit-student-dob" value="${st.dob ? escapeHtml(st.dob) : ''}" required>
@@ -1459,10 +1466,6 @@ function renderStudents() {
         </div>
         <input type="text" class="edit-student-id" value="${st.admissionId ? escapeHtml(st.admissionId) : ''}" placeholder="Student ID (optional)">
         <input type="tel" class="edit-student-phone" value="${st.parentPhone ? escapeHtml(st.parentPhone) : ''}" placeholder="Parent phone (optional, for WhatsApp)">
-        <select class="edit-student-gender">
-          <option value="M" ${st.gender === 'M' ? 'selected' : ''}>Male</option>
-          <option value="F" ${st.gender === 'F' ? 'selected' : ''}>Female</option>
-        </select>
         ${photoPreview}
         <label>Passport Photo
           <input type="file" class="edit-student-photo-input" accept="image/*" data-student="${st.id}">
@@ -1475,8 +1478,13 @@ function renderStudents() {
     } else {
       const idPart = st.admissionId ? ` · ID ${escapeHtml(st.admissionId)}` : ' · ID not set';
       li.innerHTML = `<div class="student-list-main">
-          <strong>${escapeHtml(st.name || 'Unnamed student')}</strong>
-          <div class="meta">${escapeHtml(st.gender || 'Sex not set')}${idPart}</div>
+          <div class="student-list-identity">
+            ${st.photo ? `<img src="${escapeHtml(st.photo)}" alt="" class="student-list-photo">` : `<span class="student-list-photo student-list-photo-empty" aria-hidden="true">${escapeHtml((st.name || '?').charAt(0).toUpperCase())}</span>`}
+            <div class="student-list-copy">
+              <strong>${escapeHtml(st.name || 'Unnamed student')}</strong>
+              <div class="meta">${escapeHtml(st.gender || 'Sex not set')}${idPart}</div>
+            </div>
+          </div>
         </div>
         <div class="student-list-actions">
           <button data-id="${st.id}" class="view-student" type="button">View</button>
@@ -1614,14 +1622,20 @@ function renderStudents() {
       const li = btn.closest('li');
       const name = li.querySelector('.edit-student-name').value.trim();
       const dob = li.querySelector('.edit-student-dob').value.trim();
-      if (!name || !dob) {
-        alert(!name && !dob ? 'Full name and Date of Birth are required.' : (!name ? 'Full name is required.' : 'Date of Birth is required.'));
-        if (!name) li.querySelector('.edit-student-name').focus(); else li.querySelector('.edit-student-dob').focus();
+      const gender = li.querySelector('.edit-student-gender').value;
+      if (!name || !gender || !dob) {
+        const missing = [];
+        if (!name) missing.push('Full name');
+        if (!gender) missing.push('Sex');
+        if (!dob) missing.push('Date of Birth');
+        alert(missing.join(', ') + (missing.length === 1 ? ' is required.' : ' are required.'));
+        if (!name) li.querySelector('.edit-student-name').focus();
+        else if (!gender) li.querySelector('.edit-student-gender').focus();
+        else li.querySelector('.edit-student-dob').focus();
         return;
       }
       const admissionId = li.querySelector('.edit-student-id').value.trim();
       const parentPhone = li.querySelector('.edit-student-phone').value.trim();
-      const gender = li.querySelector('.edit-student-gender').value;
       const students = DB.get(KEYS.students, []);
       const st = students.find(x => x.id === btn.dataset.id);
       if (st) { st.name = name; st.dob = dob; st.admissionId = admissionId; st.parentPhone = parentPhone; st.gender = gender; }
@@ -1691,6 +1705,12 @@ document.getElementById('addStudentBtn').addEventListener('click', () => {
   }
   validation.classList.remove('show');
   const gender = document.getElementById('newStudentGender').value;
+  if (!gender) {
+    validation.textContent = 'Sex is required before the student can be added.';
+    validation.classList.add('show');
+    document.getElementById('newStudentGender').focus();
+    return;
+  }
   const admissionId = document.getElementById('newStudentId').value.trim();
   const parentPhone = document.getElementById('newStudentPhone').value.trim();
   const students = DB.get(KEYS.students, []);

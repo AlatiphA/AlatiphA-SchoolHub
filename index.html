@@ -353,6 +353,13 @@
       <label>Full name <span class="required-mark">*</span>
         <input type="text" id="newStudentName" placeholder="Full name" required>
       </label>
+      <label>Sex <span class="required-mark">*</span>
+        <select id="newStudentGender" required>
+          <option value="">Select sex</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+        </select>
+      </label>
       <div class="student-dob-age-grid">
         <label>Date of Birth <span class="required-mark">*</span>
           <input type="date" id="newStudentDob" required>
@@ -363,10 +370,6 @@
       </div>
       <input type="text" id="newStudentId" placeholder="Student ID (optional)">
       <input type="tel" id="newStudentPhone" placeholder="Parent phone (optional, for WhatsApp)">
-      <select id="newStudentGender">
-        <option value="M">Male</option>
-        <option value="F">Female</option>
-      </select>
       <p id="addStudentValidation" class="form-validation" role="alert"></p>
       <button id="addStudentBtn" class="btn-primary">Add Student</button>
     </div>
