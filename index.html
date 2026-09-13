@@ -269,18 +269,31 @@
   <!-- STAFF -->
   <section id="view-staff" class="view hidden">
     <h2>Staff</h2>
-    <div class="stack">
-      <input type="text" id="newStaffName" placeholder="Full name">
-      <select id="newStaffRole">
-        <option value="Teacher">Teacher</option>
-        <option value="Head Teacher">Head Teacher</option>
-        <option value="Assistant Head Teacher">Assistant Head Teacher</option>
-        <option value="Other">Other</option>
-      </select>
+    <div class="staff-add-toolbar">
+      <div>
+        <strong>Add Staff</strong>
+        <p class="hint">Add a staff member only when needed. More personnel fields can be added here later.</p>
+      </div>
+      <button type="button" id="toggleAddStaffBtn" class="staff-toggle-btn" aria-expanded="false">Expand</button>
+    </div>
+    <div id="addStaffForm" class="stack staff-add-form hidden">
+      <label>Full name <span class="required-mark">*</span>
+        <input type="text" id="newStaffName" placeholder="Full name" required>
+      </label>
+      <label>Role
+        <select id="newStaffRole">
+          <option value="Teacher">Teacher</option>
+          <option value="Head Teacher">Head Teacher</option>
+          <option value="Assistant Head Teacher">Assistant Head Teacher</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
       <label>Date of Birth
         <input type="date" id="newStaff_dob">
       </label>
-      <input type="text" id="newStaff_staffId" placeholder="Staff ID">
+      <label>Staff ID <span class="required-mark">*</span>
+        <input type="text" id="newStaff_staffId" placeholder="Staff ID" required>
+      </label>
       <input type="text" id="newStaff_registeredNo" placeholder="Registered No.">
       <input type="text" id="newStaff_licenseNo" placeholder="License No.">
       <input type="text" id="newStaff_ssnitNo" placeholder="SSNIT No.">
@@ -293,6 +306,7 @@
       <label>Signature
         <input type="file" id="newStaffSignature" accept="image/*">
       </label>
+      <p id="addStaffValidation" class="form-validation" role="alert"></p>
       <button id="addStaffBtn" class="btn-primary">Add Staff</button>
     </div>
     <ul id="staffList" class="list"></ul>
@@ -505,6 +519,17 @@
   </section>
 
 </main>
+
+<!-- STAFF DETAILS -->
+<div id="staffDetailsDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="staffDetailsTitle">
+  <div class="about-box staff-details-box">
+    <h2 id="staffDetailsTitle">Staff Details</h2>
+    <div id="staffDetailsContent" class="staff-details-content"></div>
+    <div class="about-actions">
+      <button type="button" id="staffDetailsCloseBtn" class="btn-primary">Close</button>
+    </div>
+  </div>
+</div>
 
 <!-- SYNC CENTER -->
 <div id="syncCenterDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="syncCenterTitle">

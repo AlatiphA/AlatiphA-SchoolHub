@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.7';
+const APP_VERSION = 'v38.11.8';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -1884,19 +1884,22 @@ function renderStaff() {
   const list = document.getElementById('staffList');
   const staff = DB.get(KEYS.staff, []);
   list.innerHTML = '';
-  if (!staff.length) { list.innerHTML = '<li class="empty">No staff yet — add one below.</li>'; return; }
+  if (!staff.length) { list.innerHTML = '<li class="empty">No staff yet — use “Expand” above to add one.</li>'; return; }
+
   staff.forEach(st => {
     const li = document.createElement('li');
     if (editingStaffId === st.id) {
       const fieldInputs = STAFF_FIELDS.map(f =>
-        `<label>${f.label}<input type="${f.type}" class="edit-staff-${f.key}" value="${st[f.key] ? escapeHtml(st[f.key]) : ''}"></label>`
+        `<label>${f.label}${f.key === 'staffId' ? ' <span class="required-mark">*</span>' : ''}<input type="${f.type}" class="edit-staff-${f.key}" value="${st[f.key] ? escapeHtml(st[f.key]) : ''}" ${f.key === 'staffId' ? 'required' : ''}></label>`
       ).join('');
       const sigPreview = st.signature
         ? `<img src="${st.signature}" alt="" class="staff-signature-preview">
            <button type="button" class="btn-text remove-staff-signature" data-id="${st.id}">Remove signature</button>`
         : '';
       li.innerHTML = `<div class="edit-row">
-        <input type="text" class="edit-staff-name" value="${escapeHtml(st.name)}" placeholder="Full name">
+        <label>Full name <span class="required-mark">*</span>
+          <input type="text" class="edit-staff-name" value="${escapeHtml(st.name)}" placeholder="Full name" required>
+        </label>
         <label>Role
           <select class="edit-staff-role">
             <option value="Teacher" ${st.role === 'Teacher' ? 'selected' : ''}>Teacher</option>
@@ -1910,27 +1913,29 @@ function renderStaff() {
         <label>Signature
           <input type="file" class="edit-staff-signature-input" accept="image/*" data-staff="${st.id}">
         </label>
+        <p class="edit-staff-validation form-validation" role="alert"></p>
         <div class="edit-actions">
           <button class="save-btn save-staff" data-id="${st.id}">Save</button>
           <button class="cancel-btn cancel-staff">Cancel</button>
         </div>
       </div>`;
     } else {
-      const sigThumb = st.signature ? `<img src="${st.signature}" alt="" class="staff-signature-thumb">` : '';
-      const linkedTeacher = st.userUid ? `<div class="meta">SchoolHub Teacher: ${escapeHtml(st.email || st.userUid)}</div>` : '';
-      li.innerHTML = `<div><strong>${escapeHtml(st.name)}</strong>
-          <div class="meta">${escapeHtml(st.role || 'Staff')}${st.rank ? ' · ' + escapeHtml(st.rank) : ''}${st.staffId ? ' · ID ' + escapeHtml(st.staffId) : ''}</div>
-          ${linkedTeacher}
-          ${sigThumb}
+      li.innerHTML = `<div class="staff-list-main">
+          <strong>${escapeHtml(st.name || 'Unnamed staff')}</strong>
+          <div class="meta">${escapeHtml(st.role || 'Staff')}${st.staffId ? ' · ID ' + escapeHtml(st.staffId) : ' · ID not set'}</div>
         </div>
-        <div class="actions">
-          <button data-id="${st.id}" class="edit-staff">Edit</button>
-          <button data-id="${st.id}" class="del-staff">Delete</button>
+        <div class="staff-list-actions">
+          <button data-id="${st.id}" class="view-staff" type="button">View</button>
+          <button data-id="${st.id}" class="edit-staff" type="button">Edit</button>
+          <button data-id="${st.id}" class="del-staff" type="button">Delete</button>
         </div>`;
     }
     list.appendChild(li);
   });
 
+  list.querySelectorAll('.view-staff').forEach(btn => {
+    btn.addEventListener('click', () => showStaffDetails(btn.dataset.id));
+  });
   list.querySelectorAll('.edit-staff').forEach(btn => {
     btn.addEventListener('click', () => { editingStaffId = btn.dataset.id; renderStaff(); });
   });
@@ -1946,95 +1951,60 @@ function renderStaff() {
       const existingStaff = DB.get(KEYS.staff, []).find(x => x.id === staffId);
       const oldStoragePath = existingStaff ? (existingStaff.signatureStoragePath || '') : '';
       const cacheKey = imageCacheKey('staff', staffId);
-
-      // v36: save locally before any Firebase operation.
       try {
         const dataUrl = await fileToDataUrl(file);
         if (!isDataImage(dataUrl)) throw new Error('The selected file is not a readable image.');
-
-        await cacheLocalImageWithMeta(cacheKey, dataUrl, {
-          storagePath: assetPath,
-          sourceUrl: '',
-          updatedAt: new Date().toISOString()
-        });
-
+        await cacheLocalImageWithMeta(cacheKey, dataUrl, { storagePath: assetPath, sourceUrl: '', updatedAt: new Date().toISOString() });
         const staffList = DB.get(KEYS.staff, []);
         const st = staffList.find(x => x.id === staffId);
         if (!st) throw new Error('Staff record not found.');
-        st.signature = dataUrl;
-        st.signatureUrl = '';
-        st.signatureStoragePath = assetPath;
-        DB.set(KEYS.staff, staffList);
-        renderStaff();
+        st.signature = dataUrl; st.signatureUrl = ''; st.signatureStoragePath = assetPath;
+        DB.set(KEYS.staff, staffList); renderStaff();
         auditAction('update', 'staff-signature', staffId, `Updated staff signature: ${st.name || staffId}`);
-
         try {
           const url = await uploadSchoolAsset(file, 'signatures', staffId);
-          const latestStaff = DB.get(KEYS.staff, []);
-          const latest = latestStaff.find(x => x.id === staffId);
-          if (latest) {
-            latest.signature = dataUrl;
-            latest.signatureUrl = url || '';
-            latest.signatureStoragePath = assetPath;
-          }
+          const latestStaff = DB.get(KEYS.staff, []); const latest = latestStaff.find(x => x.id === staffId);
+          if (latest) { latest.signature = dataUrl; latest.signatureUrl = url || ''; latest.signatureStoragePath = assetPath; }
           DB.set(KEYS.staff, latestStaff);
-
           await persistStaffSignature(staffId, url || '', assetPath);
-          await upsertImageManifest('staff', staffId, {
-            storagePath: assetPath,
-            sourceUrl: url || '',
-            storageUpdatedAt: new Date().toISOString()
-          });
-
+          await upsertImageManifest('staff', staffId, { storagePath: assetPath, sourceUrl: url || '', storageUpdatedAt: new Date().toISOString() });
           if (oldStoragePath && oldStoragePath !== assetPath) await removeStoragePath(oldStoragePath);
           renderStaff();
-        } catch (cloudError) {
-          console.warn('Staff signature cloud backup pending:', cloudError);
-          alert(`Signature saved on this browser. Firebase backup is pending.\n\n${cloudError.message || cloudError}`);
-        }
-      } catch (err) {
-        alert('Could not save the signature locally: ' + (err.message || err));
-      } finally {
-        input.value = '';
-      }
+        } catch (cloudError) { console.warn('Staff signature cloud backup pending:', cloudError); alert(`Signature saved on this browser. Firebase backup is pending.\n\n${cloudError.message || cloudError}`); }
+      } catch (err) { alert('Could not save the signature locally: ' + (err.message || err)); }
+      finally { input.value = ''; }
     });
   });
   list.querySelectorAll('.remove-staff-signature').forEach(btn => {
     btn.addEventListener('click', () => {
-      const staffList = DB.get(KEYS.staff, []);
-      const st = staffList.find(x => x.id === btn.dataset.id);
-      if (!st) return;
+      const staffList = DB.get(KEYS.staff, []); const st = staffList.find(x => x.id === btn.dataset.id); if (!st) return;
       const oldUrl = st.signatureUrl || st.signature || '';
-      st.signature = '';
-      st.signatureUrl = '';
-      st.signatureStoragePath = '';
-      removeCachedLocalImage(imageCacheKey('staff', st.id));
-      DB.set(KEYS.staff, staffList);
-      Promise.all([
-        st.signatureStoragePath ? removeStoragePath(st.signatureStoragePath) : removeStorageFile(oldUrl),
-        persistStaffSignature(st.id, ''),
-        removeImageManifest('staff', st.id)
-      ]).then(() => renderStaff())
-        .catch(err => alert('Could not remove the signature: ' + err.message));
+      const oldStoragePath = st.signatureStoragePath || '';
+      st.signature = ''; st.signatureUrl = ''; st.signatureStoragePath = '';
+      removeCachedLocalImage(imageCacheKey('staff', st.id)); DB.set(KEYS.staff, staffList);
+      Promise.all([oldStoragePath ? removeStoragePath(oldStoragePath) : removeStorageFile(oldUrl), persistStaffSignature(st.id, ''), removeImageManifest('staff', st.id)])
+        .then(() => renderStaff()).catch(err => alert('Could not remove the signature: ' + err.message));
     });
   });
   list.querySelectorAll('.save-staff').forEach(btn => {
     btn.addEventListener('click', () => {
       const li = btn.closest('li');
+      const validation = li.querySelector('.edit-staff-validation');
       const name = li.querySelector('.edit-staff-name').value.trim();
-      if (!name) return;
-      const staffList = DB.get(KEYS.staff, []);
-      const st = staffList.find(x => x.id === btn.dataset.id);
+      const staffIdValue = li.querySelector('.edit-staff-staffId').value.trim();
+      if (!name || !staffIdValue) {
+        validation.textContent = !name && !staffIdValue ? 'Full name and Staff ID are required.' : (!name ? 'Full name is required.' : 'Staff ID is required.');
+        validation.classList.add('show');
+        return;
+      }
+      validation.classList.remove('show');
+      const staffList = DB.get(KEYS.staff, []); const st = staffList.find(x => x.id === btn.dataset.id);
       if (st) {
-        st.name = name;
-        st.role = li.querySelector('.edit-staff-role').value;
+        st.name = name; st.role = li.querySelector('.edit-staff-role').value;
         STAFF_FIELDS.forEach(f => { st[f.key] = li.querySelector(`.edit-staff-${f.key}`).value.trim(); });
       }
-      DB.set(KEYS.staff, staffList);
-      auditAction('update', 'staff', st ? st.id : btn.dataset.id, `Updated staff: ${st ? st.name : ''}`);
-      editingStaffId = null;
-      renderStaff();
-      renderClasses(); // class list "Class Teacher:" meta may reference this name
+      DB.set(KEYS.staff, staffList); auditAction('update', 'staff', st ? st.id : btn.dataset.id, `Updated staff: ${st ? st.name : ''}`);
+      editingStaffId = null; renderStaff(); renderClasses();
     });
   });
   list.querySelectorAll('.del-staff').forEach(btn => {
@@ -2043,85 +2013,96 @@ function renderStaff() {
       const id = btn.dataset.id;
       DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== id));
       auditAction('delete', 'staff', id, 'Deleted staff record');
-      const classes = DB.get(KEYS.classes, []);
-      classes.forEach(c => { if (c.classTeacherId === id) c.classTeacherId = ''; });
-      DB.set(KEYS.classes, classes);
-      const s = DB.get(KEYS.settings, {});
-      if (s.headTeacherId === id) { s.headTeacherId = ''; DB.set(KEYS.settings, s); }
-      renderStaff();
-      renderClasses();
+      const classes = DB.get(KEYS.classes, []); classes.forEach(c => { if (c.classTeacherId === id) c.classTeacherId = ''; }); DB.set(KEYS.classes, classes);
+      const settings = DB.get(KEYS.settings, {}); if (settings.headTeacherId === id) { settings.headTeacherId = ''; DB.set(KEYS.settings, settings); }
+      renderStaff(); renderClasses();
     });
   });
 }
 
+function showStaffDetails(staffId) {
+  const st = DB.get(KEYS.staff, []).find(x => x.id === staffId);
+  if (!st) return;
+  const content = document.getElementById('staffDetailsContent');
+  if (!content) return;
+  const rows = [
+    ['Full name', st.name || '—'],
+    ['Role', st.role || 'Staff'],
+    ['Staff ID', st.staffId || '—'],
+    ['Registered No.', st.registeredNo || '—'],
+    ['License No.', st.licenseNo || '—'],
+    ['SSNIT No.', st.ssnitNo || '—'],
+    ['Ghana Card ID', st.ghanaCardId || '—'],
+    ['Date of Birth', st.dob || '—'],
+    ['Date of Appointment', st.dateOfAppointment || '—'],
+    ['Rank', st.rank || '—'],
+    ['Phone', st.phone || '—'],
+    ['SchoolHub account', st.email || st.userUid || '—']
+  ];
+  content.innerHTML = rows.map(([label, value]) => `<div class="staff-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('') +
+    (st.signature ? `<img src="${st.signature}" alt="Staff signature" class="staff-detail-signature">` : '<p class="hint" style="text-align:center;margin:14px 0 0;">No signature uploaded.</p>');
+  document.getElementById('staffDetailsDialog').classList.remove('hidden');
+}
+
+function closeStaffDetails() {
+  const dialog = document.getElementById('staffDetailsDialog');
+  if (dialog) dialog.classList.add('hidden');
+}
+
+const toggleAddStaffBtn = document.getElementById('toggleAddStaffBtn');
+const addStaffForm = document.getElementById('addStaffForm');
+if (toggleAddStaffBtn && addStaffForm) {
+  toggleAddStaffBtn.addEventListener('click', () => {
+    const open = addStaffForm.classList.toggle('hidden') === false;
+    toggleAddStaffBtn.textContent = open ? 'Collapse' : 'Expand';
+    toggleAddStaffBtn.setAttribute('aria-expanded', String(open));
+  });
+}
+const staffDetailsCloseBtn = document.getElementById('staffDetailsCloseBtn');
+if (staffDetailsCloseBtn) staffDetailsCloseBtn.addEventListener('click', closeStaffDetails);
+const staffDetailsDialog = document.getElementById('staffDetailsDialog');
+if (staffDetailsDialog) staffDetailsDialog.addEventListener('click', e => { if (e.target === staffDetailsDialog) closeStaffDetails(); });
+
 document.getElementById('addStaffBtn').addEventListener('click', async () => {
   if (!requireHeadTeacher('manage staff')) return;
   const nameInput = document.getElementById('newStaffName');
+  const staffIdInput = document.getElementById('newStaff_staffId');
+  const validation = document.getElementById('addStaffValidation');
   const name = nameInput.value.trim();
-  if (!name) return;
+  const staffIdValue = staffIdInput.value.trim();
+  if (!name || !staffIdValue) {
+    validation.textContent = !name && !staffIdValue ? 'Full name and Staff ID are required before the staff member can be added.' : (!name ? 'Full name is required before the staff member can be added.' : 'Staff ID is required before the staff member can be added.');
+    validation.classList.add('show');
+    if (!name) nameInput.focus(); else staffIdInput.focus();
+    return;
+  }
+  validation.classList.remove('show');
   const role = document.getElementById('newStaffRole').value;
   const values = {};
   STAFF_FIELDS.forEach(f => { values[f.key] = document.getElementById('newStaff_' + f.key).value.trim(); });
   const file = document.getElementById('newStaffSignature').files[0];
-
-  const staffId = uid();
-  const signaturePath = file ? schoolAssetPath(file, 'signatures', staffId) : '';
-  let signatureDataUrl = '';
-  let signatureUrl = '';
-
+  const existingStaff = DB.get(KEYS.staff, []).find(s => String(s.staffId || '').trim().toLowerCase() === staffIdValue.toLowerCase());
+  if (existingStaff) {
+    validation.textContent = `Staff ID ${staffIdValue} is already assigned to ${existingStaff.name || 'another staff member'}. Use a unique Staff ID.`;
+    validation.classList.add('show'); staffIdInput.focus(); return;
+  }
+  const staffId = uid(); const signaturePath = file ? schoolAssetPath(file, 'signatures', staffId) : ''; let signatureDataUrl = ''; let signatureUrl = '';
   try {
-    // v36: read/cache the signature before touching Firebase.
-    if (file) {
-      signatureDataUrl = await fileToDataUrl(file);
-      if (!isDataImage(signatureDataUrl)) throw new Error('The selected signature file is not a readable image.');
-      await cacheLocalImageWithMeta(imageCacheKey('staff', staffId), signatureDataUrl, {
-        storagePath: signaturePath,
-        sourceUrl: '',
-        updatedAt: new Date().toISOString()
-      });
-    }
-
+    if (file) { signatureDataUrl = await fileToDataUrl(file); if (!isDataImage(signatureDataUrl)) throw new Error('The selected signature file is not a readable image.'); await cacheLocalImageWithMeta(imageCacheKey('staff', staffId), signatureDataUrl, { storagePath: signaturePath, sourceUrl: '', updatedAt: new Date().toISOString() }); }
     const staffList = DB.get(KEYS.staff, []);
-    const record = Object.assign({
-      id: staffId,
-      name,
-      role,
-      signature: signatureDataUrl,
-      signatureUrl: '',
-      signatureStoragePath: signaturePath
-    }, values);
-    staffList.push(record);
-    DB.set(KEYS.staff, staffList);
+    const record = Object.assign({ id: staffId, name, role, signature: signatureDataUrl, signatureUrl: '', signatureStoragePath: signaturePath }, values);
+    staffList.push(record); DB.set(KEYS.staff, staffList); auditAction('create', 'staff', record.id, `Added staff: ${record.name}`);
+    nameInput.value = ''; STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; }); document.getElementById('newStaffSignature').value = ''; validation.classList.remove('show');
     renderStaff();
-    auditAction('create', 'staff', record.id, `Added staff: ${record.name}`);
-
-    // Clear the form immediately after the local transaction succeeds.
-    nameInput.value = '';
-    STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; });
-    document.getElementById('newStaffSignature').value = '';
-
+    addStaffForm.classList.add('hidden'); toggleAddStaffBtn.textContent = 'Expand'; toggleAddStaffBtn.setAttribute('aria-expanded', 'false');
     if (file) {
       try {
-        signatureUrl = await uploadSchoolAsset(file, 'signatures', staffId);
-        const latestStaff = DB.get(KEYS.staff, []);
-        const latest = latestStaff.find(x => x.id === staffId);
-        if (latest) latest.signatureUrl = signatureUrl || '';
-        DB.set(KEYS.staff, latestStaff);
-        await persistStaffSignature(staffId, signatureUrl || '', signaturePath);
-        await upsertImageManifest('staff', staffId, {
-          storagePath: signaturePath,
-          sourceUrl: signatureUrl || '',
-          storageUpdatedAt: new Date().toISOString()
-        });
-      } catch (cloudError) {
-        console.warn('New staff signature cloud backup pending:', cloudError);
-        alert(`Staff member saved locally. Signature Firebase backup is pending.\n\n${cloudError.message || cloudError}`);
-      }
+        signatureUrl = await uploadSchoolAsset(file, 'signatures', staffId); const latestStaff = DB.get(KEYS.staff, []); const latest = latestStaff.find(x => x.id === staffId); if (latest) latest.signatureUrl = signatureUrl || ''; DB.set(KEYS.staff, latestStaff);
+        await persistStaffSignature(staffId, signatureUrl || '', signaturePath); await upsertImageManifest('staff', staffId, { storagePath: signaturePath, sourceUrl: signatureUrl || '', storageUpdatedAt: new Date().toISOString() });
+      } catch (cloudError) { console.warn('New staff signature cloud backup pending:', cloudError); alert(`Staff member saved locally. Signature Firebase backup is pending.\n\n${cloudError.message || cloudError}`); }
     }
     renderStaff();
-  } catch (err) {
-    alert('Could not save the staff member: ' + (err.message || err));
-  }
+  } catch (err) { alert('Could not save the staff member: ' + (err.message || err)); }
 });
 
 /* ---------- Attendance: Students + Teachers + School Calendar ---------- */

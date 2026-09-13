@@ -1,11 +1,10 @@
-# AlatiphA SchoolHub v38.11.7
+# AlatiphA SchoolHub v38.11.8
 
-Manage Teachers UX refinement.
+Staff management cleanup.
 
-- Approved/active teachers collapse after Save.
-- Collapsed rows show teacher account, staff link, assignment counts, Edit and Disable/Reactivate actions.
-- Edit expands the full Staff/Class/Subject assignment form.
-- Pending teachers remain expanded for approval and assignment.
-- Cancel returns an expanded teacher to the collapsed view.
-- Class and subject checkbox spacing is reduced for a more compact mobile layout.
-- Existing teacher, Staff, Firebase, access, and assignment logic is preserved.
+- Add Staff form is collapsed by default and can be expanded when needed.
+- Full name and Staff ID are required when adding or editing staff, with inline validation.
+- Saved Staff list is compact, showing only name and role/ID summary.
+- Added View action with a scrollable Staff Details dialog.
+- Existing Edit/Delete, signature, Firebase, Staff, Teacher, and Head Teacher relationships are preserved.
+- Staff form automatically collapses after a successful save.
