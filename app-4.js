@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.14';
+const APP_VERSION = 'v38.11.15';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -304,7 +304,7 @@ function ensureDefaults() {
     DB.set(KEYS.settings, {
       teacherName: '', schoolName: '', address: '', email: '', logo: '',
       currentTerm: 'Term 1', currentYear: '', attendanceOutOf: '', nextTermBegins: '',
-      reportLayout: 'standard', reportTheme: 'schoolhub', headTeacherId: '', termDates: {}
+      reportLayout: 'standard', reportTheme: 'bw', headTeacherId: '', termDates: {}
     });
   }
   if (DB.get(KEYS.classes, null) === null) DB.set(KEYS.classes, []);
@@ -4498,13 +4498,17 @@ function computeSubjectPositions(classId, term, year) {
 
 /* ---------- Report Card Themes ---------- */
 const REPORT_THEMES={
- schoolhub:{id:'schoolhub',name:'Theme 1',title:'SchoolHub Professional',description:'The current AlatiphA SchoolHub design with teal, green, gold and clean white cards.',primary:[24,112,99],dark:[22,80,69],accent:[201,162,39],paper:[241,239,230],light:[248,249,246],pale:[231,242,238],text:[22,36,28],muted:[92,111,99],rule:[205,220,214],white:[255,255,255],red:[156,58,40],headerH:39,headerRadius:4,tableRadius:2.5,cardRadius:2.5,footerH:9,footerAccent:1,headerTitleSize:15,bodyFont:'helvetica',cardTitle:7,panelTitle:7.5,tableFont:7.1,signatureH:21,legendH:18,infoH:36,cardH:31},
- modern:{id:'modern',name:'Theme 2',title:'Modern Academic',description:'A contemporary blue-green layout with crisp panels and a lighter visual hierarchy.',primary:[36,108,125],dark:[24,58,76],accent:[226,170,64],paper:[246,248,247],light:[238,244,246],pale:[229,241,243],text:[25,40,48],muted:[88,105,114],rule:[205,218,222],white:[255,255,255],red:[175,65,55],headerH:37,headerRadius:3,tableRadius:1.5,cardRadius:3,footerH:8,footerAccent:.8,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7.2,panelTitle:7.4,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30},
- classic:{id:'classic',name:'Theme 3',title:'Classic Academic',description:'A formal traditional report card with warm paper, structured borders and academic typography.',primary:[105,74,55],dark:[63,55,46],accent:[164,126,55],paper:[247,243,233],light:[251,249,244],pale:[240,233,218],text:[42,39,34],muted:[101,94,82],rule:[211,201,183],white:[255,255,255],red:[151,58,45],headerH:38,headerRadius:1.5,tableRadius:.8,cardRadius:1.5,footerH:8,footerAccent:.8,headerTitleSize:15,bodyFont:'times',cardTitle:7.1,panelTitle:7.2,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30},
- executive:{id:'executive',name:'Theme 4',title:'Executive',description:'A premium compact presentation with deep navy, gold accents and high-contrast information panels.',primary:[31,65,92],dark:[20,37,55],accent:[198,156,48],paper:[242,244,244],light:[247,248,249],pale:[232,237,241],text:[25,34,43],muted:[90,101,111],rule:[204,212,218],white:[255,255,255],red:[166,58,52],headerH:39,headerRadius:4,tableRadius:2,cardRadius:2,footerH:8,footerAccent:.8,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7.2,panelTitle:7.5,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30}
+ bw:{id:'bw',name:'Theme 1',title:'Black & White',description:'A clean, printer-friendly monochrome report card with strong typography and minimal decoration.',primary:[20,20,20],dark:[10,10,10],accent:[20,20,20],paper:[255,255,255],light:[248,248,248],pale:[238,238,238],text:[20,20,20],muted:[82,82,82],rule:[190,190,190],white:[255,255,255],red:[120,30,30],headerH:39,headerRadius:0,tableRadius:0,cardRadius:0,footerH:7,footerAccent:1,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7,panelTitle:7.5,tableFont:7.1,signatureH:20,legendH:17,infoH:35,cardH:30,borderless:false},
+ schoolhub:{id:'schoolhub',name:'Theme 2',title:'SchoolHub Professional',description:'The current AlatiphA SchoolHub design with teal, green, gold and clean white cards.',primary:[24,112,99],dark:[22,80,69],accent:[201,162,39],paper:[241,239,230],light:[248,249,246],pale:[231,242,238],text:[22,36,28],muted:[92,111,99],rule:[205,220,214],white:[255,255,255],red:[156,58,40],headerH:39,headerRadius:4,tableRadius:2.5,cardRadius:2.5,footerH:9,footerAccent:1,headerTitleSize:15,bodyFont:'helvetica',cardTitle:7,panelTitle:7.5,tableFont:7.1,signatureH:21,legendH:18,infoH:36,cardH:31,borderless:false},
+ modern:{id:'modern',name:'Theme 3',title:'Modern Academic',description:'A contemporary blue-green layout with crisp panels and a lighter visual hierarchy.',primary:[36,108,125],dark:[24,58,76],accent:[226,170,64],paper:[246,248,247],light:[238,244,246],pale:[229,241,243],text:[25,40,48],muted:[88,105,114],rule:[205,218,222],white:[255,255,255],red:[175,65,55],headerH:37,headerRadius:3,tableRadius:1.5,cardRadius:3,footerH:8,footerAccent:.8,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7.2,panelTitle:7.4,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30,borderless:false},
+ classic:{id:'classic',name:'Theme 4',title:'Classic Academic',description:'A formal traditional report card with warm paper, structured borders and academic typography.',primary:[105,74,55],dark:[63,55,46],accent:[164,126,55],paper:[247,243,233],light:[251,249,244],pale:[240,233,218],text:[42,39,34],muted:[101,94,82],rule:[211,201,183],white:[255,255,255],red:[151,58,45],headerH:38,headerRadius:1.5,tableRadius:.8,cardRadius:1.5,footerH:8,footerAccent:.8,headerTitleSize:15,bodyFont:'times',cardTitle:7.1,panelTitle:7.2,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30,borderless:false},
+ executive:{id:'executive',name:'Theme 5',title:'Executive',description:'A premium compact presentation with deep navy, gold accents and high-contrast information panels.',primary:[31,65,92],dark:[20,37,55],accent:[198,156,48],paper:[242,244,244],light:[247,248,249],pale:[232,237,241],text:[25,34,43],muted:[90,101,111],rule:[204,212,218],white:[255,255,255],red:[166,58,52],headerH:39,headerRadius:4,tableRadius:2,cardRadius:2,footerH:8,footerAccent:.8,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7.2,panelTitle:7.5,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30,borderless:false},
+ sage:{id:'sage',name:'Theme 6',title:'Sage Minimal',description:'A calm, borderless green layout using open space, soft panels and restrained accents.',primary:[52,102,84],dark:[31,67,55],accent:[183,145,62],paper:[248,247,240],light:[244,246,242],pale:[232,238,232],text:[32,47,40],muted:[91,105,96],rule:[214,221,214],white:[255,255,255],red:[150,62,48],headerH:38,headerRadius:5,tableRadius:0,cardRadius:4,footerH:7,footerAccent:.7,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7.1,panelTitle:7.4,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30,borderless:true},
+ blueair:{id:'blueair',name:'Theme 7',title:'Blue Air',description:'An airy borderless blue design with soft fills, open sections and modern typography.',primary:[39,96,130],dark:[26,58,82],accent:[77,137,158],paper:[248,250,251],light:[243,247,249],pale:[231,240,245],text:[28,42,51],muted:[91,106,116],rule:[211,222,229],white:[255,255,255],red:[158,59,55],headerH:38,headerRadius:5,tableRadius:0,cardRadius:4,footerH:7,footerAccent:.7,headerTitleSize:15.5,bodyFont:'helvetica',cardTitle:7.1,panelTitle:7.4,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30,borderless:true},
+ rose:{id:'rose',name:'Theme 8',title:'Rose Editorial',description:'A refined burgundy and blush editorial style with selective borders and elegant typography.',primary:[126,57,72],dark:[76,34,45],accent:[190,132,115],paper:[249,244,242],light:[252,249,248],pale:[242,229,229],text:[47,35,38],muted:[111,88,93],rule:[222,204,207],white:[255,255,255],red:[145,49,55],headerH:38,headerRadius:2,tableRadius:1,cardRadius:2,footerH:8,footerAccent:.8,headerTitleSize:15.5,bodyFont:'times',cardTitle:7.1,panelTitle:7.4,tableFont:7,signatureH:20,legendH:17,infoH:35,cardH:30,borderless:false}
 };
-function getReportTheme(settings){return REPORT_THEMES[(settings&&settings.reportTheme)||'schoolhub']||REPORT_THEMES.schoolhub;}
-function renderReportThemePicker(){const host=document.getElementById('reportThemePicker');if(!host)return;const activeId=DB.get(KEYS.settings,{}).reportTheme||'schoolhub';host.innerHTML=`<div class="report-theme-active"><div class="report-theme-active-icon">✦</div><div><span class="report-theme-kicker">ACTIVE THEME</span><h3>${escapeHtml(REPORT_THEMES[activeId].title)}</h3><p>${escapeHtml(REPORT_THEMES[activeId].description)}</p></div></div><div class="report-theme-grid">${Object.values(REPORT_THEMES).map(t=>`<article class="report-theme-card ${t.id===activeId?'active':''}"><div class="report-theme-preview" data-theme="${t.id}"><div class="rtp-head"><span></span><b>${escapeHtml(t.title)}</b><i></i></div><div class="rtp-meta"><span></span><span></span></div><div class="rtp-table"><b></b><b></b><b></b><b></b><b></b></div><div class="rtp-bottom"><span></span><span></span></div><div class="rtp-footer"></div></div><div class="report-theme-card-body"><h3>${escapeHtml(t.name)} <small>${escapeHtml(t.title)}</small></h3><p>${escapeHtml(t.description)}</p><div class="report-theme-actions"><button type="button" class="report-theme-preview-btn" data-theme-preview="${t.id}">⌕ Preview</button><button type="button" class="btn-primary report-theme-apply" data-theme-apply="${t.id}">${t.id===activeId?'✓ Active':'Apply'}</button></div></div></article>`).join('')}</div>`;host.querySelectorAll('[data-theme-apply]').forEach(b=>b.addEventListener('click',()=>applyReportTheme(b.dataset.themeApply)));host.querySelectorAll('[data-theme-preview]').forEach(b=>b.addEventListener('click',()=>previewReportTheme(b.dataset.themePreview)));}
+function getReportTheme(settings){return REPORT_THEMES[(settings&&settings.reportTheme)||'bw']||REPORT_THEMES.bw;}
+function renderReportThemePicker(){const host=document.getElementById('reportThemePicker');if(!host)return;const activeId=DB.get(KEYS.settings,{}).reportTheme||'bw';host.innerHTML=`<div class="report-theme-active"><div class="report-theme-active-icon">✦</div><div><span class="report-theme-kicker">ACTIVE THEME</span><h3>${escapeHtml(REPORT_THEMES[activeId].title)}</h3><p>${escapeHtml(REPORT_THEMES[activeId].description)}</p></div></div><div class="report-theme-grid">${Object.values(REPORT_THEMES).map(t=>`<article class="report-theme-card ${t.id===activeId?'active':''}"><div class="report-theme-preview" data-theme="${t.id}"><div class="rtp-head"><span></span><b>${escapeHtml(t.title)}</b><i></i></div><div class="rtp-meta"><span></span><span></span></div><div class="rtp-table"><b></b><b></b><b></b><b></b><b></b></div><div class="rtp-bottom"><span></span><span></span></div><div class="rtp-footer"></div></div><div class="report-theme-card-body"><h3>${escapeHtml(t.name)} <small>${escapeHtml(t.title)}</small></h3><p>${escapeHtml(t.description)}</p><div class="report-theme-actions"><button type="button" class="report-theme-preview-btn" data-theme-preview="${t.id}">⌕ Preview</button><button type="button" class="btn-primary report-theme-apply" data-theme-apply="${t.id}">${t.id===activeId?'✓ Active':'Apply'}</button></div></div></article>`).join('')}</div>`;host.querySelectorAll('[data-theme-apply]').forEach(b=>b.addEventListener('click',()=>applyReportTheme(b.dataset.themeApply)));host.querySelectorAll('[data-theme-preview]').forEach(b=>b.addEventListener('click',()=>previewReportTheme(b.dataset.themePreview)));}
 function applyReportTheme(themeId){if(!REPORT_THEMES[themeId])return;if(!requireHeadTeacher('change the report card theme'))return;const s=DB.get(KEYS.settings,{});s.reportTheme=themeId;DB.set(KEYS.settings,s);const sel=document.getElementById('reportThemeSelect');if(sel)sel.value=themeId;auditAction('update','report-theme',themeId,`Applied report card theme: ${REPORT_THEMES[themeId].title}`);renderReportThemePicker();}
 async function previewReportTheme(themeId){const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,remarksAll[result.student.id]||{},assets);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
 
@@ -4991,6 +4995,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const RED = theme.red;
   const WHITE = theme.white;
   const RULE = theme.rule;
+  const BORDERLESS = !!theme.borderless;
 
   const setFill = c => doc.setFillColor(c[0], c[1], c[2]);
   const setText = c => doc.setTextColor(c[0], c[1], c[2]);
@@ -5059,7 +5064,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const cardY = 52, cardH = theme.cardH, gap = 4, cardW = (contentW - gap) / 2;
   function card(x, title, rows, width = cardW) {
     setFill(WHITE); doc.roundedRect(x, cardY, width, cardH, 2.5, 2.5, 'F');
-    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, cardY, width, cardH, 2.5, 2.5, 'S');
+    if (!BORDERLESS) { setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, cardY, width, cardH, theme.cardRadius, theme.cardRadius, 'S'); }
     setFill(PRIMARY); doc.roundedRect(x, cardY, width, 6.5, 2.5, 2.5, 'F');
     doc.rect(x, cardY + 4, width, 2.5, 'F');
     setText(WHITE); doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.text(title, x + 4, cardY + 4.5);
@@ -5126,8 +5131,8 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     const pos = positions[en.subject.id] && positions[en.subject.id][result.student.id];
     setFill(idx % 2 === 0 ? WHITE : LIGHT);
     doc.rect(left, y, tableW, rowH, 'F');
-    setDraw(RULE); doc.setLineWidth(0.22); doc.rect(left, y, tableW, rowH);
-    for (let i = 1; i < colX.length - 1; i++) doc.line(colX[i], y, colX[i], y + rowH);
+    if (!BORDERLESS) { setDraw(RULE); doc.setLineWidth(0.22); doc.rect(left, y, tableW, rowH);
+      for (let i = 1; i < colX.length - 1; i++) doc.line(colX[i], y, colX[i], y + rowH); }
     doc.setFont('helvetica', 'normal'); doc.setFontSize(7.1); setText(TEXT);
 
     const values = simple
@@ -5152,8 +5157,8 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   y += 5;
   const infoY = y, infoH = theme.infoH, infoGap = 4, infoW = (contentW - infoGap) / 2;
   function infoPanel(x, title, rows) {
-    setFill(WHITE); doc.roundedRect(x, infoY, infoW, infoH, 2.5, 2.5, 'F');
-    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, infoY, infoW, infoH, 2.5, 2.5, 'S');
+    setFill(WHITE); doc.roundedRect(x, infoY, infoW, infoH, theme.cardRadius, theme.cardRadius, 'F');
+    if (!BORDERLESS) { setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, infoY, infoW, infoH, theme.cardRadius, theme.cardRadius, 'S'); }
     setFill(PRIMARY); doc.roundedRect(x, infoY, infoW, 7, 2.5, 2.5, 'F'); doc.rect(x, infoY + 4.5, infoW, 2.5, 'F');
     setText(WHITE); doc.setFont('helvetica','bold'); doc.setFontSize(7.5); doc.text(title, x + 4, infoY + 4.9);
 
@@ -5194,8 +5199,8 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const sigGap = 5, sigW = (contentW - (sigGap * 2)) / 3;
   const sigY = y, sigH = theme.signatureH;
   function signatureBox(x, title, image) {
-    setFill(WHITE); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'F');
-    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, sigY, sigW, sigH, 2.5, 2.5, 'S');
+    setFill(WHITE); doc.roundedRect(x, sigY, sigW, sigH, theme.cardRadius, theme.cardRadius, 'F');
+    if (!BORDERLESS) { setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, sigY, sigW, sigH, theme.cardRadius, theme.cardRadius, 'S'); }
     if (image) {
       try { doc.addImage(image, 'PNG', x + sigW/2 - 18, sigY + 2, 36, 11); }
       catch (e) { try { doc.addImage(image, 'JPEG', x + sigW/2 - 18, sigY + 2, 36, 11); } catch (e2) {} }
@@ -5206,8 +5211,8 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   signatureBox(left, 'CLASS TEACHER', sig.classTeacherSignature);
 
   const dateX = left + sigW + sigGap;
-  setFill(WHITE); doc.roundedRect(dateX, sigY, sigW, sigH, 2.5, 2.5, 'F');
-  setDraw(GOLD); doc.setLineWidth(0.5); doc.roundedRect(dateX, sigY, sigW, sigH, 2.5, 2.5, 'S');
+  setFill(WHITE); doc.roundedRect(dateX, sigY, sigW, sigH, theme.cardRadius, theme.cardRadius, 'F');
+  if (BORDERLESS) { setFill(PALE_GREEN); doc.rect(dateX, sigY, sigW, 1, 'F'); } else { setDraw(GOLD); doc.setLineWidth(0.5); doc.roundedRect(dateX, sigY, sigW, sigH, theme.cardRadius, theme.cardRadius, 'S'); }
   setText(PRIMARY_DARK); doc.setFont('helvetica','bold'); doc.setFontSize(6.8); doc.text('DATE OF ISSUE', dateX + sigW/2, sigY + 8, {align:'center'});
   doc.setFont('helvetica','normal'); doc.setFontSize(7.2); doc.text(new Date().toLocaleDateString(), dateX + sigW/2, sigY + 14.5, {align:'center'});
   setText(GOLD); doc.setFont('helvetica','bold'); doc.setFontSize(6); doc.text('SchoolHub', dateX + sigW/2, sigY + 19, {align:'center'});
@@ -5219,8 +5224,8 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   y = sigY + sigH + 5;
   const legendGap = 4, legendW = (contentW - legendGap) / 2, legendH = theme.legendH;
   function legendBox(x, title, lines) {
-    setFill(WHITE); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'F');
-    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, y, legendW, legendH, 2.5, 2.5, 'S');
+    setFill(WHITE); doc.roundedRect(x, y, legendW, legendH, theme.cardRadius, theme.cardRadius, 'F');
+    if (!BORDERLESS) { setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(x, y, legendW, legendH, theme.cardRadius, theme.cardRadius, 'S'); }
     setFill(PRIMARY); doc.roundedRect(x, y, legendW, 6.5, 2.5, 2.5, 'F'); doc.rect(x, y + 4, legendW, 2.5, 'F');
     setText(WHITE); doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.text(title, x + 4, y + 4.5);
     let yy = y + 11;
