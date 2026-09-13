@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.4';
+const APP_VERSION = 'v38.11.6';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -4747,19 +4747,34 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 
   const schoolName = (settings.schoolName && settings.schoolName.trim()) ? settings.schoolName.trim() : 'School Name Not Set';
   const headerCenter = pageWidth / 2;
+
+  // Header hierarchy: School identity is grouped together at the top;
+  // report identity is visually separated below it. The header height is
+  // intentionally unchanged so the rest of the report keeps its layout.
   setText(WHITE);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.text(schoolName, headerCenter, 19, { align: 'center' });
-  doc.setFontSize(10);
-  doc.text('TERMINAL REPORT CARD', headerCenter, 27, { align: 'center' });
+  doc.text(schoolName, headerCenter, 18.5, { align: 'center' });
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.4);
   const contact = [settings.address, settings.email].filter(Boolean).join('  •  ');
-  if (contact) doc.text(contact, headerCenter, 34, { align: 'center' });
+  if (contact) doc.text(contact, headerCenter, 23.5, { align: 'center' });
+
+  // Subtle divider keeps the school identity and report identity distinct.
+  setDraw([210, 235, 229]);
+  doc.setLineWidth(0.35);
+  doc.line(headerCenter - 34, 26.5, headerCenter + 34, 26.5);
+
+  // Larger report title, with the SchoolHub descriptor immediately beneath it.
+  setText(WHITE);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11.5);
+  doc.text('TERMINAL REPORT CARD', headerCenter, 32.5, { align: 'center' });
   setText([230, 245, 240]);
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.4);
-  doc.text('AlatiphA SchoolHub  •  Efficient School Management', headerCenter, 42, { align: 'center' });
+  doc.text('AlatiphA SchoolHub  •  Efficient School Management', headerCenter, 38, { align: 'center' });
 
   // Reusable compact two-column card. Values are constrained to the card so
   // long IDs, class names and totals can never spill outside the container.
