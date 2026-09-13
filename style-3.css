@@ -936,3 +936,32 @@ html.sessionRestoring #sessionRestoreGate{
   .class-list-actions button{min-width:44px;padding:0 3px;}
 }
 
+
+/* v38.11.10 Students management cleanup */
+.student-add-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--rule);margin-bottom:12px;}
+.student-add-toolbar strong{font-size:15px;font-weight:600;color:var(--text);}
+.student-add-toolbar .hint{margin:3px 0 0;max-width:280px;}
+.student-toggle-btn{flex:none;border:1px solid var(--rule);background:var(--surface);color:var(--gold);padding:8px 16px;border-radius:7px;font:600 12px 'IBM Plex Sans',sans-serif;cursor:pointer;min-height:38px;}
+.student-toggle-btn:active{background:var(--surface-alt);}
+.student-add-form.hidden{display:none;}
+.student-list-main{min-width:0;flex:1;}
+.student-list-main strong{display:block;font-size:15px;font-weight:600;color:var(--text);}
+.student-list-main .meta{font-size:12px;color:var(--muted);margin-top:3px;}
+.student-list-actions{display:flex;align-items:center;gap:8px;flex:none;}
+.student-list-actions button{min-width:48px;}
+.student-details-box{max-width:420px;text-align:left;max-height:86vh;overflow:hidden;display:flex;flex-direction:column;}
+.student-details-box h2{text-align:center;}
+.student-details-content{overflow:auto;max-height:65vh;padding:4px 2px 10px;}
+.student-detail-photo{display:block;width:110px;height:130px;object-fit:cover;margin:14px auto 4px;border-radius:8px;border:1px solid var(--rule);background:#fff;}
+.student-details-box .about-actions{justify-content:center;padding-top:8px;}
+.student-details-box .about-actions .btn-primary{flex:0 0 120px;}
+@media(max-width:480px){
+  .student-add-toolbar{align-items:flex-start;}
+  .student-add-toolbar .hint{max-width:220px;}
+  .student-list-actions{gap:4px;}
+  .student-list-actions button{min-width:44px;padding:0 3px;}
+}
+
+.student-dob-age-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(90px,1fr);gap:10px;}
+.student-dob-age-grid label{margin:0;}
+@media(max-width:420px){.student-dob-age-grid{grid-template-columns:minmax(0,1.7fr) minmax(80px,1fr);gap:8px;}}

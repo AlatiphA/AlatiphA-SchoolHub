@@ -1397,6 +1397,19 @@ function fillClassSelect(sel) {
 
 let editingStudentId = null;
 
+function calculateStudentAge(dob) {
+  if (!dob) return '';
+  const parts = String(dob).split('-').map(Number);
+  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) return '';
+  const birth = new Date(parts[0], parts[1] - 1, parts[2]);
+  if (Number.isNaN(birth.getTime())) return '';
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const beforeBirthday = today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate());
+  if (beforeBirthday) age--;
+  return age >= 0 ? String(age) : '';
+}
+
 function renderStudents() {
   if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('studentList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
   const sel = document.getElementById('studentClassSelect');
@@ -1433,7 +1446,17 @@ function renderStudents() {
            <button type="button" class="btn-text remove-student-photo" data-id="${st.id}">Remove photo</button>`
         : '';
       li.innerHTML = `<div class="edit-row">
-        <input type="text" class="edit-student-name" value="${escapeHtml(st.name)}" placeholder="Full name">
+        <label>Full name <span class="required-mark">*</span>
+          <input type="text" class="edit-student-name" value="${escapeHtml(st.name)}" placeholder="Full name" required>
+        </label>
+        <div class="student-dob-age-grid">
+          <label>Date of Birth <span class="required-mark">*</span>
+            <input type="date" class="edit-student-dob" value="${st.dob ? escapeHtml(st.dob) : ''}" required>
+          </label>
+          <label>Age
+            <input type="text" class="edit-student-age" value="${escapeHtml(calculateStudentAge(st.dob))}" placeholder="Auto" readonly>
+          </label>
+        </div>
         <input type="text" class="edit-student-id" value="${st.admissionId ? escapeHtml(st.admissionId) : ''}" placeholder="Student ID (optional)">
         <input type="tel" class="edit-student-phone" value="${st.parentPhone ? escapeHtml(st.parentPhone) : ''}" placeholder="Parent phone (optional, for WhatsApp)">
         <select class="edit-student-gender">
@@ -1450,25 +1473,39 @@ function renderStudents() {
         </div>
       </div>`;
     } else {
-      const idPart = st.admissionId ? ` · ID ${escapeHtml(st.admissionId)}` : '';
-      const classPart = searchMode ? ` · ${escapeHtml(classesById[st.classId] || 'Unknown class')}` : '';
-      const thumb = st.photo ? `<img src="${st.photo}" alt="" class="student-thumb">` : '<span class="student-thumb student-thumb-empty"></span>';
-      li.innerHTML = `<div class="student-row-main">
-          ${thumb}
-          <div><strong>${escapeHtml(st.name)}</strong><div class="meta">${st.gender}${idPart}${classPart}</div></div>
+      const idPart = st.admissionId ? ` · ID ${escapeHtml(st.admissionId)}` : ' · ID not set';
+      li.innerHTML = `<div class="student-list-main">
+          <strong>${escapeHtml(st.name || 'Unnamed student')}</strong>
+          <div class="meta">${escapeHtml(st.gender || 'Sex not set')}${idPart}</div>
         </div>
-        <div class="actions">
-          <button data-id="${st.id}" class="edit-student">Edit</button>
-          <button data-id="${st.id}" class="del-student">Delete</button>
+        <div class="student-list-actions">
+          <button data-id="${st.id}" class="view-student" type="button">View</button>
+          <button data-id="${st.id}" class="edit-student" type="button">Edit</button>
+          <button data-id="${st.id}" class="del-student" type="button">Delete</button>
         </div>`;
     }
     list.appendChild(li);
+  });
+  list.querySelectorAll('.view-student').forEach(btn => {
+    btn.addEventListener('click', () => showStudentDetails(btn.dataset.id));
   });
   list.querySelectorAll('.edit-student').forEach(btn => {
     btn.addEventListener('click', () => { editingStudentId = btn.dataset.id; renderStudents(); });
   });
   list.querySelectorAll('.cancel-student').forEach(btn => {
     btn.addEventListener('click', () => { editingStudentId = null; renderStudents(); });
+  });
+  list.querySelectorAll('.edit-student-dob').forEach(input => {
+    input.addEventListener('input', () => {
+      const row = input.closest('.edit-row');
+      const age = row && row.querySelector('.edit-student-age');
+      if (age) age.value = calculateStudentAge(input.value);
+    });
+    input.addEventListener('change', () => {
+      const row = input.closest('.edit-row');
+      const age = row && row.querySelector('.edit-student-age');
+      if (age) age.value = calculateStudentAge(input.value);
+    });
   });
   list.querySelectorAll('.edit-student-photo-input').forEach(input => {
     input.addEventListener('change', async e => {
@@ -1576,13 +1613,18 @@ function renderStudents() {
     btn.addEventListener('click', () => {
       const li = btn.closest('li');
       const name = li.querySelector('.edit-student-name').value.trim();
-      if (!name) return;
+      const dob = li.querySelector('.edit-student-dob').value.trim();
+      if (!name || !dob) {
+        alert(!name && !dob ? 'Full name and Date of Birth are required.' : (!name ? 'Full name is required.' : 'Date of Birth is required.'));
+        if (!name) li.querySelector('.edit-student-name').focus(); else li.querySelector('.edit-student-dob').focus();
+        return;
+      }
       const admissionId = li.querySelector('.edit-student-id').value.trim();
       const parentPhone = li.querySelector('.edit-student-phone').value.trim();
       const gender = li.querySelector('.edit-student-gender').value;
       const students = DB.get(KEYS.students, []);
       const st = students.find(x => x.id === btn.dataset.id);
-      if (st) { st.name = name; st.admissionId = admissionId; st.parentPhone = parentPhone; st.gender = gender; }
+      if (st) { st.name = name; st.dob = dob; st.admissionId = admissionId; st.parentPhone = parentPhone; st.gender = gender; }
       DB.set(KEYS.students, students);
       auditAction('update', 'student', st ? st.id : btn.dataset.id, `Updated student: ${st ? st.name : ''}`);
       editingStudentId = null;
@@ -1614,24 +1656,56 @@ function renderStudents() {
 document.getElementById('studentClassSelect').addEventListener('change', renderStudents);
 document.getElementById('studentSearchInput').addEventListener('input', renderStudents);
 
+const toggleAddStudentBtn = document.getElementById('toggleAddStudentBtn');
+const addStudentForm = document.getElementById('addStudentForm');
+if (toggleAddStudentBtn && addStudentForm) {
+  toggleAddStudentBtn.addEventListener('click', () => {
+    const open = addStudentForm.classList.toggle('hidden') === false;
+    toggleAddStudentBtn.textContent = open ? 'Collapse' : 'Expand';
+    toggleAddStudentBtn.setAttribute('aria-expanded', String(open));
+  });
+}
+
+const newStudentDob = document.getElementById('newStudentDob');
+const newStudentAge = document.getElementById('newStudentAge');
+if (newStudentDob && newStudentAge) {
+  const updateNewStudentAge = () => { newStudentAge.value = calculateStudentAge(newStudentDob.value); };
+  newStudentDob.addEventListener('input', updateNewStudentAge);
+  newStudentDob.addEventListener('change', updateNewStudentAge);
+}
+
 document.getElementById('addStudentBtn').addEventListener('click', () => {
   const classId = document.getElementById('studentClassSelect').value;
   if (!classId) { alert('Add a class first.'); return; }
   if (!requireClassAccess(classId)) return;
   const nameInput = document.getElementById('newStudentName');
+  const dobInput = document.getElementById('newStudentDob');
+  const validation = document.getElementById('addStudentValidation');
   const name = nameInput.value.trim();
-  if (!name) return;
+  const dob = dobInput.value.trim();
+  if (!name || !dob) {
+    validation.textContent = !name && !dob ? 'Full name and Date of Birth are required before the student can be added.' : (!name ? 'Full name is required before the student can be added.' : 'Date of Birth is required before the student can be added.');
+    validation.classList.add('show');
+    if (!name) nameInput.focus(); else dobInput.focus();
+    return;
+  }
+  validation.classList.remove('show');
   const gender = document.getElementById('newStudentGender').value;
   const admissionId = document.getElementById('newStudentId').value.trim();
   const parentPhone = document.getElementById('newStudentPhone').value.trim();
   const students = DB.get(KEYS.students, []);
-  students.push({ id: uid(), classId, name, gender, admissionId, parentPhone });
+  students.push({ id: uid(), classId, name, dob, gender, admissionId, parentPhone });
   DB.set(KEYS.students, students);
   nameInput.value = '';
+  dobInput.value = '';
+  newStudentAge.value = '';
   document.getElementById('newStudentId').value = '';
   document.getElementById('newStudentPhone').value = '';
   renderStudents();
   renderClasses();
+  addStudentForm.classList.add('hidden');
+  toggleAddStudentBtn.textContent = 'Expand';
+  toggleAddStudentBtn.setAttribute('aria-expanded', 'false');
 });
 
 // Bulk add: one student per line, optionally "Name, ID". Gender and
@@ -1656,6 +1730,37 @@ document.getElementById('bulkAddStudentsBtn').addEventListener('click', () => {
   renderClasses();
   alert(`Added ${lines.length} student(s).`);
 });
+
+function showStudentDetails(studentId) {
+  const st = DB.get(KEYS.students, []).find(x => x.id === studentId);
+  if (!st) return;
+  const classes = DB.get(KEYS.classes, []);
+  const cls = classes.find(c => c.id === st.classId);
+  const content = document.getElementById('studentDetailsContent');
+  if (!content) return;
+  const rows = [
+    ['Full name', st.name || '—'],
+    ['Student ID', st.admissionId || '—'],
+    ['Sex', st.gender === 'M' ? 'Male' : (st.gender === 'F' ? 'Female' : '—')],
+    ['Date of Birth', st.dob || '—'],
+    ['Age', calculateStudentAge(st.dob) || '—'],
+    ['Class', cls ? cls.name : '—'],
+    ['Parent phone', st.parentPhone || '—']
+  ];
+  content.innerHTML = rows.map(([label, value]) => `<div class="staff-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('') +
+    (st.photo ? `<img src="${st.photo}" alt="Student photo" class="student-detail-photo">` : '');
+  document.getElementById('studentDetailsDialog').classList.remove('hidden');
+}
+
+function closeStudentDetails() {
+  const dialog = document.getElementById('studentDetailsDialog');
+  if (dialog) dialog.classList.add('hidden');
+}
+
+const studentDetailsCloseBtn = document.getElementById('studentDetailsCloseBtn');
+if (studentDetailsCloseBtn) studentDetailsCloseBtn.addEventListener('click', closeStudentDetails);
+const studentDetailsDialog = document.getElementById('studentDetailsDialog');
+if (studentDetailsDialog) studentDetailsDialog.addEventListener('click', e => { if (e.target === studentDetailsDialog) closeStudentDetails(); });
 
 /* ---------- Subjects ---------- */
 let editingSubjectId = null;
