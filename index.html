@@ -476,8 +476,28 @@
     <label>Class
       <select id="remarksClassSelect"></select>
     </label>
+    <div id="remarksStudentToolbar" class="remarks-student-toolbar hidden">
+      <div class="remarks-progress-row">
+        <span>Remarks completed</span>
+        <strong id="remarksProgress">0 / 0 completed</strong>
+      </div>
+      <label class="remarks-search-label">Search student
+        <input type="search" id="remarksStudentSearch" placeholder="Search by name or ID..." autocomplete="off">
+      </label>
+      <label class="remarks-student-label">Student
+        <select id="remarksStudentSelect"></select>
+      </label>
+      <div class="remarks-nav-row">
+        <button type="button" id="remarksPrevBtn" class="remarks-nav-btn">‹ Prev</button>
+        <span id="remarksStudentCounter">Student</span>
+        <button type="button" id="remarksNextBtn" class="remarks-nav-btn">Next ›</button>
+      </div>
+    </div>
     <div id="remarksFormWrap"></div>
-    <button id="saveRemarksBtn" class="btn-primary">Save Remarks</button>
+    <div class="remarks-save-actions">
+      <button id="saveRemarksBtn" class="btn-primary">Save Remarks</button>
+      <button id="saveNextRemarksBtn" class="btn-secondary">Save &amp; Next</button>
+    </div>
   </section>
 
   <!-- REPORTS -->

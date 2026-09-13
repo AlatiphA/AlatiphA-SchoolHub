@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.13';
+const APP_VERSION = 'v38.11.14';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -4170,38 +4170,128 @@ function remarksSelectOptions(items, current) {
   return html;
 }
 
-/* ---------- Remarks (attendance, conduct, fees, comments) ---------- */
+/* ---------- Remarks: one student at a time ---------- */
+const remarksState = {
+  classId: '',
+  students: [],
+  index: 0,
+  filter: ''
+};
+
+function remarksCurrentStudent() {
+  return remarksState.students[remarksState.index] || null;
+}
+
+function remarksStudentComplete(studentId, classRemarks) {
+  const r = (classRemarks && classRemarks[studentId]) || {};
+  return [r.conduct, r.attitude, r.interest, r.comment].every(v => String(v || '').trim() !== '');
+}
+
+function updateRemarksStudentSelect() {
+  const sel = document.getElementById('remarksStudentSelect');
+  const search = document.getElementById('remarksStudentSearch');
+  if (!sel) return;
+
+  const filter = String(search ? search.value : remarksState.filter || '').trim().toLowerCase();
+  remarksState.filter = filter;
+
+  const current = remarksCurrentStudent();
+  const matches = remarksState.students.filter(st => {
+    if (!filter) return true;
+    return String(st.name || '').toLowerCase().includes(filter) || String(st.id || '').toLowerCase().includes(filter);
+  });
+
+  sel.innerHTML = matches.map(st => {
+    const originalIndex = remarksState.students.findIndex(x => x.id === st.id);
+    return `<option value="${escapeHtml(st.id)}"${current && current.id === st.id ? ' selected' : ''}>${String(originalIndex + 1).padStart(2, '0')} · ${escapeHtml(st.name || 'Unnamed student')}</option>`;
+  }).join('');
+
+  if (current && !matches.some(st => st.id === current.id) && matches.length) {
+    remarksState.index = remarksState.students.findIndex(st => st.id === matches[0].id);
+    sel.value = matches[0].id;
+    renderRemarksForm();
+  }
+}
+
 function renderRemarksClassSelect() {
   const sel = document.getElementById('remarksClassSelect');
   fillClassSelect(sel);
+  const savedClass = sel.value;
+  remarksState.classId = savedClass || '';
+  remarksState.index = 0;
+  remarksState.filter = '';
+  const search = document.getElementById('remarksStudentSearch');
+  if (search) search.value = '';
   renderRemarksForm();
 }
 
 function renderRemarksForm() {
   const classId = document.getElementById('remarksClassSelect').value;
-  if (classId && !canAccessClass(classId)) { document.getElementById('remarksFormWrap').innerHTML = '<p class="empty">You do not have access to this class.</p>'; return; }
   const wrap = document.getElementById('remarksFormWrap');
-  if (!classId) { wrap.innerHTML = '<p class="empty">Add a class first.</p>'; return; }
+  const toolbar = document.getElementById('remarksStudentToolbar');
+  const search = document.getElementById('remarksStudentSearch');
+  const progress = document.getElementById('remarksProgress');
+  const prevBtn = document.getElementById('remarksPrevBtn');
+  const nextBtn = document.getElementById('remarksNextBtn');
+  const saveBtn = document.getElementById('saveRemarksBtn');
+  const saveNextBtn = document.getElementById('saveNextRemarksBtn');
+
+  if (classId && !canAccessClass(classId)) {
+    remarksState.students = [];
+    wrap.innerHTML = '<p class="empty">You do not have access to this class.</p>';
+    if (toolbar) toolbar.classList.add('hidden');
+    return;
+  }
+  if (!classId) {
+    remarksState.students = [];
+    wrap.innerHTML = '<p class="empty">Add a class first.</p>';
+    if (toolbar) toolbar.classList.add('hidden');
+    return;
+  }
+
   const students = getAccessibleStudents().filter(s => s.classId === classId);
-  if (!students.length) { wrap.innerHTML = '<p class="empty">No students in this class.</p>'; return; }
+  remarksState.classId = classId;
+  remarksState.students = students;
+  if (remarksState.index >= students.length) remarksState.index = Math.max(0, students.length - 1);
+
+  if (!students.length) {
+    wrap.innerHTML = '<p class="empty">No students in this class.</p>';
+    if (toolbar) toolbar.classList.add('hidden');
+    return;
+  }
+
+  if (toolbar) toolbar.classList.remove('hidden');
   const settings = DB.get(KEYS.settings, {});
   const key = gradeKey(classId, settings.currentTerm, settings.currentYear);
   const allRemarks = DB.get(KEYS.remarks, {});
   const classRemarks = allRemarks[key] || {};
+  const student = remarksCurrentStudent();
+  const r = classRemarks[student.id] || {};
 
-  let html = '';
-  students.forEach(st => {
-    const r = classRemarks[st.id] || {};
-    html += `<div class="remarks-card" data-student="${st.id}">
-      <h3>${escapeHtml(st.name)}</h3>
+  updateRemarksStudentSelect();
+
+  const completed = students.filter(st => remarksStudentComplete(st.id, classRemarks)).length;
+  if (progress) progress.textContent = `${completed} / ${students.length} completed`;
+  const counter = document.getElementById('remarksStudentCounter');
+  if (counter) counter.textContent = `${remarksState.index + 1} / ${students.length}`;
+  if (prevBtn) prevBtn.disabled = remarksState.index <= 0;
+  if (nextBtn) nextBtn.disabled = remarksState.index >= students.length - 1;
+  if (saveNextBtn) saveNextBtn.disabled = students.length < 2;
+  if (search) search.value = remarksState.filter;
+
+  wrap.innerHTML = `<div class="remarks-card remarks-card-single" data-student="${escapeHtml(student.id)}">
+      <div class="remarks-student-heading">
+        <h3>${escapeHtml(student.name)}</h3>
+        <span class="remarks-student-position">${remarksState.index + 1} of ${students.length}</span>
+      </div>
       <label>Attendance (days present)
-        <input type="number" min="0" class="rm-attendance" value="${r.attendance !== undefined ? r.attendance : ''}">
+        <input type="number" min="0" class="rm-attendance" value="${r.attendance !== undefined ? escapeHtml(r.attendance) : ''}">
       </label>
       <label>Promoted / Repeated to
         <input type="text" class="rm-promoted" placeholder="e.g. Basic Two (2)" value="${r.promoted ? escapeHtml(r.promoted) : ''}">
       </label>
       <label>Fees Due (GH¢)
-        <input type="number" min="0" step="0.01" class="rm-fees" value="${r.feesDue !== undefined ? r.feesDue : ''}">
+        <input type="number" min="0" step="0.01" class="rm-fees" value="${r.feesDue !== undefined ? escapeHtml(r.feesDue) : ''}">
       </label>
       <label>Conduct / Character
         <select class="rm-conduct" aria-label="Conduct / Character">
@@ -4224,40 +4314,74 @@ function renderRemarksForm() {
         </select>
       </label>
     </div>`;
-  });
-  wrap.innerHTML = html;
 }
 
-document.getElementById('remarksClassSelect').addEventListener('change', renderRemarksForm);
+function navigateRemarks(delta) {
+  const nextIndex = remarksState.index + delta;
+  if (nextIndex < 0 || nextIndex >= remarksState.students.length) return;
+  remarksState.index = nextIndex;
+  renderRemarksForm();
+}
 
-document.getElementById('saveRemarksBtn').addEventListener('click', () => {
+function selectRemarksStudent(studentId) {
+  const idx = remarksState.students.findIndex(st => st.id === studentId);
+  if (idx < 0) return;
+  remarksState.index = idx;
+  renderRemarksForm();
+}
+
+function saveCurrentRemarks(showAlert = true) {
   const classId = document.getElementById('remarksClassSelect').value;
-  if (!classId) return;
-  if (!requireClassAccess(classId)) return;
+  const card = document.querySelector('.remarks-card-single');
+  const student = remarksCurrentStudent();
+  if (!classId || !card || !student) return false;
+  if (!requireClassAccess(classId)) return false;
+
   const settings = DB.get(KEYS.settings, {});
   if (!settings.currentTerm || !settings.currentYear) {
     alert('Set the current Term and Academic Year in Setup first.');
-    return;
+    return false;
   }
+
   const key = gradeKey(classId, settings.currentTerm, settings.currentYear);
   const allRemarks = DB.get(KEYS.remarks, {});
   const classRemarks = allRemarks[key] || {};
-  document.querySelectorAll('.remarks-card').forEach(card => {
-    const studentId = card.dataset.student;
-    classRemarks[studentId] = {
-      attendance: card.querySelector('.rm-attendance').value.trim(),
-      promoted: card.querySelector('.rm-promoted').value.trim(),
-      feesDue: card.querySelector('.rm-fees').value.trim(),
-      conduct: card.querySelector('.rm-conduct').value.trim(),
-      attitude: card.querySelector('.rm-attitude').value.trim(),
-      interest: card.querySelector('.rm-interest').value.trim(),
-      comment: card.querySelector('.rm-comment').value.trim()
-    };
-  });
+  classRemarks[student.id] = {
+    attendance: card.querySelector('.rm-attendance').value.trim(),
+    promoted: card.querySelector('.rm-promoted').value.trim(),
+    feesDue: card.querySelector('.rm-fees').value.trim(),
+    conduct: card.querySelector('.rm-conduct').value.trim(),
+    attitude: card.querySelector('.rm-attitude').value.trim(),
+    interest: card.querySelector('.rm-interest').value.trim(),
+    comment: card.querySelector('.rm-comment').value.trim()
+  };
   allRemarks[key] = classRemarks;
   DB.set(KEYS.remarks, allRemarks);
-  auditAction('update', 'remarks', key, `Saved remarks for ${settings.currentTerm}, ${settings.currentYear}`);
-  alert('Remarks saved.');
+  auditAction('update', 'remarks', `${key}__${student.id}`, `Saved remarks for ${student.name}, ${settings.currentTerm}, ${settings.currentYear}`);
+  if (showAlert) alert(`Remarks saved for ${student.name}.`);
+  return true;
+}
+
+document.getElementById('remarksClassSelect').addEventListener('change', () => {
+  remarksState.index = 0;
+  remarksState.filter = '';
+  const search = document.getElementById('remarksStudentSearch');
+  if (search) search.value = '';
+  renderRemarksForm();
+});
+
+document.getElementById('remarksStudentSearch').addEventListener('input', updateRemarksStudentSelect);
+document.getElementById('remarksStudentSelect').addEventListener('change', e => selectRemarksStudent(e.target.value));
+document.getElementById('remarksPrevBtn').addEventListener('click', () => navigateRemarks(-1));
+document.getElementById('remarksNextBtn').addEventListener('click', () => navigateRemarks(1));
+document.getElementById('saveRemarksBtn').addEventListener('click', () => saveCurrentRemarks(true));
+document.getElementById('saveNextRemarksBtn').addEventListener('click', () => {
+  if (!saveCurrentRemarks(false)) return;
+  if (remarksState.index < remarksState.students.length - 1) {
+    remarksState.index += 1;
+    renderRemarksForm();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 });
 
 // Aggregate = sum of grades of the first 4 subjects (in the order
