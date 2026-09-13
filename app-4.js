@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.6';
+const APP_VERSION = 'v38.11.7';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -7177,6 +7177,8 @@ function unlinkTeacherStaff(member) {
   ]);
 }
 
+let editingManageTeacherUid = null;
+
 function renderManageTeachers() {
   const list = document.getElementById('manageTeachersList');
   if (!isHeadTeacher()) {
@@ -7214,6 +7216,7 @@ function renderManageTeachers() {
         ? `${displayName} · ${displayEmail}`
         : (displayEmail || displayName || m.uid);
       const suggestedName = linkedStaff ? linkedStaff.name : (displayName || staffNameFromMember(m));
+      const isExpanded = m.status === 'pending' || editingManageTeacherUid === m.uid;
 
       const classChecks = classes.map(c =>
         `<label class="checkbox-row"><input type="checkbox" class="assign-class-cb" value="${escapeHtml(c.id)}" ${assignedClasses.indexOf(c.id) !== -1 ? 'checked' : ''}> ${escapeHtml(c.name)}</label>`
@@ -7232,27 +7235,58 @@ function renderManageTeachers() {
         ? `<button class="edit-student reactivate-teacher-btn" data-uid="${m.uid}">Reactivate</button>`
         : `<button class="del-student disable-teacher-btn" data-uid="${m.uid}">Disable</button>`;
 
-      li.innerHTML = `<div class="edit-row">
-        <strong>${escapeHtml(accountLabel)}</strong>
-        <div class="meta">Teacher${statusText}${linkedStaff ? ' · Staff: ' + escapeHtml(linkedStaff.name) : ' · No Staff record linked'}</div>
-        <label>Staff name
-          <input type="text" class="teacher-staff-name" value="${escapeHtml(suggestedName)}" placeholder="Full name for Staff record">
-        </label>
-        <label>Staff record
-          <select class="teacher-staff-select">${staffOptions}</select>
-        </label>
-        <p class="hint">An approved teacher must have one linked Staff record. The Staff record stores the person's personnel details and report-card signature. The teacher account stores access and assignments.</p>
-        <strong>Classes</strong>
-        ${classChecks}
-        <strong>Subjects</strong>
-        ${subjectChecks}
-        <div class="edit-actions">
-          <button class="save-btn save-teacher-assignment" data-uid="${m.uid}">${actionLabel}</button>
-          ${linkedStaff ? '<button class="cancel-btn unlink-teacher-staff" data-uid="' + m.uid + '">Unlink Staff</button>' : ''}
-          ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton}
-        </div>
-      </div>`;
+      if (isExpanded) {
+        li.innerHTML = `<div class="edit-row teacher-edit-panel">
+          <strong>${escapeHtml(accountLabel)}</strong>
+          <div class="meta">Teacher${statusText}${linkedStaff ? ' · Staff: ' + escapeHtml(linkedStaff.name) : ' · No Staff record linked'}</div>
+          <label>Staff name
+            <input type="text" class="teacher-staff-name" value="${escapeHtml(suggestedName)}" placeholder="Full name for Staff record">
+          </label>
+          <label>Staff record
+            <select class="teacher-staff-select">${staffOptions}</select>
+          </label>
+          <p class="hint">An approved teacher must have one linked Staff record. The Staff record stores the person's personnel details and report-card signature. The teacher account stores access and assignments.</p>
+          <strong>Classes</strong>
+          <div class="teacher-assignment-list">${classChecks}</div>
+          <strong>Subjects</strong>
+          <div class="teacher-assignment-list">${subjectChecks}</div>
+          <div class="edit-actions">
+            <button class="save-btn save-teacher-assignment" data-uid="${m.uid}">${actionLabel}</button>
+            ${m.status !== 'pending' ? '<button class="cancel-btn cancel-teacher-edit" data-uid="' + m.uid + '">Cancel</button>' : ''}
+            ${linkedStaff ? '<button class="cancel-btn unlink-teacher-staff" data-uid="' + m.uid + '">Unlink Staff</button>' : ''}
+            ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton}
+          </div>
+        </div>`;
+      } else {
+        const classCount = assignedClasses.length;
+        const subjectCount = assignedSubjects.length;
+        li.innerHTML = `<div class="teacher-collapsed-row">
+          <div class="teacher-summary-main">
+            <strong>${escapeHtml(accountLabel)}</strong>
+            <div class="meta">Teacher${statusText}${linkedStaff ? ' · Staff: ' + escapeHtml(linkedStaff.name) : ' · No Staff record linked'}</div>
+            <div class="teacher-assignment-summary">${classCount} class${classCount === 1 ? '' : 'es'} · ${subjectCount} subject${subjectCount === 1 ? '' : 's'}</div>
+          </div>
+          <div class="teacher-summary-actions">
+            <button class="edit-teacher-btn" data-uid="${m.uid}">Edit</button>
+            ${disableButton}
+          </div>
+        </div>`;
+      }
       list.appendChild(li);
+    });
+
+    list.querySelectorAll('.edit-teacher-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        editingManageTeacherUid = btn.dataset.uid;
+        renderManageTeachers();
+      });
+    });
+
+    list.querySelectorAll('.cancel-teacher-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        editingManageTeacherUid = null;
+        renderManageTeachers();
+      });
     });
 
     list.querySelectorAll('.teacher-staff-select').forEach(sel => {
@@ -7321,6 +7355,7 @@ function renderManageTeachers() {
             assignmentsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
           });
         }).then(() => {
+          editingManageTeacherUid = null;
           auditAction('update', 'teacher', member.uid, `Updated teacher access and assignments: ${member.email || member.uid}`);
           return pullCloudData();
         }).then(() => {

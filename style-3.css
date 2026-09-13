@@ -347,7 +347,8 @@ textarea::placeholder{color:var(--muted);font-style:italic;opacity:0.8;}
 .list li .actions button.share,
 .list li .actions button.edit-class,
 .list li .actions button.edit-student,
-.list li .actions button.edit-subject{
+.list li .actions button.edit-subject,
+.edit-teacher-btn{
   color:var(--gold);margin-right:14px;
 }
 
@@ -856,3 +857,30 @@ html.sessionRestoring #sessionRestoreGate{
 .report-theme-actions{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:12px}.report-theme-actions button{display:inline-flex;flex:0 0 auto!important;width:auto!important;min-width:88px;min-height:34px;height:34px;padding:7px 12px;border-radius:9px;font-size:13px;line-height:1;white-space:nowrap;align-items:center;justify-content:center}.report-theme-actions .report-theme-apply{min-width:82px;min-height:34px;height:34px;padding:7px 14px;color:#1B2B22;background:var(--gold);border:none}.report-theme-preview-btn{border:1px solid var(--rule);background:var(--surface);color:var(--paper);font-weight:700}
 @media(max-width:700px){.report-theme-grid{grid-template-columns:1fr}.report-themes-launch{align-items:flex-start;flex-direction:column}.report-themes-launch button{width:100%}.report-theme-actions{justify-content:center}.report-theme-actions button{min-width:88px}.report-theme-actions .report-theme-apply{min-width:82px}}
 
+
+
+/* Manage Teachers: collapsed saved rows with compact assignment editing */
+.teacher-collapsed-row{
+  width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:4px 0;min-width:0;
+}
+.teacher-summary-main{min-width:0;flex:1;}
+.teacher-summary-main strong{display:block;overflow-wrap:anywhere;}
+.teacher-assignment-summary{font-size:12px;color:var(--muted);margin-top:3px;}
+.teacher-summary-actions{display:flex;align-items:center;gap:10px;flex:none;}
+.teacher-summary-actions button{
+  background:none;border:none;cursor:pointer;font-family:'IBM Plex Sans',sans-serif;
+  min-height:36px;padding:6px 4px;font-size:13px;
+}
+.teacher-summary-actions .edit-teacher-btn{color:var(--gold);}
+.teacher-summary-actions .del-student{color:var(--red);}
+.teacher-summary-actions .edit-student{color:var(--gold);}
+.teacher-edit-panel{gap:8px;}
+.teacher-assignment-list{display:flex;flex-direction:column;gap:1px;margin-top:-2px;margin-bottom:2px;}
+.teacher-assignment-list .checkbox-row{padding:3px 0;min-height:28px;}
+.teacher-assignment-list .checkbox-row input{margin-right:1px;}
+@media (max-width:560px){
+  .teacher-collapsed-row{gap:8px;}
+  .teacher-summary-actions{gap:4px;}
+  .teacher-summary-actions button{padding:5px 3px;}
+}
