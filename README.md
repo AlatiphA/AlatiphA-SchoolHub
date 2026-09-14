@@ -1,10 +1,11 @@
-# AlatiphA SchoolHub v38.11.17
+# AlatiphA SchoolHub v39
 ## Phase 4 — Freemium Billing & Report Credits
 
 SchoolHub remains free for school management. Premium report-card generation uses school-owned Report Credits.
 
 ### Pricing
-- Black & White report cards are free
+- Single Black & White report cards are free
+- Class batch PDF generation requires credits for every report, regardless of theme
 - Premium report card generation = 1 credit = GH₵0.20
 - 10 credits = GH₵2.00
 - 50 credits = GH₵10.00

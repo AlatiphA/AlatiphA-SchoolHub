@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.17';
+const APP_VERSION = 'v39';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -4543,7 +4543,7 @@ function renderReportCreditStatus() {
     host.innerHTML = '<span><strong>Report credits</strong> require a signed-in school account.</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>';
   } else {
     const balance = localBillingBalance();
-    host.innerHTML = `<span><strong>${balance} report credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} value · <em>Black &amp; White reports are free</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
+    host.innerHTML = `<span><strong>${balance} report credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} value · <em>Single Black &amp; White reports are free; class batch PDFs require credits.</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
   }
   document.getElementById('reportBillingLink')?.addEventListener('click', () => showView('billing'));
 }
@@ -5636,10 +5636,16 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
 async function generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settingsOverride) {
   const usable = results.filter(r => r.entries.length > 0);
   if (!usable.length) { alert('No grades entered for this class yet.'); return; }
+  const settings = settingsOverride || DB.get(KEYS.settings, {});
+
+  // Batch report generation is always a paid feature. This applies to every
+  // report theme, including the free Black & White theme. A class batch may
+  // contain many report cards, so the school must have enough credits for
+  // every report that will be generated.
+  if (!await ensureCreditsAvailable(usable.length, 'generating the class report batch')) return;
+
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-  const settings = settingsOverride || DB.get(KEYS.settings, {});
-  if (reportUsesCredits(settings) && !await ensureCreditsAvailable(usable.length, 'generating the premium class report batch')) return;
   for (let i = 0; i < usable.length; i++) {
     if (i > 0) doc.addPage();
     const r = usable[i];
@@ -5652,8 +5658,11 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
     }
     drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, assets);
   }
-  if (reportUsesCredits(settings)) {
-    try { await consumeReportCredits(usable.length); } catch (creditError) { alert(creditError.message || 'Report credits could not be charged. The batch was not downloaded.'); return; }
+  try {
+    await consumeReportCredits(usable.length);
+  } catch (creditError) {
+    alert(creditError.message || 'Report credits could not be charged. The batch was not downloaded.');
+    return;
   }
   doc.save('class_report_cards.pdf');
 }
