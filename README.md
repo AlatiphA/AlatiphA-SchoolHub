@@ -1,10 +1,11 @@
-# AlatiphA SchoolHub v38.11.16
+# AlatiphA SchoolHub v38.11.17
 ## Phase 4 — Freemium Billing & Report Credits
 
 SchoolHub remains free for school management. Premium report-card generation uses school-owned Report Credits.
 
 ### Pricing
-- 1 generated report card = 1 credit = GH₵0.20
+- Black & White report cards are free
+- Premium report card generation = 1 credit = GH₵0.20
 - 10 credits = GH₵2.00
 - 50 credits = GH₵10.00
 - 100 credits = GH₵20.00
@@ -18,7 +19,7 @@ The Head Teacher purchases credits for the school. Credits are shared by authori
 ### Free features
 Students, classes, subjects, grades, attendance, remarks, CSV export, school management and report-theme previews remain available without credits.
 
-Theme 1 Black & White is free. Premium themes require the school to have at least one available credit before they can be applied. Generating a report consumes the credit.
+Theme 1 Black & White is fully free for report generation. Premium themes require the school to have at least one available credit before they can be applied, and each generated premium report card consumes one credit.
 
 ### Payment security
 Paystack is used for checkout. The browser contains only the Paystack public key. Payment initialization and verification are handled by Firebase Cloud Functions using the Paystack secret key. Client-side Firestore writes to billing, transactions and usage are blocked by Firestore rules.

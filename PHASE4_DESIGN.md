@@ -9,7 +9,7 @@ SchoolHub remains free for school management. Premium actions use school-owned R
 - Head Teacher controls purchases and billing.
 - Active teachers can use the school's credits to generate reports for classes they can access.
 - Theme previews remain free. Applying a premium theme requires at least 1 available credit.
-- Theme 1 Black & White is free.
+- Theme 1 Black & White is fully free for report generation. Premium themes use report credits.
 - CSV exports and normal data management remain free.
 
 ## Payment architecture

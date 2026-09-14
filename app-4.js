@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v38.11.16';
+const APP_VERSION = 'v38.11.17';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -4543,7 +4543,7 @@ function renderReportCreditStatus() {
     host.innerHTML = '<span><strong>Report credits</strong> require a signed-in school account.</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>';
   } else {
     const balance = localBillingBalance();
-    host.innerHTML = `<span><strong>${balance} report credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} value</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
+    host.innerHTML = `<span><strong>${balance} report credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} value · <em>Black &amp; White reports are free</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
   }
   document.getElementById('reportBillingLink')?.addEventListener('click', () => showView('billing'));
 }
@@ -5609,12 +5609,16 @@ async function prepareReportAssets(result, settings, classInfo) {
   };
 }
 
+function reportUsesCredits(settings) {
+  return getReportTheme(settings).id !== 'bw';
+}
+
 async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
   if (!result.entries.length) { alert('No grades entered for this student yet.'); return; }
-  if (!await ensureCreditsAvailable(1, 'generating a report card')) return;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
+  if (reportUsesCredits(settings) && !await ensureCreditsAvailable(1, 'generating a premium report card')) return;
   let assets;
   try {
     assets = await prepareReportAssets(result, settings, classInfo);
@@ -5623,17 +5627,19 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
     assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
   }
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
-  try { await consumeReportCredits(1); } catch (creditError) { alert(creditError.message || 'Report credits could not be charged. The report was not downloaded.'); return; }
+  if (reportUsesCredits(settings)) {
+    try { await consumeReportCredits(1); } catch (creditError) { alert(creditError.message || 'Report credits could not be charged. The report was not downloaded.'); return; }
+  }
   doc.save(`${result.student.name.replace(/\s+/g, '_')}_report.pdf`);
 }
 
 async function generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settingsOverride) {
   const usable = results.filter(r => r.entries.length > 0);
   if (!usable.length) { alert('No grades entered for this class yet.'); return; }
-  if (!await ensureCreditsAvailable(usable.length, 'generating the class report batch')) return;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
+  if (reportUsesCredits(settings) && !await ensureCreditsAvailable(usable.length, 'generating the premium class report batch')) return;
   for (let i = 0; i < usable.length; i++) {
     if (i > 0) doc.addPage();
     const r = usable[i];
@@ -5646,7 +5652,9 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
     }
     drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, assets);
   }
-  try { await consumeReportCredits(usable.length); } catch (creditError) { alert(creditError.message || 'Report credits could not be charged. The batch was not downloaded.'); return; }
+  if (reportUsesCredits(settings)) {
+    try { await consumeReportCredits(usable.length); } catch (creditError) { alert(creditError.message || 'Report credits could not be charged. The batch was not downloaded.'); return; }
+  }
   doc.save('class_report_cards.pdf');
 }
 

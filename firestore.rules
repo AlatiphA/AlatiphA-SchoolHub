@@ -185,6 +185,25 @@ service cloud.firestore {
 
       // v35: school activity/audit log. Head Teachers can read the whole
       // school's log. Active teachers can read only their own actions.
+      // Phase 4 billing. Client users can read the school's balance, but
+      // credit purchases and credit consumption are performed only by
+      // Firebase Cloud Functions so clients cannot mint or edit credits.
+      match /billing/{billingId} {
+        allow read: if isHeadTeacher(schoolId) || isActiveTeacher(schoolId);
+        allow write: if false;
+      }
+
+      match /billingTransactions/{transactionId} {
+        allow read: if isHeadTeacher(schoolId)
+          || (isActiveTeacher(schoolId) && resource.data.uid == request.auth.uid);
+        allow write: if false;
+      }
+
+      match /billingUsage/{usageId} {
+        allow read: if isHeadTeacher(schoolId);
+        allow write: if false;
+      }
+
       match /activity/{activityId} {
         allow read: if isHeadTeacher(schoolId)
           || (isActiveTeacher(schoolId) && resource.data.uid == request.auth.uid);
