@@ -1,4 +1,4 @@
-# AlatiphA SchoolHub v39
+# AlatiphA SchoolHub v40
 ## Phase 4 — Freemium Billing & Report Credits
 
 SchoolHub remains free for school management. Premium report-card generation uses school-owned Report Credits.
@@ -72,3 +72,24 @@ Billing and Report Credits are temporarily suspended in the frontend while the S
 ### Staff fields added in v39
 
 Staff records now include Sex, EMIS No., Email, Bank & Branch, Bank Account, Rank/Grade dropdown, Notional Date, Substantive Date, Academic Qualification dropdown, and Professional Qualification dropdown, with the requested staff-detail order.
+
+
+## v40 Data-Loss Patch
+
+v40 adds a data-preservation layer to the Phase 4 v39 build.
+
+### What was fixed
+
+- Firestore pull operations no longer trigger an automatic cloud push.
+- A persistent local recovery snapshot is created before cloud hydration.
+- Cloud records are merged into the existing local cache instead of blindly replacing it.
+- Empty or incomplete local collections cannot trigger mass deletion of cloud records.
+- Student, class, subject, staff, grade, attendance, calendar and remark data are protected by the same recovery approach.
+- Service-worker cache is bumped to v40 so browsers do not continue serving the v39 JavaScript.
+- Existing v39 billing suspension remains unchanged.
+
+### Important deployment rule
+
+Deploy the complete v40 package together. Do not mix the v40 `app-4.js` with an older service worker or older `index.html`.
+
+v40 is designed to stop the v39 data-loss mechanism. If records were already deleted from both Firestore and the browser's local storage by v39, v40 cannot reconstruct those records without another backup or copy. If the records still exist in Firestore, v40 will pull them without immediately pushing a partial local cache back over them.

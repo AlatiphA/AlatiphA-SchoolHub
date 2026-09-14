@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
-const APP_VERSION = 'v39a';
+const APP_VERSION = 'v40';
 
 /* ---------- storage helpers ---------- */
 const DB = {
@@ -11,7 +11,7 @@ const DB = {
       return restoreLocalImagesForDbKey(key, v);
     } catch (e) { return fallback; }
   },
-  set(key, val) {
+  set(key, val, options) {
     const clean = stripImagesForLocalStorage(key, val);
     const payload = JSON.stringify(clean);
     try {
@@ -25,7 +25,10 @@ const DB = {
         throw retryError;
       }
     }
-    if (typeof scheduleCloudPush === 'function') scheduleCloudPush(key);
+    // v40: cloud hydration writes must never schedule a cloud push.
+    if (!(options && options.skipCloudSync) && typeof scheduleCloudPush === 'function') {
+      scheduleCloudPush(key);
+    }
   }
 };
 
@@ -7029,6 +7032,69 @@ function pullRemarksForAccess(all, classIds) {
   });
 }
 
+/* ---------- v40 data-loss protection ---------- */
+const V40_RECOVERY_PREFIX = 'arc_v40_recovery__';
+
+function recoveryKey(schoolId) {
+  return `${V40_RECOVERY_PREFIX}${String(schoolId || 'unknown')}`;
+}
+
+function backupLocalSchoolData(reason) {
+  if (!currentSchoolId) return false;
+  try {
+    const fields = ['settings','classes','subjects','students','grades','attendance','teacherAttendance','schoolCalendar','remarks','staff','activity','billing'];
+    const snapshot = { version:'v40', schoolId:String(currentSchoolId), createdAt:new Date().toISOString(), reason:String(reason || 'cloud-pull'), data:{} };
+    fields.forEach(field => {
+      const key = KEYS[field];
+      if (!key) return;
+      const raw = localStorage.getItem(key);
+      if (raw !== null) snapshot.data[field] = JSON.parse(raw);
+    });
+    localStorage.setItem(recoveryKey(currentSchoolId), JSON.stringify(snapshot));
+    return true;
+  } catch (e) {
+    console.warn('v40 recovery backup could not be saved:', e);
+    return false;
+  }
+}
+
+function readLocalRecoveryBackup(schoolId) {
+  try {
+    const raw = localStorage.getItem(recoveryKey(schoolId || currentSchoolId));
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+function mergeRecordsById(localItems, cloudItems) {
+  const map = new Map();
+  (Array.isArray(localItems) ? localItems : []).forEach(item => {
+    if (item && item.id != null) map.set(String(item.id), item);
+  });
+  (Array.isArray(cloudItems) ? cloudItems : []).forEach(item => {
+    if (item && item.id != null) map.set(String(item.id), item);
+  });
+  return Array.from(map.values());
+}
+
+function mergeKeyedData(localValue, cloudValue) {
+  const local = localValue && typeof localValue === 'object' && !Array.isArray(localValue) ? localValue : {};
+  const cloud = cloudValue && typeof cloudValue === 'object' && !Array.isArray(cloudValue) ? cloudValue : {};
+  return Object.assign({}, local, cloud);
+}
+
+function mergeCloudCollection(field, cloudItems) {
+  if (field === 'settings') {
+    DB.set(KEYS.settings, Object.assign({}, DB.get(KEYS.settings, {}), cloudItems || {}), {skipCloudSync:true});
+    return;
+  }
+  const arrayFields = ['classes','subjects','students','staff'];
+  if (arrayFields.indexOf(field) !== -1) {
+    DB.set(KEYS[field], mergeRecordsById(DB.get(KEYS[field], []), cloudItems), {skipCloudSync:true});
+    return;
+  }
+  DB.set(KEYS[field], mergeKeyedData(DB.get(KEYS[field], {}), cloudItems), {skipCloudSync:true});
+}
+
 function pullCloudData(sessionToken) {
   if (!FIREBASE_ENABLED || !currentSchoolId) return Promise.resolve();
   const token = sessionToken == null ? sessionGeneration : sessionToken;
@@ -7036,6 +7102,9 @@ function pullCloudData(sessionToken) {
   const schoolId = currentSchoolId;
   const valid = () => isCurrentSession(token, uid, schoolId);
   if (!valid()) return Promise.resolve();
+
+  // v40: save a rollback snapshot before cloud data touches local storage.
+  backupLocalSchoolData('before-cloud-pull');
 
   return migrateLegacyImageLocalStorage()
     .then(() => migrateInlineImagesFromLocalRecords())
@@ -7077,12 +7146,12 @@ function pullCloudData(sessionToken) {
         // Keep an existing local image. Cloud URL/path are metadata only.
         const cachedLogo = getCachedLocalImage(imageCacheKey('logo', 'school'));
         if (cachedLogo) mergedProfile.logo = cachedLogo;
-        DB.set(KEYS.settings, mergedProfile);
+        DB.set(KEYS.settings, mergedProfile, {skipCloudSync:true});
       }
 
       const classes = [];
       classSnap.forEach(d => classes.push(d.data()));
-      DB.set(KEYS.classes, classes);
+      mergeCloudCollection('classes', classes);
 
       // Firestore collection reads have no guaranteed display order. Use the
       // persisted order field, falling back to the existing local order for
@@ -7096,18 +7165,18 @@ function pullCloudData(sessionToken) {
         subjects.push(subject);
       });
       ensureSubjectOrder(subjects);
-      DB.set(KEYS.subjects, sortSubjectsByOrder(subjects));
+      mergeCloudCollection('subjects', sortSubjectsByOrder(subjects));
 
       const students = [];
       studentSnap.forEach(d => {
         const s = d.data();
         if (all || classIds.has(s.classId)) students.push(mergeLocalImage('students', s, d.id));
       });
-      DB.set(KEYS.students, students);
+      mergeCloudCollection('students', students);
 
       const staff = [];
       staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
-      DB.set(KEYS.staff, staff);
+      mergeCloudCollection('staff', staff);
 
       // The Head Teacher is also teaching staff. Ensure the account has a
       // corresponding Staff record so teacher attendance includes the Head
@@ -7129,7 +7198,7 @@ function pullCloudData(sessionToken) {
         const classId = key.split('__')[0];
         if (all || classIds.has(classId)) grades[key] = (d.data() || {}).entries || {};
       });
-      DB.set(KEYS.grades, grades);
+      mergeCloudCollection('grades', grades);
 
       const attendance = {};
       attendanceSnap.forEach(d => {
@@ -7138,7 +7207,7 @@ function pullCloudData(sessionToken) {
         const classId = data.classId || key.split('__')[0];
         if (all || classIds.has(classId)) attendance[key] = Object.assign({}, data, { entries: data.entries || {} });
       });
-      DB.set(KEYS.attendance, attendance);
+      mergeCloudCollection('attendance', attendance);
 
       const teacherAttendance = {};
       teacherAttendanceSnap.forEach(d => {
@@ -7146,14 +7215,14 @@ function pullCloudData(sessionToken) {
         const data = d.data() || {};
         teacherAttendance[key] = Object.assign({}, data, { entries: data.entries || {} });
       });
-      if (all) DB.set(KEYS.teacherAttendance, teacherAttendance);
+      if (all) mergeCloudCollection('teacherAttendance', teacherAttendance);
 
       const schoolCalendar = {};
       schoolCalendarSnap.forEach(d => {
         const key = localKeyFromCloudId(d.id);
         schoolCalendar[key] = Object.assign({}, d.data(), { date: (d.data() || {}).date || key.split('__').slice(-1)[0] });
       });
-      DB.set(KEYS.schoolCalendar, schoolCalendar);
+      mergeCloudCollection('schoolCalendar', schoolCalendar);
 
       const remarks = {};
       remarkSnap.forEach(d => {
@@ -7161,7 +7230,7 @@ function pullCloudData(sessionToken) {
         const classId = key.split('__')[0];
         if (all || classIds.has(classId)) remarks[key] = (d.data() || {}).entries || {};
       });
-      DB.set(KEYS.remarks, remarks);
+      mergeCloudCollection('remarks', remarks);
       if (!valid()) return;
       setLastSyncedNow();
     });
@@ -7181,13 +7250,22 @@ function scheduleCloudPush(rawKey) {
 
 
 function syncCollectionArray(ref, items, cleanFn) {
-  const currentIds = new Set(items.map(item => item.id));
+  const safeItems = Array.isArray(items) ? items : [];
+  const currentIds = new Set(safeItems.map(item => item && item.id).filter(Boolean).map(String));
   return ref.get().then(snapshot => {
+    const cloudCount = snapshot && typeof snapshot.size === 'number' ? snapshot.size : 0;
+    // v40: empty local data is not proof that cloud data should be deleted.
+    const allowDeletes = safeItems.length > 0 || cloudCount === 0;
     const ops = [];
-    items.forEach(item => ops.push(batch => batch.set(ref.doc(item.id), cleanFn(item))));
-    snapshot.forEach(doc => {
-      if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id)));
+    safeItems.forEach(item => {
+      if (!item || !item.id) return;
+      ops.push(batch => batch.set(ref.doc(String(item.id)), cleanFn(item)));
     });
+    if (allowDeletes) {
+      snapshot.forEach(doc => {
+        if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(doc.ref));
+      });
+    }
     return commitChunks(ops);
   });
 }
@@ -7217,9 +7295,12 @@ function syncKeyedCollection(ref, entries, makeData, allowedClassIds) {
       const docId = cloudKey(key);
       ops.push(batch => batch.set(ref.doc(docId), makeData(key, entries[key])));
     });
-    snapshot.forEach(doc => {
-      if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id)));
-    });
+    // v40: never convert an empty keyed cache into mass cloud deletion.
+    if (Object.keys(entries || {}).length > 0) {
+      snapshot.forEach(doc => {
+        if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(doc.ref));
+      });
+    }
     return commitChunks(ops);
   });
 }
@@ -7272,7 +7353,7 @@ function pushFieldToCloud(match) {
       const currentIds = new Set(filtered.map(s => s.id));
       const ops = [];
       filtered.forEach(s => ops.push(batch => batch.set(ref.doc(s.id), stripImagesForCloud('students', s))));
-      snapshot.forEach(doc => { if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id))); });
+      if (filtered.length > 0) snapshot.forEach(doc => { if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id))); });
       return commitChunks(ops);
     }).then(() => setLastSyncedNow());
   }
