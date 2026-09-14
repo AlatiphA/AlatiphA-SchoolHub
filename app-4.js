@@ -508,7 +508,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const cards = QUICK_ACCESS_CARDS.filter(c => !c.headteacherOnly || currentRole === 'headteacher');
+  const cards = QUICK_ACCESS_CARDS.filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher'));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
       <span class="qa-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${c.icon}</svg></span>
@@ -2050,16 +2050,49 @@ document.getElementById('addSubjectBtn').addEventListener('click', () => {
 let editingStaffId = null;
 
 const STAFF_FIELDS = [
+  { key: 'sex', label: 'Sex', type: 'select', options: [['M','Male'],['F','Female']] },
   { key: 'dob', label: 'Date of Birth', type: 'date' },
   { key: 'staffId', label: 'Staff ID', type: 'text' },
   { key: 'registeredNo', label: 'Registered No.', type: 'text' },
   { key: 'licenseNo', label: 'License No.', type: 'text' },
+  { key: 'emisNo', label: 'EMIS No.', type: 'text' },
   { key: 'ssnitNo', label: 'SSNIT No.', type: 'text' },
   { key: 'ghanaCardId', label: 'Ghana Card ID', type: 'text' },
-  { key: 'dateOfAppointment', label: 'Date of Appointment', type: 'date' },
-  { key: 'rank', label: 'Rank', type: 'text' },
-  { key: 'phone', label: 'Phone (optional)', type: 'tel' }
+  { key: 'rank', label: 'Rank/Grade', type: 'select', options: [
+    ['Pupil Teacher','Pupil Teacher'],
+    ['Superintendent II','Superintendent II'],
+    ['Superintendent I','Superintendent I'],
+    ['Senior Superintendent II','Senior Superintendent II'],
+    ['Senior Superintendent I','Senior Superintendent I'],
+    ['Principal Superintendent','Principal Superintendent'],
+    ['Assistant Director II','Assistant Director II'],
+    ['Assistant Director I','Assistant Director I'],
+    ['Deputy Director','Deputy Director'],
+    ['Other','Other']
+  ] },
+  { key: 'notionalDate', label: 'Notional Date', type: 'date' },
+  { key: 'substantiveDate', label: 'Substantive Date', type: 'date' },
+  { key: 'academicQualification', label: 'Academic Qualification', type: 'select', options: [
+    ['Certificate','Certificate'],['Diploma','Diploma'],['HND','HND'],["Bachelor's Degree","Bachelor's Degree"],['Postgraduate Diploma','Postgraduate Diploma'],["Master's Degree","Master's Degree"],['PhD','PhD'],['Other','Other']
+  ] },
+  { key: 'professionalQualification', label: 'Professional Qualification', type: 'select', options: [
+    ["Teacher's Certificate","Teacher's Certificate"],['Diploma in Basic Education','Diploma in Basic Education'],['Bachelor of Education','Bachelor of Education'],['Postgraduate teaching qualification','Postgraduate teaching qualification'],['Other','Other']
+  ] },
+  { key: 'bankBranch', label: 'Bank & Branch', type: 'text' },
+  { key: 'bankAccount', label: 'Bank Account', type: 'text' },
+  { key: 'phone', label: 'Phone', type: 'tel' },
+  { key: 'email', label: 'Email', type: 'email' }
 ];
+
+function staffFieldControl(f, value) {
+  const val = value || '';
+  if (f.type === 'select') {
+    const opts = (f.options || []).map(([v, label]) => `<option value="${escapeHtml(v)}" ${val === v ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
+    return `<select class="edit-staff-${f.key}"><option value="">Select ${escapeHtml(f.label)}</option>${opts}</select>`;
+  }
+  return `<input type="${f.type}" class="edit-staff-${f.key}" value="${escapeHtml(val)}" ${f.key === 'staffId' ? 'required' : ''}>`;
+}
+
 
 function renderStaff() {
   if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('staffList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
@@ -2072,7 +2105,7 @@ function renderStaff() {
     const li = document.createElement('li');
     if (editingStaffId === st.id) {
       const fieldInputs = STAFF_FIELDS.map(f =>
-        `<label>${f.label}${f.key === 'staffId' ? ' <span class="required-mark">*</span>' : ''}<input type="${f.type}" class="edit-staff-${f.key}" value="${st[f.key] ? escapeHtml(st[f.key]) : ''}" ${f.key === 'staffId' ? 'required' : ''}></label>`
+        `<label>${f.label}${f.key === 'staffId' ? ' <span class="required-mark">*</span>' : ''}${staffFieldControl(f, st[f.key])}</label>`
       ).join('');
       const sigPreview = st.signature
         ? `<img src="${st.signature}" alt="" class="staff-signature-preview">
@@ -2082,6 +2115,7 @@ function renderStaff() {
         <label>Full name <span class="required-mark">*</span>
           <input type="text" class="edit-staff-name" value="${escapeHtml(st.name)}" placeholder="Full name" required>
         </label>
+        ${fieldInputs}
         <label>Role
           <select class="edit-staff-role">
             <option value="Teacher" ${st.role === 'Teacher' ? 'selected' : ''}>Teacher</option>
@@ -2090,7 +2124,6 @@ function renderStaff() {
             <option value="Other" ${st.role === 'Other' ? 'selected' : ''}>Other</option>
           </select>
         </label>
-        ${fieldInputs}
         ${sigPreview}
         <label>Signature
           <input type="file" class="edit-staff-signature-input" accept="image/*" data-staff="${st.id}">
@@ -2207,19 +2240,27 @@ function showStaffDetails(staffId) {
   if (!st) return;
   const content = document.getElementById('staffDetailsContent');
   if (!content) return;
+  const sexLabel = st.sex === 'M' ? 'Male' : (st.sex === 'F' ? 'Female' : '—');
   const rows = [
     ['Full name', st.name || '—'],
-    ['Role', st.role || 'Staff'],
+    ['Sex', sexLabel],
+    ['DOB', st.dob || '—'],
     ['Staff ID', st.staffId || '—'],
     ['Registered No.', st.registeredNo || '—'],
     ['License No.', st.licenseNo || '—'],
+    ['EMIS No.', st.emisNo || '—'],
     ['SSNIT No.', st.ssnitNo || '—'],
     ['Ghana Card ID', st.ghanaCardId || '—'],
-    ['Date of Birth', st.dob || '—'],
-    ['Date of Appointment', st.dateOfAppointment || '—'],
-    ['Rank', st.rank || '—'],
+    ['Rank/Grade', st.rank || '—'],
+    ['Notional Date', st.notionalDate || st.dateOfAppointment || '—'],
+    ['Substantive Date', st.substantiveDate || '—'],
+    ['Academic Qualification', st.academicQualification || '—'],
+    ['Professional Qualification', st.professionalQualification || '—'],
+    ['Bank & Branch', st.bankBranch || '—'],
+    ['Bank Account', st.bankAccount || '—'],
     ['Phone', st.phone || '—'],
-    ['SchoolHub account', st.email || st.userUid || '—']
+    ['Email', st.email || '—'],
+    ['Role', st.role || 'Staff']
   ];
   content.innerHTML = rows.map(([label, value]) => `<div class="staff-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('') +
     (st.signature ? `<img src="${st.signature}" alt="Staff signature" class="staff-detail-signature">` : '<p class="hint" style="text-align:center;margin:14px 0 0;">No signature uploaded.</p>');
@@ -4976,6 +5017,9 @@ document.getElementById('startNewTermBtn').addEventListener('click', () => {
 });
 
 /* ---------- Phase 4: School Billing & Report Credits ---------- */
+// Billing is temporarily suspended while the Staff module is being expanded.
+// All billing/payment code remains in this build for later reactivation.
+const BILLING_SUSPENDED = true;
 const REPORT_CREDIT_PRICE_GHS = 0.20;
 const REPORT_CREDIT_PACKAGES = [
   { id: '10', credits: 10, amount: 2.00 },
@@ -5024,6 +5068,7 @@ function requireSchoolAccountForPaidFeature(actionText) {
   return true;
 }
 async function ensureCreditsAvailable(count = 1, actionText = 'continue') {
+  if (BILLING_SUSPENDED) return true;
   if (!requireSchoolAccountForPaidFeature(actionText)) return false;
   const balance = localBillingBalance();
   if (balance >= count) return true;
@@ -5034,6 +5079,7 @@ async function ensureCreditsAvailable(count = 1, actionText = 'continue') {
 }
 async function consumeReportCredits(count) {
   if (!Number.isInteger(count) || count < 1) throw new Error('Invalid report credit count.');
+  if (BILLING_SUSPENDED) return { balance: localBillingBalance(), suspended: true };
   if (!requireSchoolAccountForPaidFeature('generating report cards')) throw new Error('School account required.');
   if (!firebase.functions) throw new Error('Billing service is not available.');
   const fn = billingFunctions().httpsCallable('consumeReportCredits');
@@ -5095,6 +5141,10 @@ async function verifyPendingCreditPayment(reference) {
 async function renderBilling() {
   const wrap = document.getElementById('billingWrap');
   if (!wrap) return;
+  if (BILLING_SUSPENDED) {
+    wrap.innerHTML = `<div class="billing-card"><h3>Billing &amp; Credits</h3><p class="hint">Billing and report credits are temporarily suspended while SchoolHub is being updated. No payment or credit is required during this period.</p></div>`;
+    return;
+  }
   if (!FIREBASE_ENABLED || !currentSchoolId) {
     wrap.innerHTML = `<div class="billing-card"><h3>School Billing</h3><p class="hint">Billing and report credits are available after you sign in to a school account.</p></div>`;
     return;

@@ -143,7 +143,7 @@
         <button type="button" id="profileAboutBtn" class="profile-link">About SchoolHub</button>
         <button type="button" id="profileSyncCenterBtn" class="profile-link">Sync Center</button>
         <button type="button" id="profileSystemHealthBtn" class="profile-link">System Health</button>
-        <button type="button" id="profileBillingBtn" class="profile-link">Billing &amp; Credits</button>
+        <button type="button" id="profileBillingBtn" class="profile-link" style="display:none">Billing &amp; Credits</button>
         <button type="button" id="profileLoginBtn" class="profile-link hidden">Log In</button>
         <button type="button" id="logoutBtn" class="profile-link profile-link-danger hidden">Log Out</button>
       </div>
@@ -287,6 +287,90 @@
       <label>Full name <span class="required-mark">*</span>
         <input type="text" id="newStaffName" placeholder="Full name" required>
       </label>
+      <label>Sex
+        <select id="newStaff_sex">
+          <option value="">Select Sex</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+        </select>
+      </label>
+      <label>DOB
+        <input type="date" id="newStaff_dob">
+      </label>
+      <label>Staff ID <span class="required-mark">*</span>
+        <input type="text" id="newStaff_staffId" placeholder="Staff ID" required>
+      </label>
+      <label>Registered No.
+        <input type="text" id="newStaff_registeredNo" placeholder="Registered No.">
+      </label>
+      <label>License No.
+        <input type="text" id="newStaff_licenseNo" placeholder="License No.">
+      </label>
+      <label>EMIS No.
+        <input type="text" id="newStaff_emisNo" placeholder="EMIS No.">
+      </label>
+      <label>SSNIT No.
+        <input type="text" id="newStaff_ssnitNo" placeholder="SSNIT No.">
+      </label>
+      <label>Ghana Card ID
+        <input type="text" id="newStaff_ghanaCardId" placeholder="Ghana Card ID">
+      </label>
+      <label>Rank/Grade
+        <select id="newStaff_rank">
+          <option value="">Select Rank/Grade</option>
+          <option value="Pupil Teacher">Pupil Teacher</option>
+          <option value="Superintendent II">Superintendent II</option>
+          <option value="Superintendent I">Superintendent I</option>
+          <option value="Senior Superintendent II">Senior Superintendent II</option>
+          <option value="Senior Superintendent I">Senior Superintendent I</option>
+          <option value="Principal Superintendent">Principal Superintendent</option>
+          <option value="Assistant Director II">Assistant Director II</option>
+          <option value="Assistant Director I">Assistant Director I</option>
+          <option value="Deputy Director">Deputy Director</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+      <label>Notional Date
+        <input type="date" id="newStaff_notionalDate">
+      </label>
+      <label>Substantive Date
+        <input type="date" id="newStaff_substantiveDate">
+      </label>
+      <label>Academic Qualification
+        <select id="newStaff_academicQualification">
+          <option value="">Select Academic Qualification</option>
+          <option value="Certificate">Certificate</option>
+          <option value="Diploma">Diploma</option>
+          <option value="HND">HND</option>
+          <option value="Bachelor's Degree">Bachelor's Degree</option>
+          <option value="Postgraduate Diploma">Postgraduate Diploma</option>
+          <option value="Master's Degree">Master's Degree</option>
+          <option value="PhD">PhD</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+      <label>Professional Qualification
+        <select id="newStaff_professionalQualification">
+          <option value="">Select Professional Qualification</option>
+          <option value="Teacher's Certificate">Teacher's Certificate</option>
+          <option value="Diploma in Basic Education">Diploma in Basic Education</option>
+          <option value="Bachelor of Education">Bachelor of Education</option>
+          <option value="Postgraduate teaching qualification">Postgraduate teaching qualification</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+      <label>Bank &amp; Branch
+        <input type="text" id="newStaff_bankBranch" placeholder="Bank &amp; Branch">
+      </label>
+      <label>Bank Account
+        <input type="text" id="newStaff_bankAccount" placeholder="Bank Account">
+      </label>
+      <label>Phone
+        <input type="tel" id="newStaff_phone" placeholder="Phone">
+      </label>
+      <label>Email
+        <input type="email" id="newStaff_email" placeholder="Email">
+      </label>
       <label>Role
         <select id="newStaffRole">
           <option value="Teacher">Teacher</option>
@@ -295,21 +379,6 @@
           <option value="Other">Other</option>
         </select>
       </label>
-      <label>Date of Birth
-        <input type="date" id="newStaff_dob">
-      </label>
-      <label>Staff ID <span class="required-mark">*</span>
-        <input type="text" id="newStaff_staffId" placeholder="Staff ID" required>
-      </label>
-      <input type="text" id="newStaff_registeredNo" placeholder="Registered No.">
-      <input type="text" id="newStaff_licenseNo" placeholder="License No.">
-      <input type="text" id="newStaff_ssnitNo" placeholder="SSNIT No.">
-      <input type="text" id="newStaff_ghanaCardId" placeholder="Ghana Card ID">
-      <label>Date of Appointment
-        <input type="date" id="newStaff_dateOfAppointment">
-      </label>
-      <input type="text" id="newStaff_rank" placeholder="Rank (e.g. Superintendent I)">
-      <input type="tel" id="newStaff_phone" placeholder="Phone (optional)">
       <label>Signature
         <input type="file" id="newStaffSignature" accept="image/*">
       </label>
@@ -508,7 +577,7 @@
   </section>
 
   <!-- BILLING -->
-  <section id="view-billing" class="view hidden">
+  <section id="view-billing" class="view hidden" style="display:none">
     <h2>Billing &amp; Credits</h2>
     <div id="billingWrap"></div>
   </section>
@@ -661,7 +730,7 @@
   <div class="about-box">
     <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
     <h2 id="aboutTitle">AlatiphA SchoolHub</h2>
-    <p class="about-version">Version <strong id="aboutVersion">v38</strong></p>
+    <p class="about-version">Version <strong id="aboutVersion">v39</strong></p>
     <div class="about-details">
       <div><span>Developer</span><strong id="aboutDeveloper">AlatiphA Multimedia</strong></div>
       <div><span>Browser</span><strong id="aboutBrowserStatus">Checking…</strong></div>

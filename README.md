@@ -63,3 +63,12 @@ The first two are Head Teacher only. The third is available to active Head Teach
 Do not grant report credits directly from the browser. If you need to manually credit a school during testing, do it from a trusted server/admin process or Firestore console.
 
 The current frontend also provides a Verify Payment action so a Head Teacher can re-check a payment if the Paystack popup closes before the browser receives the success flow.
+
+
+## Current v39 status
+
+Billing and Report Credits are temporarily suspended in the frontend while the Staff module is being expanded. The billing/payment code and Firebase Functions remain in the package and have not been deleted. During this suspension, report generation is not credit-gated.
+
+### Staff fields added in v39
+
+Staff records now include Sex, EMIS No., Email, Bank & Branch, Bank Account, Rank/Grade dropdown, Notional Date, Substantive Date, Academic Qualification dropdown, and Professional Qualification dropdown, with the requested staff-detail order.
