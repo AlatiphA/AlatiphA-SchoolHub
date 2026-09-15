@@ -53,6 +53,7 @@ let currentUserData = null;
 let sessionGeneration = 0;
 let sessionReady = false;
 let sessionDataReady = false; // Core school data has finished loading for this session.
+let cloudHydrationInProgress = false; // Suppresses cloud pushes caused by Firestore-to-local writes.
 let manualSignOutInProgress = false; // Prevent Firebase auth transitions from re-blocking the login form during logout.
 
 function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}` : base; }
@@ -73,6 +74,7 @@ function resetWorkspaceState() {
   currentUserData = null;
   sessionReady = false;
   sessionDataReady = false;
+  cloudHydrationInProgress = false;
 
   // Remove any stale rendered content immediately. Local/cloud records are
   // deliberately NOT deleted here because they belong to their school
@@ -189,6 +191,89 @@ function ensureSubjectOrder(subjects) {
     sorted.forEach(subject => subjects.push(subject));
   }
   return changed;
+}
+
+// Subject names are the school's human-facing identity for a subject.  IDs
+// can differ after an import or a sync retry, so use a conservative name key
+// when looking for accidental duplicates.
+function subjectNameKey(name) {
+  return String(name == null ? '' : name)
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase();
+}
+
+function subjectEntryHasScore(entry) {
+  return !!entry && typeof entry === 'object'
+    && (entry.c !== undefined || entry.e !== undefined);
+}
+
+// Merge duplicate subject IDs into the first subject in display order.  A
+// duplicate is removed only when every saved score can be represented by the
+// kept subject. If two different values exist for the same pupil/score part,
+// the duplicate is deliberately retained: silently choosing one would lose a
+// scored result. This makes the repair safe to run repeatedly.
+function repairDuplicateSubjects(subjects, grades) {
+  const ordered = sortSubjectsByOrder(Array.isArray(subjects) ? subjects : []);
+  const repairedGrades = grades && typeof grades === 'object' ? grades : {};
+  const byName = new Map();
+  const removedIds = new Set();
+  let movedScores = 0;
+  let protectedDuplicates = 0;
+
+  ordered.forEach(subject => {
+    const key = subjectNameKey(subject && subject.name);
+    if (!key) return;
+    const kept = byName.get(key);
+    if (!kept) {
+      byName.set(key, subject);
+      return;
+    }
+
+    let conflict = false;
+    Object.keys(repairedGrades).forEach(gradeKey => {
+      const classGrades = repairedGrades[gradeKey];
+      if (!classGrades || typeof classGrades !== 'object') return;
+      Object.keys(classGrades).forEach(studentId => {
+        const studentGrades = classGrades[studentId];
+        const duplicateScore = studentGrades && studentGrades[subject.id];
+        if (!subjectEntryHasScore(duplicateScore)) return;
+        const keptScore = studentGrades[kept.id];
+        ['c', 'e'].forEach(part => {
+          if (duplicateScore[part] !== undefined && keptScore && keptScore[part] !== undefined
+              && Number(duplicateScore[part]) !== Number(keptScore[part])) conflict = true;
+        });
+      });
+    });
+    if (conflict) {
+      protectedDuplicates++;
+      return;
+    }
+
+    Object.keys(repairedGrades).forEach(gradeKey => {
+      const classGrades = repairedGrades[gradeKey];
+      if (!classGrades || typeof classGrades !== 'object') return;
+      Object.keys(classGrades).forEach(studentId => {
+        const studentGrades = classGrades[studentId];
+        const duplicateScore = studentGrades && studentGrades[subject.id];
+        if (!subjectEntryHasScore(duplicateScore)) return;
+        if (!studentGrades[kept.id]) studentGrades[kept.id] = {};
+        ['c', 'e'].forEach(part => {
+          if (duplicateScore[part] !== undefined && studentGrades[kept.id][part] === undefined) {
+            studentGrades[kept.id][part] = duplicateScore[part];
+            movedScores++;
+          }
+        });
+        delete studentGrades[subject.id];
+      });
+    });
+    removedIds.add(subject.id);
+  });
+
+  const repairedSubjects = ordered.filter(subject => !removedIds.has(subject.id));
+  if (removedIds.size) ensureSubjectOrder(repairedSubjects);
+  return { subjects: repairedSubjects, grades: repairedGrades, changed: removedIds.size > 0, removed: removedIds.size, movedScores, protectedDuplicates };
 }
 
 function getAccessibleSubjects() {
@@ -1987,6 +2072,10 @@ function renderSubjects() {
       if (!name) return;
       const subjects = DB.get(KEYS.subjects, []);
       const sub = subjects.find(x => x.id === btn.dataset.id);
+      if (subjects.some(x => x.id !== btn.dataset.id && subjectNameKey(x.name) === subjectNameKey(name))) {
+        alert('A subject with that name already exists. Use its existing entry so scores stay together.');
+        return;
+      }
       if (sub) sub.name = name;
       DB.set(KEYS.subjects, subjects);
       auditAction('update', 'subject', sub ? sub.id : btn.dataset.id, `Updated subject: ${sub ? sub.name : ''}`);
@@ -2041,6 +2130,10 @@ document.getElementById('addSubjectBtn').addEventListener('click', () => {
   const name = input.value.trim();
   if (!name) return;
   const subjects = DB.get(KEYS.subjects, []);
+  if (subjects.some(sub => subjectNameKey(sub.name) === subjectNameKey(name))) {
+    alert('That subject already exists. Use the existing entry so scores stay together.');
+    return;
+  }
   subjects.forEach(sub => { sub.order = subjectOrderValue(sub, 0); });
   const maxOrder = subjects.reduce((max, sub) => Math.max(max, Number(sub.order) || 0), -1);
   subjects.push({ id: uid(), name, order: maxOrder + 1 });
@@ -7101,7 +7194,16 @@ function pullCloudData(sessionToken) {
   const uid = currentUid;
   const schoolId = currentSchoolId;
   const valid = () => isCurrentSession(token, uid, schoolId);
+  let duplicateRepair = null;
   if (!valid()) return Promise.resolve();
+  cloudHydrationInProgress = true;
+  sessionDataReady = false;
+  // A timer from before hydration could otherwise delete cloud records using
+  // the temporarily empty local cache. Cancel every pending delayed push.
+  Object.keys(pushTimers).forEach(rawKey => {
+    clearTimeout(pushTimers[rawKey]);
+    delete pushTimers[rawKey];
+  });
 
   // v40: save a rollback snapshot before cloud data touches local storage.
   backupLocalSchoolData('before-cloud-pull');
@@ -7199,6 +7301,20 @@ function pullCloudData(sessionToken) {
         if (all || classIds.has(classId)) grades[key] = (d.data() || {}).entries || {};
       });
       mergeCloudCollection('grades', grades);
+      // Only a Head Teacher receives the complete subject and grade set. Run
+      // the repair after cloud records and the local recovery cache have been
+      // merged, so stale empty records cannot remain visible to that account.
+      mergeCloudCollection('grades', grades);
+      const mergedSubjects = DB.get(KEYS.subjects, []);
+      const mergedGrades = DB.get(KEYS.grades, {});
+      duplicateRepair = all
+        ? repairDuplicateSubjects(mergedSubjects, mergedGrades)
+        : { subjects: sortSubjectsByOrder(mergedSubjects), grades: mergedGrades, changed: false };
+      DB.set(KEYS.subjects, duplicateRepair.subjects, {skipCloudSync:true});
+      if (duplicateRepair.changed) {
+        console.info(`Merged ${duplicateRepair.removed} duplicate subject(s) and preserved ${duplicateRepair.movedScores} score part(s).`);
+      }
+      DB.set(KEYS.grades, duplicateRepair.grades, {skipCloudSync:true});
 
       const attendance = {};
       attendanceSnap.forEach(d => {
@@ -7234,12 +7350,27 @@ function pullCloudData(sessionToken) {
       if (!valid()) return;
       setLastSyncedNow();
     });
+  }).finally(() => {
+    // Whether the read succeeded or failed, the user may make intentional
+    // changes only after this hydration attempt has reached a safe endpoint.
+    if (valid()) {
+      cloudHydrationInProgress = false;
+      sessionDataReady = true;
+      // The repair made only safe score transfers, but it was intentionally
+      // performed while cloud writes were paused. Queue the now-complete
+      // collections after the hydration barrier opens.
+      if (duplicateRepair && duplicateRepair.changed) {
+        scheduleCloudPush(KEYS.grades);
+        scheduleCloudPush(KEYS.subjects);
+      }
+    }
   });
 }
 
 const pushTimers = {};
 function scheduleCloudPush(rawKey) {
   if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return;
+  if (cloudHydrationInProgress || !sessionDataReady) return;
   const match = syncableFields().find(f => f.key === rawKey);
   if (!match) return;
   clearTimeout(pushTimers[rawKey]);
@@ -7306,7 +7437,8 @@ function syncKeyedCollection(ref, entries, makeData, allowedClassIds) {
 }
 
 function pushFieldToCloud(match) {
-  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return Promise.resolve();
+  // Direct calls must be just as safe as delayed DB.set synchronization.
+  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active' || cloudHydrationInProgress || !sessionDataReady) return Promise.resolve();
   const field = match.field;
   const value = DB.get(match.key, fieldDefault(field));
 
@@ -7338,6 +7470,9 @@ function pushFieldToCloud(match) {
   }
 
   if (field === 'students') {
+    // Student synchronization can delete missing cloud documents. Never allow
+    // that destructive comparison until the session's cloud data is ready.
+    if (cloudHydrationInProgress || !sessionDataReady) return Promise.resolve();
     const allowed = classIdsForCloudSync();
     const filtered = value.filter(s => allowed.has(s.classId));
     const ref = schoolRef().collection('students');
@@ -8219,14 +8354,11 @@ function initAuth() {
         return repairAccountProfile.then(() => {
           if (!isCurrentSession(token, user.uid, data.schoolId)) return;
 
-          // v38.9.3: authentication/profile resolution is the only startup
-          // gate. The user's school data is local-first, so once the account
-          // and school namespace are known we can immediately restore the last
-          // page from this school's local cache. Firestore synchronization then
-          // runs in the background. This prevents a slow/hung Firestore read
-          // from leaving the user permanently on "Restoring your session…".
+          // Revision 3: data-changing cloud synchronization stays blocked
+          // until Firestore hydration has finished for this school session.
           sessionReady = true;
-          sessionDataReady = true;
+          sessionDataReady = false;
+          cloudHydrationInProgress = true;
 
           // The local cache is namespaced by currentSchoolId, so this does not
           // expose another school's records. On a new device/school the page
