@@ -130,6 +130,7 @@ h1,h2,h3,.brand{
 .profile-account-line{font-size:11px;color:var(--muted);margin-bottom:12px;font-style:italic;}
 .profile-link{
   display:block;width:100%;
+  text-align:center;text-decoration:none;line-height:normal;
   background:none;border:1px solid var(--rule);
   color:var(--gold);
   border-radius:6px;
