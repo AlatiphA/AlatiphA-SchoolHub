@@ -3,7 +3,7 @@
 // Keep the public app version at v40, but change this internal cache key for
 // the calendar action button fix so installed PWAs cannot keep the older v40
 // JavaScript after a normal refresh.
-const CACHE_NAME = 'schoolhub-cache-v40-calendar-actions-1';
+const CACHE_NAME = 'schoolhub-cache-v40-calendar-actions-2';
 
 const APP_SHELL = [
   './',
