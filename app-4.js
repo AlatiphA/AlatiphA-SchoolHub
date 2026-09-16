@@ -3212,7 +3212,7 @@ function renderSchoolCalendar() {
   records.forEach(x => {
     const d = parseDateOnly(x.date);
     const day = d ? d.toLocaleDateString(undefined, {weekday:'short'}) : '';
-    html += `<tr><td>${escapeHtml(x.date)}</td><td>${escapeHtml(day)}</td><td>${escapeHtml(calendarLabel(String(x.record.type || '').toLowerCase()))}</td><td>${escapeHtml(x.record.note || '')}</td><td><button type="button" class="btn-text calendar-edit" data-date="${escapeHtml(x.date)}">Edit</button><button type="button" class="btn-text calendar-delete" data-date="${escapeHtml(x.date)}">Remove</button></td></tr>`;
+    html += `<tr><td>${escapeHtml(x.date)}</td><td>${escapeHtml(day)}</td><td>${escapeHtml(calendarLabel(String(x.record.type || '').toLowerCase()))}</td><td>${escapeHtml(x.record.note || '')}</td><td><div class="calendar-row-actions"><button type="button" class="calendar-edit" data-date="${escapeHtml(x.date)}">Edit</button><button type="button" class="calendar-delete" data-date="${escapeHtml(x.date)}">Remove</button></div></td></tr>`;
   });
   html += '</tbody></table></div>';
   html += '<p class="hint">Only weekdays inside the term count toward Times Open. Holiday and Midterm days are excluded. Weekends are automatically excluded.</p>';

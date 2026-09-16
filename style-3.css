@@ -683,6 +683,8 @@ html.sessionRestoring #sessionRestoreGate{
 .calendar-editor{padding:14px;border:1px solid var(--rule);border-radius:14px;background:var(--surface-alt);margin-bottom:16px;}
 .calendar-editor h3{margin:.1rem 0 .35rem;}
 .calendar-editor input,.calendar-editor select{width:100%;box-sizing:border-box;}
+.calendar-row-actions{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;}
+.calendar-row-actions button{min-width:64px;min-height:40px;padding:5px 10px;cursor:pointer;}
 #attendanceOutOf[readonly]{opacity:.85;font-weight:700;}
 @media(max-width:600px){.attendance-mode-bar{overflow-x:visible;display:flex;flex-wrap:wrap;gap:8px}.attendance-mode{white-space:nowrap;flex:0 1 auto}.attendance-summary-pills{display:block}.attendance-summary-pills .attendance-summary-pill{margin:.4rem 0;width:100%;}}
 
