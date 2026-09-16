@@ -1,9 +1,9 @@
 // AlatiphA SchoolHub — service worker
 // Keep CACHE_NAME's version in sync with APP_VERSION in app-4.js
 // Keep the public app version at v40, but change this internal cache key for
-// the account screen redesign so installed PWAs receive the updated
-// markup, styles, and account controls together.
-const CACHE_NAME = 'schoolhub-cache-v40-auth-design-1';
+// the shared app redesign so installed PWAs receive the updated
+// markup and screen styles together.
+const CACHE_NAME = 'schoolhub-cache-v40-app-polish-1';
 
 const APP_SHELL = [
   './',
@@ -11,6 +11,7 @@ const APP_SHELL = [
   './faq.html',
   './install.js',
   './style-3.css',
+  './ui-polish.css',
   './app-4.js',
   './firebase-config.js',
   './manifest.json',
