@@ -1095,6 +1095,11 @@ document.getElementById('profileAboutBtn').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
   showAboutDialog();
 });
+document.getElementById('profileInstallBtn').addEventListener('click', () => {
+  document.getElementById('profileDropdown').classList.add('hidden');
+  if (window.SchoolHubInstall) window.SchoolHubInstall.prompt();
+  else alert('Install is not available yet. Please wait a moment, then try again.');
+});
 document.getElementById('aboutCloseBtn').addEventListener('click', hideAboutDialog);
 document.getElementById('aboutDialog').addEventListener('click', e => {
   if (e.target.id === 'aboutDialog') hideAboutDialog();
