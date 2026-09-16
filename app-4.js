@@ -8257,6 +8257,32 @@ function initAuth() {
     action.catch(err => setAuthError(err.message));
   });
 
+  document.getElementById('authGoogleBtn').addEventListener('click', () => {
+    const button = document.getElementById('authGoogleBtn');
+    const label = document.getElementById('authGoogleBtnLabel');
+    button.disabled = true;
+    const originalLabel = label.textContent;
+    label.textContent = 'Opening Google…';
+    const provider = new firebase.auth.GoogleAuthProvider();
+    // Always let the person choose an account instead of silently using a
+    // different Google account that may already be signed in on the device.
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    authPersistenceReady
+      .then(() => firebase.auth().signInWithPopup(provider))
+      .catch(err => {
+        if (err && err.code === 'auth/account-exists-with-different-credential') {
+          setAuthError('An account already exists with this email. Sign in with your email and password first, then contact the Head Teacher if you need help linking Google.');
+        } else if (err && err.code !== 'auth/popup-closed-by-user') {
+          setAuthError(err && err.message ? err.message : 'Google sign-in could not be completed.');
+        }
+      })
+      .finally(() => {
+        button.disabled = false;
+        label.textContent = originalLabel;
+      });
+  });
+
   document.getElementById('authForgotBtn').addEventListener('click', () => {
     const email = document.getElementById('authEmail').value.trim();
     if (!email) { setAuthError('Enter your email above first, then tap this again.'); return; }

@@ -581,6 +581,12 @@ html.sessionRestoring #sessionRestoreGate{
 #schoolChoiceGate .lock-box .btn-text,
 #pendingGate .lock-box .btn-text,
 #disabledGate .lock-box .btn-text{display:block;width:100%;margin-top:8px;}
+.auth-divider{display:flex;align-items:center;gap:10px;margin:16px 0 12px;color:var(--muted);font-size:12px;}
+.auth-divider::before,.auth-divider::after{content:'';height:1px;flex:1;background:var(--rule);}
+.google-signin-btn{display:flex;width:100%;min-height:46px;align-items:center;justify-content:center;gap:10px;border:1px solid var(--rule);border-radius:6px;background:var(--surface);color:var(--paper);font:600 15px 'IBM Plex Sans',sans-serif;cursor:pointer;}
+.google-signin-btn:hover{background:var(--surface-alt);border-color:var(--gold);}
+.google-signin-btn:disabled{opacity:.65;cursor:wait;}
+.google-mark{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#fff;color:#4285f4;font:bold 15px Arial,sans-serif;}
 
 
 /* Subject ordering controls */

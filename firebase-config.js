@@ -2,7 +2,7 @@
 //
 // This is a SEPARATE Firebase project from AlatiphA Report Cards — keep
 // them independent. Create a new project at console.firebase.google.com,
-// enable Authentication (Email/Password), Firestore, and Storage, then paste that
+// enable Authentication (Email/Password and Google), Firestore, and Storage, then paste that
 // project's config values below.
 //
 // Until real values are set, the app has no working accounts/sync.
