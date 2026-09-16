@@ -1094,7 +1094,7 @@ input[type="date"]{
 
   /* Setup's independent fields can be completed in pairs. Sections and
      explanatory content stay full-width to keep their meaning clear. */
-  #view-setup{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;align-items:start;}
+  #view-setup:not(.hidden){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;align-items:start;}
   #view-setup>h2,#view-setup>.row,#view-setup>#logoPreviewWrap,
   #view-setup>.btn-primary,#view-setup>.hint,#view-setup>.backup-section{grid-column:1/-1;}
   #view-setup>.btn-primary{width:auto;min-width:220px;justify-self:start;}
@@ -1107,13 +1107,13 @@ input[type="date"]{
   .staff-add-form .btn-primary,.student-add-form .btn-primary,.class-add-form .btn-primary{width:auto;min-width:220px;justify-self:start;}
 
   /* The main search/filter controls and report actions benefit from pairs. */
-  #view-students{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;align-items:start;}
+  #view-students:not(.hidden){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;align-items:start;}
   #view-students>h2,#view-students>.student-add-toolbar,#view-students>#addStudentForm,
   #view-students>.stack,#view-students>.list,#view-students>.hint{grid-column:1/-1;}
   #view-students>.stack{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:end;}
   #view-students>.stack .btn-primary{width:auto;min-width:160px;}
 
-  #view-reports,#view-history{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;align-items:start;}
+  #view-reports:not(.hidden),#view-history:not(.hidden){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;align-items:start;}
   #view-reports>h2,#view-reports>.report-themes-launch,#view-reports>#reportCreditStatus,
   #view-reports>#reportThemePicker,#view-reports>.stack,#view-reports>.list,#view-reports>.backup-section,
   #view-history>h2,#view-history>#historyStatsWrap,#view-history>.stack,#view-history>.list,#view-history>.backup-section{grid-column:1/-1;}
