@@ -209,6 +209,29 @@ function subjectEntryHasScore(entry) {
     && (entry.c !== undefined || entry.e !== undefined);
 }
 
+function subjectHasSavedScores(subjectId, grades) {
+  return Object.keys(grades && typeof grades === 'object' ? grades : {}).some(gradeKey => {
+    const classGrades = grades[gradeKey];
+    return Object.keys(classGrades && typeof classGrades === 'object' ? classGrades : {}).some(studentId =>
+      subjectEntryHasScore(classGrades[studentId] && classGrades[studentId][subjectId])
+    );
+  });
+}
+
+// The recovery cache can contain default subjects from an older browser
+// install. Once Firestore has returned a non-empty authoritative subject
+// collection, do not let unscored cache-only subjects reappear in the Head
+// Teacher list. A cache-only subject with scores is retained for safety.
+function removeUnscoredSubjectsAbsentFromCloud(subjects, grades, cloudSubjectIds) {
+  if (!cloudSubjectIds || !cloudSubjectIds.size) return { subjects, changed: false, removed: 0 };
+  const kept = (Array.isArray(subjects) ? subjects : []).filter(subject =>
+    cloudSubjectIds.has(subject.id) || subjectHasSavedScores(subject.id, grades)
+  );
+  const removed = (Array.isArray(subjects) ? subjects.length : 0) - kept.length;
+  if (removed) ensureSubjectOrder(kept);
+  return { subjects: kept, changed: removed > 0, removed };
+}
+
 // Merge duplicate subject IDs into the first subject in display order.  A
 // duplicate is removed only when every saved score can be represented by the
 // kept subject. If two different values exist for the same pupil/score part,
@@ -7307,9 +7330,17 @@ function pullCloudData(sessionToken) {
       mergeCloudCollection('grades', grades);
       const mergedSubjects = DB.get(KEYS.subjects, []);
       const mergedGrades = DB.get(KEYS.grades, {});
-      duplicateRepair = all
-        ? repairDuplicateSubjects(mergedSubjects, mergedGrades)
+      const cloudSubjectIds = new Set(subjects.map(subject => subject.id));
+      const staleSubjectRepair = all
+        ? removeUnscoredSubjectsAbsentFromCloud(mergedSubjects, mergedGrades, cloudSubjectIds)
+        : { subjects: mergedSubjects, changed: false, removed: 0 };
+      const nameRepair = all
+        ? repairDuplicateSubjects(staleSubjectRepair.subjects, mergedGrades)
         : { subjects: sortSubjectsByOrder(mergedSubjects), grades: mergedGrades, changed: false };
+      duplicateRepair = Object.assign({}, nameRepair, {
+        changed: staleSubjectRepair.changed || nameRepair.changed,
+        removed: staleSubjectRepair.removed + (nameRepair.removed || 0)
+      });
       DB.set(KEYS.subjects, duplicateRepair.subjects, {skipCloudSync:true});
       if (duplicateRepair.changed) {
         console.info(`Merged ${duplicateRepair.removed} duplicate subject(s) and preserved ${duplicateRepair.movedScores} score part(s).`);
