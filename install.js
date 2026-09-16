@@ -4,7 +4,8 @@
   const DISMISS_DAYS = 14;
   let deferredPrompt = null;
   let banner = null;
-  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  let installed = false;
+  const isStandalone = () => installed || window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
   const isDismissed = () => Number(localStorage.getItem(DISMISS_KEY) || 0) > Date.now();
@@ -23,8 +24,8 @@
     document.head.appendChild(style);
   };
 
-  const showBanner = () => {
-    if (banner || standalone || isDismissed()) return;
+  const showBanner = (manual = false) => {
+    if (banner || isStandalone() || (!manual && isDismissed())) return;
     banner = document.createElement('aside');
     banner.className = 'schoolhub-install-banner';
     banner.setAttribute('role', 'dialog');
@@ -39,23 +40,37 @@
     banner.querySelector('.schoolhub-install-confirm').addEventListener('click', async () => {
       if (isIOS) { dismiss(); removeBanner(); return; }
       if (!deferredPrompt) return;
-      removeBanner();
-      deferredPrompt.prompt();
-      try { await deferredPrompt.userChoice; } catch (e) {}
-      deferredPrompt = null;
+      await requestInstall();
     });
+  };
+
+  const requestInstall = async () => {
+    const prompt = deferredPrompt;
+    if (!prompt) return;
+    deferredPrompt = null;
+    removeBanner();
+    try {
+      await prompt.prompt();
+      await prompt.userChoice;
+    } catch (e) {
+      alert('The install prompt could not open. Use your browser menu to install SchoolHub, or refresh and try again.');
+    }
   };
 
   window.SchoolHubInstall = {
     prompt() {
-      if (standalone) return;
-      if (!isIOS && !deferredPrompt) {
-        alert('Install is not available in this browser yet. Refresh SchoolHub, wait a moment, then try again.');
+      if (isStandalone()) {
+        alert('SchoolHub is already installed and running as an app on this device.');
         return;
       }
-      showBanner();
+      if (!isIOS && !deferredPrompt) {
+        alert('Use your browser menu to look for Install SchoolHub, Install app, or Add to Home Screen. If SchoolHub is already installed, open it from your apps. If no install option appears, open this page in Chrome or Edge.');
+        return;
+      }
+      if (deferredPrompt) return requestInstall();
+      showBanner(true);
     },
-    available() { return !!deferredPrompt || isIOS; }
+    available() { return !isStandalone() && (!!deferredPrompt || isIOS); }
   };
 
   injectStyles();
@@ -64,6 +79,6 @@
     deferredPrompt = event;
     if (!isDismissed()) setTimeout(showBanner, 2500);
   });
-  window.addEventListener('appinstalled', () => { deferredPrompt = null; removeBanner(); });
-  if (isIOS && !standalone && !isDismissed()) setTimeout(showBanner, 2500);
+  window.addEventListener('appinstalled', () => { installed = true; deferredPrompt = null; removeBanner(); });
+  if (isIOS && !isStandalone() && !isDismissed()) setTimeout(showBanner, 2500);
 })();

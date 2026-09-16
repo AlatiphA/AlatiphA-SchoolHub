@@ -1,9 +1,9 @@
 // AlatiphA SchoolHub — service worker
 // Keep CACHE_NAME's version in sync with APP_VERSION in app-4.js
 // Keep the public app version at v40, but change this internal cache key for
-// the profile menu alignment fix so installed PWAs receive the updated
-// app styles after a normal refresh.
-const CACHE_NAME = 'schoolhub-cache-v40-profile-alignment-1';
+// the install menu fix so installed PWAs receive the updated
+// install helper after a normal refresh.
+const CACHE_NAME = 'schoolhub-cache-v40-install-menu-2';
 
 const APP_SHELL = [
   './',
