@@ -1133,3 +1133,45 @@ input[type="date"]{
   #view-reports>.stack,#view-history>.stack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
   #view-reports>.stack>* ,#view-history>.stack>*{margin-bottom:0;}
 }
+
+/* Authentication: calm, responsive account screens. */
+html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:40px 20px 24px;background:var(--ink);}
+#authGate .auth-card{flex-shrink:0;}
+#authGate .auth-card{max-width:460px;margin:auto;padding:32px;background:var(--surface);border:1px solid var(--rule);border-radius:24px;box-shadow:0 12px 40px rgba(0,0,0,.07);}
+.auth-brand{display:inline-flex;align-items:center;justify-content:center;gap:10px;color:var(--paper);text-decoration:none;font-size:14px;font-weight:600;margin-bottom:28px;}
+.auth-brand img{border-radius:8px;}
+#authGate h2{font-family:'IBM Plex Sans',sans-serif;font-size:32px;line-height:1.15;letter-spacing:-1px;margin:0 0 12px;}
+.auth-subtitle{color:var(--muted);font-size:15px;line-height:1.5;margin:0 0 28px;}
+#authGate .google-signin-btn{min-height:48px;border-radius:12px;font-size:15px;box-shadow:0 2px 4px rgba(0,0,0,.04);}
+#authGate .google-mark{font-size:22px;background:transparent;}
+#authGate .auth-divider{margin:24px 0;font-size:11px;text-transform:uppercase;letter-spacing:.7px;gap:12px;}
+#authGate .auth-label{display:block;text-align:left;font-size:14px;font-weight:500;color:var(--paper);margin:0 0 8px;}
+#authGate input{display:block;width:100%;min-height:48px;border:1px solid var(--rule);border-radius:12px;background:var(--surface);color:var(--paper);padding:12px 14px;margin:0;font:400 16px 'IBM Plex Sans',sans-serif;box-shadow:0 2px 4px rgba(0,0,0,.03);}
+#authGate input::placeholder{color:var(--muted);font-style:normal;opacity:1;}
+#authGate .password-field input{padding-right:48px;}
+#authGate input:focus{outline:2px solid var(--gold);outline-offset:2px;}
+#authGate button:focus-visible,#authGate a:focus-visible{outline:2px solid var(--gold);outline-offset:3px;}
+.auth-password-label{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:20px;}
+#authForgotBtn,#authToggleModeBtn{border:0;background:none;padding:0;color:var(--paper);font:500 13px 'IBM Plex Sans',sans-serif;cursor:pointer;}
+#authForgotBtn:hover,#authToggleModeBtn:hover{text-decoration:underline;}
+#authConfirmField{margin-top:20px;}
+.auth-password-hint{text-align:left;color:var(--muted);font-size:12px;margin:8px 0 0;}
+#authGate #authSubmitBtn{width:100%;min-height:48px;margin:24px 0 0;border-radius:12px;background:var(--paper);color:var(--ink);font-size:16px;}
+.auth-switch{color:var(--muted);font-size:14px;line-height:1.6;margin:24px 0 12px;}
+#authToggleModeBtn{font-size:14px;font-weight:600;margin-left:4px;}
+#authGate #authGuestBtn{color:var(--muted);font-size:13px;margin:0;padding:8px;min-height:36px;}
+.auth-privacy-note{font-size:12px;line-height:1.6;color:var(--muted);margin:18px 0 0;padding-top:18px;border-top:1px solid var(--rule);}
+#authGate .lock-error{text-align:left;line-height:1.5;}
+#authGate .auth-footer{position:static;display:flex;flex-direction:column;gap:18px;width:100%;max-width:600px;text-align:center;flex-shrink:0;margin:36px auto 0;padding:24px 0 0;}
+.auth-footer-brand strong{color:var(--paper);font-size:15px;}
+.auth-footer-brand p{margin:8px 0 0;line-height:1.5;}
+.auth-footer nav{display:flex;justify-content:center;flex-wrap:wrap;gap:12px 24px;}
+#authGate .auth-footer a:last-child{text-align:inherit;}
+@media(max-width:480px){
+  html.authing #authGate{padding:24px 16px;}
+  #authGate .auth-card{padding:24px 20px;border-radius:20px;}
+  #authGate h2{font-size:28px;}
+  .auth-brand{margin-bottom:24px;font-size:13px;}
+  .auth-subtitle{font-size:14px;}
+  #authGate .auth-footer{margin-top:24px;}
+}

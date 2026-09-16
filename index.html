@@ -40,35 +40,47 @@
 </div>
 
 <div id="authGate">
-  <div class="lock-box">
-    <img src="icon.svg" alt="" class="lock-seal">
-    <h2 id="authHeading">Sign In</h2>
+  <div class="lock-box auth-card">
+    <a class="auth-brand" href="./"><img src="icon.svg" alt="" width="36" height="36"><span>AlatiphA SchoolHub</span></a>
+    <h2 id="authHeading">Welcome back</h2>
+    <p id="authSubtitle" class="auth-subtitle">Sign in to your school account.</p>
     <div id="authFormFields">
-      <input type="email" id="authEmail" placeholder="Email" autocomplete="email">
-      <div class="password-field">
-        <input type="password" id="authPassword" placeholder="Password" autocomplete="current-password">
-        <button type="button" id="authPasswordToggle" class="password-toggle" aria-label="Show password">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-        </button>
-      </div>
-      <button id="authSubmitBtn" class="btn-primary">Log In</button>
-      <div class="auth-divider" aria-hidden="true"><span>or</span></div>
       <button type="button" id="authGoogleBtn" class="google-signin-btn">
         <span class="google-mark" aria-hidden="true">G</span>
         <span id="authGoogleBtnLabel">Continue with Google</span>
       </button>
-      <button type="button" id="authToggleModeBtn" class="btn-text">Need an account? Sign up</button>
-      <button type="button" id="authForgotBtn" class="btn-text">Forgot password?</button>
+      <div class="auth-divider" aria-hidden="true"><span>or continue with email</span></div>
+      <label class="auth-label" for="authEmail">Email</label>
+      <input type="email" id="authEmail" placeholder="Enter your email" autocomplete="email" inputmode="email" autocapitalize="none">
+      <div class="auth-password-label"><label class="auth-label" for="authPassword">Password</label><button type="button" id="authForgotBtn">Forgot password?</button></div>
+      <div class="password-field">
+        <input type="password" id="authPassword" placeholder="Enter your password" autocomplete="current-password">
+        <button type="button" id="authPasswordToggle" class="password-toggle" aria-label="Show password" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+      <div id="authConfirmField" class="hidden">
+        <label class="auth-label" for="authConfirmPassword">Confirm password</label>
+        <div class="password-field">
+          <input type="password" id="authConfirmPassword" placeholder="Re-enter your password" autocomplete="new-password">
+          <button type="button" id="authConfirmToggle" class="password-toggle" aria-label="Show confirm password" aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <p class="auth-password-hint">Use at least 6 characters.</p>
+      </div>
+      <button type="button" id="authSubmitBtn" class="btn-primary">Sign in</button>
+      <p class="auth-switch"><span id="authSwitchPrompt">Don’t have an account?</span> <button type="button" id="authToggleModeBtn">Sign up</button></p>
       <button type="button" id="authGuestBtn" class="btn-text">Continue without an account</button>
     </div>
-    <p id="authSyncingMsg" class="hint hidden">Syncing your data from the cloud…</p>
-    <p id="authError" class="lock-error hidden"></p>
-    <p class="hint">Signing in connects you to your school. Guest mode keeps everything on this device only, with no school.</p>
+    <p id="authSyncingMsg" class="hint hidden" role="status">Syncing your data from the cloud…</p>
+    <p id="authError" class="lock-error hidden" role="alert"></p>
+    <p class="auth-privacy-note">Your school, connected. Guest mode saves data on this device only.</p>
   </div>
-  <footer class="auth-footer" aria-label="Contact information">
-    <a href="tel:0243443688">Contact: 0243443688</a>
+  <footer class="auth-footer" aria-label="SchoolHub information">
+    <div class="auth-footer-brand"><strong>AlatiphA SchoolHub</strong><p>More time for teaching. One place for your school.</p></div>
+    <nav aria-label="Help and contact"><a href="faq.html">Help &amp; FAQ</a><a href="tel:0243443688">0243443688</a><a href="mailto:alatipha@ymail.com">Email support</a></nav>
     <span>© 2026 AlatiphA Multimedia</span>
-    <a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a>
   </footer>
 </div>
 

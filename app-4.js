@@ -7696,9 +7696,23 @@ function hideSyncingMessage() {
 }
 
 function renderAuthForm() {
-  document.getElementById('authHeading').textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
-  document.getElementById('authSubmitBtn').textContent = authMode === 'login' ? 'Log In' : 'Sign Up';
-  document.getElementById('authToggleModeBtn').textContent = authMode === 'login' ? 'Need an account? Sign up' : 'Already have an account? Log in';
+  const login = authMode === 'login';
+  document.getElementById('authHeading').textContent = login ? 'Welcome back' : 'Create an account';
+  document.getElementById('authSubtitle').textContent = login ? 'Sign in to your school account.' : 'Start your SchoolHub journey. Join or register your school next.';
+  document.getElementById('authSubmitBtn').textContent = login ? 'Sign in' : 'Create account';
+  document.getElementById('authSwitchPrompt').textContent = login ? 'Don’t have an account?' : 'Already have an account?';
+  document.getElementById('authToggleModeBtn').textContent = login ? 'Sign up' : 'Sign in';
+  document.getElementById('authConfirmField').classList.toggle('hidden', login);
+  document.getElementById('authForgotBtn').classList.toggle('hidden', !login);
+  document.getElementById('authPassword').autocomplete = login ? 'current-password' : 'new-password';
+  ['authPassword', 'authConfirmPassword'].forEach(id => { document.getElementById(id).type = 'password'; });
+  document.getElementById('authConfirmPassword').value = '';
+  ['authPasswordToggle', 'authConfirmToggle'].forEach(id => {
+    const button = document.getElementById(id);
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', id === 'authPasswordToggle' ? 'Show password' : 'Show confirm password');
+    button.classList.remove('showing');
+  });
   document.getElementById('authError').classList.add('hidden');
 }
 
@@ -8244,7 +8258,22 @@ function initAuth() {
     const showing = pwInput.type === 'text';
     pwInput.type = showing ? 'password' : 'text';
     pwToggle.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    pwToggle.setAttribute('aria-pressed', String(!showing));
     pwToggle.classList.toggle('showing', !showing);
+  });
+  document.getElementById('authConfirmToggle').addEventListener('click', () => {
+    const input = document.getElementById('authConfirmPassword');
+    const button = document.getElementById('authConfirmToggle');
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    button.setAttribute('aria-label', showing ? 'Show confirm password' : 'Hide confirm password');
+    button.setAttribute('aria-pressed', String(!showing));
+    button.classList.toggle('showing', !showing);
+  });
+  ['authEmail', 'authPassword', 'authConfirmPassword'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', event => {
+      if (event.key === 'Enter') { event.preventDefault(); document.getElementById('authSubmitBtn').click(); }
+    });
   });
 
   document.getElementById('authToggleModeBtn').addEventListener('click', () => {
@@ -8256,6 +8285,9 @@ function initAuth() {
     const email = document.getElementById('authEmail').value.trim();
     const password = document.getElementById('authPassword').value;
     if (!email || !password) { setAuthError('Enter an email and password.'); return; }
+    if (!document.getElementById('authEmail').checkValidity()) { setAuthError('Enter a valid email address.'); return; }
+    if (authMode === 'signup' && password.length < 6) { setAuthError('Use a password with at least 6 characters.'); return; }
+    if (authMode === 'signup' && password !== document.getElementById('authConfirmPassword').value) { setAuthError('Your passwords do not match. Please try again.'); return; }
     const action = authMode === 'login'
       ? firebase.auth().signInWithEmailAndPassword(email, password)
       : firebase.auth().createUserWithEmailAndPassword(email, password);
