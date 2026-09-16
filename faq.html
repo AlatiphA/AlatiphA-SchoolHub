@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16241C">
+  <title>SchoolHub Help &amp; FAQ</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <script>
+    try {
+      var theme = localStorage.getItem('arc_theme');
+      if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {}
+  </script>
+  <style>
+    :root{--ink:#16241c;--paper:#f7f4ea;--surface:#fffdf7;--surface-alt:#f0ebdc;--text:#16241c;--muted:#627168;--rule:#ddd3bd;--gold:#a67d12;}
+    html[data-theme="dark"]{--ink:#111b16;--paper:#18221c;--surface:#202d25;--surface-alt:#27362d;--text:#f7f4ea;--muted:#b7c3ba;--rule:#405044;--gold:#e2ba4e;}
+    *{box-sizing:border-box} body{margin:0;background:var(--paper);color:var(--text);font-family:"IBM Plex Sans",Arial,sans-serif;line-height:1.55;}
+    .topbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;padding:12px max(18px,calc((100vw - 1180px)/2));background:var(--surface-alt);border-bottom:1px solid var(--rule);}
+    .back{display:inline-flex;align-items:center;gap:7px;color:var(--text);font-weight:700;text-decoration:none;white-space:nowrap}.back:hover{color:var(--gold)}
+    .brand{display:flex;align-items:center;gap:9px;font-family:Georgia,serif;font-size:18px;font-weight:700;flex:1}.brand img{width:32px;height:32px}.theme{width:38px;height:38px;border-radius:50%;border:0;background:var(--gold);color:var(--ink);cursor:pointer;font-size:17px;}
+    .hero{padding:46px 20px 34px;text-align:center;background:var(--surface-alt);border-bottom:1px solid var(--rule)}.hero img{width:72px;height:72px;margin-bottom:10px}.hero h1{margin:0;font:700 clamp(26px,4vw,38px)/1.2 Georgia,serif}.hero p{max-width:560px;margin:10px auto 0;color:var(--muted)}
+    main{width:min(980px,calc(100% - 32px));margin:34px auto 56px}.faq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.section{min-width:0}.section h2{margin:0 0 10px;padding-bottom:8px;border-bottom:2px solid var(--gold);font:700 18px Georgia,serif;color:var(--gold)}
+    details{background:var(--surface);border:1px solid var(--rule);border-radius:10px;margin:8px 0;overflow:hidden}summary{cursor:pointer;list-style:none;padding:14px 16px;font-weight:700;display:flex;align-items:center;gap:12px}summary::-webkit-details-marker{display:none}summary::after{content:'+';margin-left:auto;color:var(--gold);font-size:20px;font-weight:400}details[open] summary{border-bottom:1px solid var(--rule)}details[open] summary::after{content:'–'}.answer{padding:13px 16px 16px;color:var(--muted);font-size:14px}.answer p{margin:0 0 9px}.answer p:last-child{margin-bottom:0}.answer strong{color:var(--text)}
+    .support{grid-column:1/-1;background:var(--surface);border:1px solid var(--rule);border-radius:12px;padding:20px;text-align:center}.support h2{border:0;margin-bottom:6px;padding:0}.support p{margin:0;color:var(--muted)}.support-links{display:flex;justify-content:center;gap:14px;flex-wrap:wrap;margin-top:14px}.support-links a{border:1px solid var(--rule);border-radius:7px;padding:9px 13px;color:var(--text);font-weight:700;text-decoration:none}.support-links a:hover{border-color:var(--gold);color:var(--gold)}
+    footer{padding:20px;text-align:center;border-top:1px solid var(--rule);color:var(--muted);font-size:12px}@media(max-width:700px){.topbar{padding:12px 16px}.brand{font-size:16px}.faq-grid{grid-template-columns:1fr}main{margin-top:24px}.support{grid-column:auto}.hero{padding:34px 18px 28px}}
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="back" href="index.html" aria-label="Back to SchoolHub">← <span>SchoolHub</span></a>
+    <div class="brand"><img src="icon.svg" alt="">Help &amp; FAQ</div>
+    <button class="theme" id="themeToggle" type="button" aria-label="Toggle colour theme">◐</button>
+  </header>
+  <section class="hero">
+    <img src="icon.svg" alt="AlatiphA SchoolHub">
+    <h1>How can we help?</h1>
+    <p>Quick answers for managing your school, entering grades, and keeping your records safe.</p>
+  </section>
+  <main>
+    <div class="faq-grid">
+      <section class="section">
+        <h2>Getting started</h2>
+        <details><summary>What is AlatiphA SchoolHub?</summary><div class="answer">SchoolHub is a school-management app for classes, students, subjects, staff, attendance, grades, remarks, reports, and backups.</div></details>
+        <details><summary>How do I create or join a school?</summary><div class="answer">After signing in, a Head Teacher can choose <strong>Create School</strong>. Teachers should choose <strong>Join School</strong> and enter the join code supplied by the Head Teacher. New teacher requests must be approved before access is granted.</div></details>
+        <details><summary>What is the difference between Head Teacher and Teacher access?</summary><div class="answer">The Head Teacher manages the school profile, staff, classes, subjects, teacher approvals, and assignments. Teachers see only the classes and subjects assigned to them.</div></details>
+      </section>
+      <section class="section">
+        <h2>Signing in</h2>
+        <details><summary>Can I use Google to sign in?</summary><div class="answer">Yes. Select <strong>Continue with Google</strong> on the sign-in page and choose the same Gmail address linked to your SchoolHub account. Choosing a different Google account creates a separate account and does not move your existing school data.</div></details>
+        <details><summary>I forgot my password. What should I do?</summary><div class="answer">Enter your email address on the sign-in page, then choose <strong>Forgot password?</strong>. Firebase will send a password-reset message to that email address.</div></details>
+        <details><summary>Can I use SchoolHub without an account?</summary><div class="answer">Yes. <strong>Continue without an account</strong> keeps data only on the current device. It does not create a shared school or cloud backup.</div></details>
+      </section>
+      <section class="section">
+        <h2>School records</h2>
+        <details><summary>How do I add classes, students, and staff?</summary><div class="answer">Use the <strong>Classes</strong>, <strong>Students</strong>, and <strong>Staff</strong> pages. Each page has an Add section. A class can be linked to a Class Teacher after staff records have been created.</div></details>
+        <details><summary>How do subjects work?</summary><div class="answer">The Head Teacher manages the school subject list. Leave a student’s score blank for a subject they do not take; that subject is skipped on that student’s report. Subject order also determines the core-subject order used in aggregates.</div></details>
+        <details><summary>How do I prevent duplicate subjects?</summary><div class="answer">Use the existing subject entry rather than creating another with the same name. SchoolHub prevents duplicate names and keeps scores attached to the original subject.</div></details>
+      </section>
+      <section class="section">
+        <h2>Grades and reports</h2>
+        <details><summary>How do I enter grades?</summary><div class="answer">Open <strong>Grades</strong>, select a class, enter Class Score and Exam Score, then choose <strong>Save Grades</strong>. In Simple layout, only the Exam Score is used.</div></details>
+        <details><summary>Can I work with grades in Excel?</summary><div class="answer">Yes. In the Grades page, export the current class sheet to Excel, fill it in, then import it back. Importing replaces grades for that class, term, and year, so export a backup first.</div></details>
+        <details><summary>How do I create report cards?</summary><div class="answer">Add grades and remarks, then open <strong>Reports</strong>. Select the class, review results, and generate an individual or class report. The Head Teacher can choose a report-card theme in Setup or Reports.</div></details>
+      </section>
+      <section class="section">
+        <h2>Attendance and terms</h2>
+        <details><summary>How do I record attendance?</summary><div class="answer">Open <strong>Attendance</strong>, select the class and date, mark each student, then save. Head Teachers can also record teacher attendance and school-calendar events.</div></details>
+        <details><summary>How do I start a new term?</summary><div class="answer">Open <strong>Term History</strong>, choose the new term and academic year, then select <strong>Start New Term</strong>. Classes, students, and subjects carry over; grade entry starts fresh for the new term.</div></details>
+      </section>
+      <section class="section">
+        <h2>Backup and troubleshooting</h2>
+        <details><summary>How do I back up my school data?</summary><div class="answer">Go to <strong>Setup → Backup &amp; Restore → Export Backup (.json)</strong>. Keep the downloaded file somewhere safe. Importing a backup replaces the current records, so export a fresh copy first.</div></details>
+        <details><summary>The app looks outdated or is not responding.</summary><div class="answer">Close and reopen SchoolHub. From the account menu, choose <strong>About SchoolHub → Check for Updates</strong>. If cloud records are delayed, use <strong>Sync Center</strong> in the account menu.</div></details>
+        <details><summary>Why can’t a teacher see a class or subject?</summary><div class="answer">The Head Teacher must approve the teacher and assign the appropriate classes and subjects in <strong>Manage Teachers</strong>.</div></details>
+      </section>
+      <section class="support">
+        <h2>Need more help?</h2>
+        <p>Contact AlatiphA Multimedia for SchoolHub support.</p>
+        <div class="support-links"><a href="tel:0243443688">Call 0243443688</a><a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a></div>
+      </section>
+    </div>
+  </main>
+  <footer>© 2026 AlatiphA Multimedia · AlatiphA SchoolHub</footer>
+  <script>
+    document.getElementById('themeToggle').addEventListener('click', function () {
+      var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('arc_theme', next); } catch (e) {}
+    });
+  </script>
+</body>
+</html>

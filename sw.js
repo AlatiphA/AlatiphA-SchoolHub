@@ -3,11 +3,12 @@
 // Keep the public app version at v40, but change this internal cache key for
 // the duplicate-subject repair so installed PWAs cannot keep the older v40
 // JavaScript after a normal refresh.
-const CACHE_NAME = 'schoolhub-cache-v40-login-footer-1';
+const CACHE_NAME = 'schoolhub-cache-v40-faq-1';
 
 const APP_SHELL = [
   './',
   './index.html',
+  './faq.html',
   './style-3.css',
   './app-4.js',
   './firebase-config.js',
