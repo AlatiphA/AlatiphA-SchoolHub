@@ -4707,8 +4707,11 @@ function renderReportCreditStatus() {
   if (!FIREBASE_ENABLED || !currentSchoolId) {
     host.innerHTML = '<span><strong>Report credits</strong> require a signed-in school account.</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>';
   } else {
-    const balance = localBillingBalance();
-    host.innerHTML = `<span><strong>${balance} report credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} value · <em>Single Black &amp; White reports are free; class batch PDFs require credits.</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
+    const balance = displayedBillingBalance();
+    const status = BILLING_SUSPENDED
+      ? 'Live billing disabled. All report generation, including class batch PDFs, is free. No credits are deducted.'
+      : 'Single Black &amp; White reports are free; class batch PDFs require credits.';
+    host.innerHTML = `<span><strong>${balance} ${isBillingTestMode() ? 'test' : 'report'} credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} ${isBillingTestMode() ? 'test value (no real money)' : 'value'} · <em>${status}</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
   }
   document.getElementById('reportBillingLink')?.addEventListener('click', () => showView('billing'));
 }
@@ -5167,6 +5170,10 @@ function localBillingBalance() {
   const b = DB.get(KEYS.billing, { balance: 0 });
   return Math.max(0, Number(b.balance || 0));
 }
+function displayedBillingBalance() {
+  const account = DB.get(KEYS.billing, {});
+  return isBillingTestMode() ? Math.max(0, Number(account.testBalance || 0)) : localBillingBalance();
+}
 function setLocalBillingBalance(balance) {
   const b = DB.get(KEYS.billing, {});
   b.balance = Math.max(0, Number(balance || 0));
@@ -5183,6 +5190,9 @@ async function refreshBillingAccount(silent = true) {
     if (currentSchoolId !== billingSchool || currentUid !== billingUid) return null;
     const data = snap.exists ? snap.data() : { balance: 0, currency: 'GHS' };
     setLocalBillingBalance(Number(data.balance || 0));
+    const cachedAccount = DB.get(KEYS.billing, {});
+    cachedAccount.testBalance = Math.max(0, Number(data.testBalance || 0));
+    DB.set(KEYS.billing, cachedAccount);
     return data;
   } catch (e) {
     if (!silent) alert('Unable to load the school billing balance: ' + (e.message || e));
@@ -5303,9 +5313,9 @@ async function renderBilling() {
     return;
   }
   const billingSchool = currentSchoolId;
-  const account = await refreshBillingAccount(true);
+  await refreshBillingAccount(true);
   if (billingSchool !== currentSchoolId) return;
-  const balance = isBillingTestMode() ? Number(account?.testBalance || 0) : localBillingBalance();
+  const balance = displayedBillingBalance();
   const school = DB.get(KEYS.settings, {}).schoolName || 'Your School';
   const head = isHeadTeacher();
   const pending = pendingPaymentReference();
@@ -5321,17 +5331,17 @@ async function renderBilling() {
     ${isBillingTestMode() ? '<div class="billing-note"><strong>Paystack test checkout</strong><span>No real money is charged. Test credits are separate from live credits. Reports remain free while billing is suspended.</span></div>' : ''}
     <div class="billing-summary-card">
       <div><span class="billing-kicker">${escapeHtml(school)}</span><h3>Report Credits</h3><p class="hint">School-owned credits shared by authorized teachers.</p></div>
-      <div class="billing-balance"><strong>${balance}</strong><span>credits</span><small>GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} remaining value</small></div>
+      <div class="billing-balance"><strong>${balance}</strong><span>${isBillingTestMode() ? 'test credits' : 'credits'}</span><small>GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} ${isBillingTestMode() ? 'test value (no real money)' : 'remaining value'}</small></div>
     </div>
     <div class="billing-info-grid">
-      <div class="billing-info-card"><strong>GH₵0.20</strong><span>per generated report card</span></div>
+      <div class="billing-info-card"><strong>${BILLING_SUSPENDED ? 'Free' : 'GH₵0.20'}</strong><span>${BILLING_SUSPENDED ? 'all report generation while billing is disabled' : 'per generated report card'}</span></div>
       <div class="billing-info-card"><strong>Free</strong><span>students, classes, grades, attendance and remarks</span></div>
       <div class="billing-info-card"><strong>Free preview</strong><span>report themes can be previewed before purchase</span></div>
     </div>
-    ${head ? `<div class="billing-section"><div class="billing-section-head"><div><h3>Buy Report Credits</h3><p class="hint">The Head Teacher purchases credits for the whole school. Teachers never pay individually.</p></div></div><div class="billing-packages">${REPORT_CREDIT_PACKAGES.map(p => `<article class="billing-package"><strong>${p.credits}</strong><span>report credits</span><b>GH₵${p.amount.toFixed(2)}</b><small>GH₵0.20 each</small><button type="button" class="btn-primary" data-buy-credits="${p.id}">Buy ${p.credits}</button></article>`).join('')}</div></div>` : `<div class="billing-section"><h3>School Credits</h3><p class="hint">Your Head Teacher manages purchases for the school. Your report generation uses the school's shared credit balance.</p></div>`}
+    ${head ? `<div class="billing-section"><div class="billing-section-head"><div><h3>Buy Report Credits</h3><p class="hint">The Head Teacher purchases credits for the whole school. Teachers never pay individually.</p></div></div><div class="billing-packages">${REPORT_CREDIT_PACKAGES.map(p => `<article class="billing-package"><strong>${p.credits}</strong><span>report credits</span><b>GH₵${p.amount.toFixed(2)}</b><small>GH₵0.20 each</small><button type="button" class="btn-primary" data-buy-credits="${p.id}">Buy ${p.credits}</button></article>`).join('')}</div></div>` : `<div class="billing-section"><h3>School Credits</h3><p class="hint">Your Head Teacher manages purchases for the school. ${BILLING_SUSPENDED ? 'Report generation is free. No credits are deducted.' : "Your report generation uses the school's shared credit balance."}</p></div>`}
     ${head && pending ? `<div class="billing-pending"><strong>Payment pending</strong><span>Reference: ${escapeHtml(pending)}</span><button type="button" id="verifyBillingPaymentBtn" class="btn-primary">Verify Payment</button></div>` : ''}
     ${head && recent.length ? `<div class="billing-section"><h3>Recent payments</h3>${recent.map(p => `<div class="billing-pending"><span>${escapeHtml(p.reference)} · ${Number(p.credits)} ${p.mode === 'test' ? 'test ' : ''}credits · ${escapeHtml(p.status)}</span><button type="button" class="btn-primary" data-verify-payment="${escapeHtml(p.reference)}">${p.status === 'credited' ? 'Check receipt' : 'Verify Payment'}</button></div>`).join('')}</div>` : ''}
-    <div class="billing-note"><strong>How it works</strong><span>One generated report card uses one credit. Printing or downloading that generated report does not charge another credit. Credits belong to the school and can be used by authorized teachers.</span></div>
+    <div class="billing-note"><strong>How it works</strong><span>${BILLING_SUSPENDED ? 'Live billing is disabled. Single reports and class batch PDFs are free, and no credits are deducted. Test credits are separate from live credits and have no real-money value.' : 'One generated report card uses one credit. Printing or downloading that generated report does not charge another credit. Credits belong to the school and can be used by authorized teachers.'}</span></div>
   `;
   wrap.querySelectorAll('[data-buy-credits]').forEach(b => b.addEventListener('click', () => buyReportCredits(b.dataset.buyCredits)));
   wrap.querySelectorAll('[data-verify-payment]').forEach(b => b.addEventListener('click', () => verifyPendingCreditPayment(b.dataset.verifyPayment)));

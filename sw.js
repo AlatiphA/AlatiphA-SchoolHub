@@ -3,7 +3,7 @@
 // Keep the public app version at v40, but change this internal cache key for
 // the shared app redesign so installed PWAs receive the updated
 // markup and screen styles together.
-const CACHE_NAME = 'schoolhub-cache-v40-checkout-test-3';
+const CACHE_NAME = 'schoolhub-cache-v40-checkout-test-4';
 
 const APP_SHELL = [
   './',
