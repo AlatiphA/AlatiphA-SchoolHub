@@ -4687,7 +4687,14 @@ const REPORT_THEMES={
 function getReportTheme(settings){return REPORT_THEMES[(settings&&settings.reportTheme)||'bw']||REPORT_THEMES.bw;}
 function renderReportThemePicker(){const host=document.getElementById('reportThemePicker');if(!host)return;const activeId=DB.get(KEYS.settings,{}).reportTheme||'bw';host.innerHTML=`<div class="report-theme-active"><div class="report-theme-active-icon">✦</div><div><span class="report-theme-kicker">ACTIVE THEME</span><h3>${escapeHtml(REPORT_THEMES[activeId].title)}</h3><p>${escapeHtml(REPORT_THEMES[activeId].description)}</p></div></div><div class="report-theme-grid">${Object.values(REPORT_THEMES).map(t=>`<article class="report-theme-card ${t.id===activeId?'active':''}"><div class="report-theme-preview" data-theme="${t.id}"><div class="rtp-head"><span></span><b>${escapeHtml(t.title)}</b><i></i></div><div class="rtp-meta"><span></span><span></span></div><div class="rtp-table"><b></b><b></b><b></b><b></b><b></b></div><div class="rtp-bottom"><span></span><span></span></div><div class="rtp-footer"></div></div><div class="report-theme-card-body"><h3>${escapeHtml(t.name)} <small>${escapeHtml(t.title)}</small></h3><p>${escapeHtml(t.description)}</p><div class="report-theme-actions"><button type="button" class="report-theme-preview-btn" data-theme-preview="${t.id}">⌕ Preview</button><button type="button" class="btn-primary report-theme-apply" data-theme-apply="${t.id}">${t.id===activeId?'✓ Active':'Apply'}</button></div></div></article>`).join('')}</div>`;host.querySelectorAll('[data-theme-apply]').forEach(b=>b.addEventListener('click',()=>applyReportTheme(b.dataset.themeApply)));host.querySelectorAll('[data-theme-preview]').forEach(b=>b.addEventListener('click',()=>previewReportTheme(b.dataset.themePreview)));}
 async function applyReportTheme(themeId){if(!enforceGuestTrial())return;if(!REPORT_THEMES[themeId])return;if(isActiveGuest() && themeId!=='bw'){requireSchoolAccountForPaidFeature('using a premium report theme');return;}if(!requireHeadTeacher('change the report card theme'))return;if(themeId!=='bw' && !(await ensureCreditsAvailable(1,'using a premium report theme')))return;const s=DB.get(KEYS.settings,{});s.reportTheme=themeId;DB.set(KEYS.settings,s);const sel=document.getElementById('reportThemeSelect');if(sel)sel.value=themeId;auditAction('update','report-theme',themeId,`Applied report card theme: ${REPORT_THEMES[themeId].title}`);renderReportThemePicker();}
-async function previewReportTheme(themeId){if(!enforceGuestTrial())return;if(isActiveGuest() && themeId!=='bw'){requireSchoolAccountForPaidFeature('previewing a premium report theme');return;}const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,remarksAll[result.student.id]||{},assets);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
+async function previewReportTheme(themeId){if(!enforceGuestTrial())return;if(isActiveGuest() && themeId!=='bw'){requireSchoolAccountForPaidFeature('previewing a premium report theme');return;}const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,remarksAll[result.student.id]||{},assets);drawReportPreviewWatermark(doc);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
+
+function drawReportPreviewWatermark(doc) {
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(24);
+  doc.setTextColor(180, 50, 50);
+  for (let y = 70; y < 290; y += 55) doc.text('SAMPLE - NOT FOR OFFICIAL USE', 105, y, { align: 'center', angle: 25 });
+}
 
 /* ---------- Reports ---------- */
 document.getElementById('reportThemesBtn')?.addEventListener('click', () => {
@@ -4708,13 +4715,13 @@ function renderReportCreditStatus() {
   const host = document.getElementById('reportCreditStatus');
   if (!host) return;
   if (!FIREBASE_ENABLED || !currentSchoolId) {
-    host.innerHTML = '<span><strong>Report credits</strong> require a signed-in school account.</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>';
+    host.innerHTML = `<span><strong>${bwFreeRemaining()} of 10 free guest Black &amp; White reports remaining.</strong> Register your school for its term allowance and credits.</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
   } else {
     const balance = displayedBillingBalance();
     const status = BILLING_SUSPENDED
       ? reportBillingMessage()
-      : 'Single Black &amp; White reports are free; class batch PDFs require credits.';
-    host.innerHTML = `<span><strong>${balance} ${isBillingTestMode() ? 'test' : 'report'} credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} ${isBillingTestMode() ? 'test value (no real money)' : 'value'} · <em>${status}</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
+      : '10 free single Black &amp; White reports per school per term, then 1 credit each; batches require credits.';
+    host.innerHTML = `<span><strong>${balance} ${isBillingTestMode() ? 'test' : 'report'} credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} ${isBillingTestMode() ? 'test value (no real money)' : 'value'} · <strong>${bwFreeRemaining()} of 10 free Black &amp; White reports left this term</strong> · <em>${status}</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
   }
   document.getElementById('reportBillingLink')?.addEventListener('click', () => showView('billing'));
 }
@@ -5154,7 +5161,7 @@ const TEST_CREDIT_DEDUCTIONS = true;
 function testCreditDeductionsEnabled() { return TEST_CREDIT_DEDUCTIONS && isBillingTestMode(); }
 function reportBillingIsFree() { return BILLING_SUSPENDED && !testCreditDeductionsEnabled(); }
 function reportBillingMessage() {
-  if (testCreditDeductionsEnabled()) return 'Test deductions enabled. Premium single reports use 1 test credit; class batches use 1 per report. Single Black & White reports are free. Live billing is disabled; no real money is charged.';
+  if (testCreditDeductionsEnabled()) return 'Test deductions enabled. Premium single reports use 1 test credit; class batches use 1 per report. Each school gets 10 free single Black & White reports per term, then 1 test credit per report. Live billing is disabled; no real money is charged.';
   return 'Live billing disabled. All report generation, including class batch PDFs, is free. No credits are deducted.';
 }
 function isBillingTestMode() { return String(window.PAYSTACK_PUBLIC_KEY || '').startsWith('pk_test_'); }
@@ -5163,6 +5170,16 @@ function pendingPaymentReference() { return localStorage.getItem(pendingPaymentK
 let checkoutBusy = false;
 let verificationBusy = false;
 const REPORT_CREDIT_PRICE_GHS = 0.20;
+const BW_FREE_REPORT_LIMIT = 10;
+const GUEST_BW_USAGE_KEY = 'arc_guest_bw_reports_used';
+function bwAllowanceKey(settings = DB.get(KEYS.settings, {})) {
+  return encodeURIComponent(JSON.stringify([String(settings.currentYear || '').trim(), String(settings.currentTerm || '').trim()]));
+}
+function bwFreeRemaining() {
+  if (!currentUid && !currentSchoolId) return Math.max(0, BW_FREE_REPORT_LIMIT - Number(localStorage.getItem(GUEST_BW_USAGE_KEY) || 0));
+  const usage = DB.get(KEYS.billing, {}).testBwUsageByTerm || {};
+  return Math.max(0, BW_FREE_REPORT_LIMIT - Number(usage[bwAllowanceKey()] || 0));
+}
 const REPORT_CREDIT_PACKAGES = [
   { id: '10', credits: 10, amount: 2.00 },
   { id: '50', credits: 50, amount: 10.00 },
@@ -5202,6 +5219,7 @@ async function refreshBillingAccount(silent = true) {
     setLocalBillingBalance(Number(data.balance || 0));
     const cachedAccount = DB.get(KEYS.billing, {});
     cachedAccount.testBalance = Math.max(0, Number(data.testBalance || 0));
+    cachedAccount.testBwUsageByTerm = data.testBwUsageByTerm || {};
     DB.set(KEYS.billing, cachedAccount);
     return data;
   } catch (e) {
@@ -5231,7 +5249,7 @@ async function ensureCreditsAvailable(count = 1, actionText = 'continue') {
   alert(`This action requires ${count} report credit${count === 1 ? '' : 's'}. Your school currently has ${displayedBillingBalance()} credit${displayedBillingBalance() === 1 ? '' : 's'}. The Head Teacher can buy more from Billing & Credits.`);
   return false;
 }
-async function consumeReportCredits(count, requestId = crypto.randomUUID()) {
+async function consumeReportCredits(count, requestId = crypto.randomUUID(), reportType = 'paid') {
   if (!Number.isInteger(count) || count < 1) throw new Error('Invalid report credit count.');
   if (reportBillingIsFree()) return { balance: displayedBillingBalance(), suspended: true };
   if (!requireSchoolAccountForPaidFeature('generating report cards')) throw new Error('School account required.');
@@ -5241,7 +5259,7 @@ async function consumeReportCredits(count, requestId = crypto.randomUUID()) {
   const deductionUid = currentUid;
   let result;
   for (let attempt = 0; attempt < 2; attempt++) {
-    try { result = await fn({ count, requestId, mode: 'test' }); break; }
+    try { result = await fn({ count, requestId, mode: 'test', reportType }); break; }
     catch (error) {
       if (attempt || !['functions/unavailable', 'functions/deadline-exceeded', 'functions/internal'].includes(error.code)) throw error;
     }
@@ -5251,10 +5269,13 @@ async function consumeReportCredits(count, requestId = crypto.randomUUID()) {
   if (currentSchoolId === deductionSchool && currentUid === deductionUid) {
     const account = DB.get(KEYS.billing, {});
     account.testBalance = balance;
+    if (result.data.allowanceKey && result.data.freeRemaining != null) {
+      account.testBwUsageByTerm = { ...(account.testBwUsageByTerm || {}), [result.data.allowanceKey]: BW_FREE_REPORT_LIMIT - Number(result.data.freeRemaining) };
+    }
     DB.set(KEYS.billing, account);
     renderReportCreditStatus();
   }
-  auditAction('consume', 'report-credit', '', `Used ${count} report credit${count === 1 ? '' : 's'} to generate report card${count === 1 ? '' : 's'}.`);
+  auditAction('consume', 'report-credit', '', `Used ${result.data.consumed} report credits to generate ${count} report card(s).`);
   return result.data;
 }
 async function buyReportCredits(packageId) {
@@ -5865,7 +5886,7 @@ function reportUsesCredits(settings) {
   return getReportTheme(settings).id !== 'bw';
 }
 
-async function downloadGeneratedReport(doc, filename, count) {
+async function downloadGeneratedReport(doc, filename, count, reportType = 'paid') {
   if (!enforceGuestTrial()) return;
   // Serialize before deducting, then download the same prepared PDF.
   const url = URL.createObjectURL(doc.output('blob'));
@@ -5873,8 +5894,15 @@ async function downloadGeneratedReport(doc, filename, count) {
   link.href = url;
   link.download = filename;
   try {
-    if (count) {
-      try { await consumeReportCredits(count); }
+    if (reportType === 'bw-single' && isActiveGuest()) {
+      if (bwFreeRemaining() <= 0) {
+        alert('Your 10 free guest reports are used. Register your school to continue.');
+        return;
+      }
+      localStorage.setItem(GUEST_BW_USAGE_KEY, String(BW_FREE_REPORT_LIMIT - bwFreeRemaining() + 1));
+      renderReportCreditStatus();
+    } else if (count) {
+      try { await consumeReportCredits(count, crypto.randomUUID(), reportType); }
       catch (error) { alert(error.message || 'Test credits could not be deducted. The report was not downloaded.'); return; }
     }
     link.click();
@@ -5900,7 +5928,7 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
     assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
   }
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
-  await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, reportUsesCredits(settings) ? 1 : 0);
+  await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, 1, reportUsesCredits(settings) ? 'paid' : 'bw-single');
   } finally { reportGenerationBusy = false; }
 }
 

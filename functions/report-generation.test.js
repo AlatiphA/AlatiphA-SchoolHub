@@ -4,13 +4,14 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const app = fs.readFileSync(`${__dirname}/../app-4.js`, 'utf8');
 function fixture({ theme = 'premium', failDraw = false, failOutput = false, enough = true } = {}) {
-  const deductions = [], downloads = [];
+  const deductions = [], downloads = [], requests = [];
   const context = vm.createContext({
     window: { jspdf: { jsPDF: class { addPage() {} output() { if (failOutput) throw Error('serialization failed'); return {}; } } } },
     DB: { get: () => ({}) }, KEYS: { settings: 'settings' },
     getReportTheme: () => ({ id: theme }),
     ensureCreditsAvailable: async () => enough,
-    consumeReportCredits: async n => { deductions.push(n); },
+    consumeReportCredits: async (n, id, reportType) => { requests.push({ n, reportType }); if (reportType !== 'bw-single') deductions.push(n); },
+    crypto: {randomUUID: () => 'test-generation-id'}, enforceGuestTrial: () => true, isActiveGuest: () => false,
     prepareReportAssets: async () => ({}),
     drawReportPage: () => { if (failDraw) throw Error('render failed'); },
     URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
@@ -19,15 +20,16 @@ function fixture({ theme = 'premium', failDraw = false, failOutput = false, enou
   });
   vm.runInContext(app.slice(app.indexOf('function reportUsesCredits('), app.indexOf('/* ---------- utils ---------- */')), context);
   const student = { entries: [{}], student: { id: 'one', name: 'Test Student' } };
-  return { context, deductions, downloads, student };
+  return { context, deductions, downloads, student, requests };
 }
-test('premium singles cost one, Black & White singles are free, batches count only graded students', async () => {
+test('premium and batch reports are paid; Black & White singles request the server allowance', async () => {
   const f = fixture();
   await f.context.generateSinglePDF(f.student);
   assert.deepEqual(f.deductions, [1]);
   const bw = fixture({ theme: 'bw' });
   await bw.context.generateSinglePDF(bw.student);
   assert.deepEqual(bw.deductions, []);
+  assert.deepEqual(bw.requests, [{n:1, reportType:'bw-single'}]);
   await bw.context.generateBatchPDF([bw.student, bw.student, { entries: [] }], {}, 3, {}, {});
   assert.deepEqual(bw.deductions, [2]);
   assert.equal(bw.downloads.length, 2);
@@ -68,4 +70,18 @@ test('transient deduction retries reuse the request ID and update only the test 
   assert.equal(requests[0].requestId, requests[1].requestId);
   assert.equal(account.testBalance, 9);
   assert.equal(account.balance, 7);
+});
+
+test('guest generation stops after ten reports without using school credits', async () => {
+  const f = fixture({theme:'bw'});
+  let used = 0;
+  Object.assign(f.context, {
+    isActiveGuest:()=>true, bwFreeRemaining:()=>Math.max(0,10-used),
+    BW_FREE_REPORT_LIMIT:10,GUEST_BW_USAGE_KEY:'guest-bw',
+    localStorage:{setItem:(_,value)=>{used=Number(value);}},renderReportCreditStatus:()=>{}
+  });
+  for(let i=0;i<11;i++) await f.context.generateSinglePDF(f.student);
+  assert.equal(used,10);
+  assert.equal(f.downloads.length,10);
+  assert.equal(f.requests.length,0);
 });

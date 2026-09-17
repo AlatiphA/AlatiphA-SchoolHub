@@ -4,7 +4,7 @@
 SchoolHub remains free for school management. Premium report-card generation uses school-owned Report Credits.
 
 ### Pricing
-- Single Black & White report cards are free
+- Each school receives 10 free single Black & White PDF generations per term and academic year, then pays 1 report credit per generation
 - Class batch PDF generation requires credits for every report, regardless of theme
 - Premium report card generation = 1 credit = GH₵0.20
 - 10 credits = GH₵2.00
@@ -20,7 +20,7 @@ The Head Teacher purchases credits for the school. Credits are shared by authori
 ### Free features
 Students, classes, subjects, grades, attendance, remarks, CSV export, school management and report-theme previews remain available without credits.
 
-Theme 1 Black & White is fully free for report generation. Premium themes require the school to have at least one available credit before they can be applied, and each generated premium report card consumes one credit.
+Theme 1 Black & White includes 10 free single PDF generations per school per term and academic year. After that, each costs one credit. The server tracks this allowance across school members and devices; returning to an earlier term does not reset its usage. Batch PDFs remain one credit per report. Guest trials include at most 10 single Black & White reports per browser. Theme previews are watermarked samples. Printing a previously generated PDF does not incur another charge. These deductions currently use test credits only; live billing remains disabled. Premium themes require the school to have at least one available credit before they can be applied, and each generated premium report card consumes one credit.
 
 ### Payment security
 Paystack is used for checkout. The browser contains only the Paystack public key. Payment initialization and verification are handled by Firebase Cloud Functions using the Paystack secret key. Client-side Firestore writes to billing, transactions and usage are blocked by Firestore rules.

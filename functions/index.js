@@ -190,28 +190,61 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
 
   const billRef = db.collection('schools').doc(schoolId).collection('billing').doc('account');
   const usageRef = db.collection('schools').doc(schoolId).collection('billingUsage').doc(requestId);
+  const reportType = request.data?.reportType || 'paid';
+  if (!['paid', 'bw-single'].includes(reportType) || (reportType === 'bw-single' && count !== 1)) {
+    throw new HttpsError('invalid-argument', 'Invalid report type.');
+  }
   let balance = 0;
+  let consumed = count;
+  let freeRemaining = null;
+  let allowanceKey = null;
   await db.runTransaction(async t => {
     const billSnap = await t.get(billRef);
     const usageSnap = await t.get(usageRef);
-    const current = Number((billSnap.data() || {}).testBalance || 0);
+    const account = billSnap.data() || {};
+    const current = Number(account.testBalance || 0);
+    const allowances = account.testBwUsageByTerm || {};
+    if (reportType === 'bw-single') {
+      const schoolSnap = await t.get(db.collection('schools').doc(schoolId));
+      const profile = schoolSnap.data()?.profile || {};
+      const term = String(profile.currentTerm || '').trim();
+      const year = String(profile.currentYear || '').trim();
+      if (!['Term 1', 'Term 2', 'Term 3'].includes(term) || !year) {
+        throw new HttpsError('failed-precondition', 'The Head Teacher must save and sync the school term and academic year in Setup first.');
+      }
+      allowanceKey = encodeURIComponent(JSON.stringify([year, term]));
+    }
     if (usageSnap.exists) {
       const usage = usageSnap.data();
-      if (usage.uid !== request.auth.uid || usage.count !== count || usage.mode !== 'test') throw new HttpsError('failed-precondition', 'Generation request does not match the original deduction.');
+      if (usage.uid !== request.auth.uid || usage.count !== count || usage.mode !== 'test' || (usage.reportType || 'paid') !== reportType) throw new HttpsError('failed-precondition', 'Generation request does not match the original deduction.');
       balance = current;
+      consumed = usage.consumed ?? usage.count;
+      allowanceKey = usage.allowanceKey || allowanceKey;
+      freeRemaining = allowanceKey ? Math.max(0, 10 - Number(allowances[allowanceKey] || 0)) : null;
       return;
     }
-    if (current < count) throw new HttpsError('failed-precondition', `Not enough report credits. You have ${current}.`);
-    balance = current - count;
-    t.set(billRef, { testBalance: balance, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    const used = allowanceKey ? Math.max(0, Number(allowances[allowanceKey] || 0)) : 0;
+    consumed = reportType === 'bw-single' && used < 10 ? 0 : count;
+    if (current < consumed) throw new HttpsError('failed-precondition', `Not enough report credits. You have ${current}.`);
+    balance = current - consumed;
+    const update = { testBalance: balance, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    if (allowanceKey) {
+      const nextUsed = used + (consumed === 0 ? 1 : 0);
+      update.testBwUsageByTerm = { ...allowances, [allowanceKey]: nextUsed };
+      freeRemaining = Math.max(0, 10 - nextUsed);
+    }
+    t.set(billRef, update, { merge: true });
     t.set(usageRef, {
       uid: request.auth.uid,
       schoolId,
       count,
+      consumed,
+      reportType,
+      allowanceKey,
       mode: 'test',
       action: 'report_card_generation',
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
   });
-  return { balance, consumed: count, mode: 'test' };
+  return { balance, consumed, freeRemaining, allowanceKey, mode: 'test' };
 });
