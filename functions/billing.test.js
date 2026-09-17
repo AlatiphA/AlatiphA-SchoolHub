@@ -55,7 +55,7 @@ for (const mismatch of [{ amount: 100 }, { currency: 'NGN' }, { domain: 'live' }
   });
 }
 
-test('live keys and report-credit deductions remain disabled', async () => {
+test('live keys and live-credit deductions remain disabled', async () => {
   const f = fixture({}, 'sk_live_fixture');
   await assert.rejects(f.exports.initializeReportCreditPurchase(f.request), { code: 'failed-precondition' });
   await assert.rejects(f.exports.consumeReportCredits(f.request), { code: 'failed-precondition' });
@@ -84,4 +84,43 @@ test('signed-in teachers cannot initialize or verify purchases', async () => {
     await assert.rejects(f.exports[name](f.request), { code: 'permission-denied' });
   }
   assert.equal(f.fetches(), 0);
+});
+
+function deductionRequest(count = 1, requestId = 'test-generation-0001') {
+  return { auth: { uid: 'head' }, data: { count, requestId, mode: 'test' } };
+}
+test('single and batch deductions use only test credits and retries are idempotent', async () => {
+  const f = fixture();
+  const account = f.records.get('schools/school/billing/account');
+  account.testBalance = 10;
+  assert.equal((await f.exports.consumeReportCredits(deductionRequest())).balance, 9);
+  assert.equal((await f.exports.consumeReportCredits(deductionRequest())).balance, 9);
+  assert.equal((await f.exports.consumeReportCredits(deductionRequest(3, 'test-generation-0002'))).balance, 6);
+  assert.equal(f.records.get('schools/school/billing/account').balance, 7);
+  assert.equal(f.records.get('schools/school/billing/account').testBalance, 6);
+  await assert.rejects(f.exports.consumeReportCredits(deductionRequest(2)), { code: 'failed-precondition' });
+});
+test('insufficient test balance never falls back to live credits', async () => {
+  const f = fixture();
+  await assert.rejects(f.exports.consumeReportCredits(deductionRequest()), { code: 'failed-precondition' });
+  assert.equal(f.records.get('schools/school/billing/account').balance, 7);
+  assert.equal(f.records.has('schools/school/billingUsage/test-generation-0001'), false);
+});
+test('deductions validate identity, active role, count, mode and request ID', async () => {
+  const f = fixture();
+  await assert.rejects(f.exports.consumeReportCredits({ data: {} }), { code: 'unauthenticated' });
+  for (const data of [{ count: 0 }, { count: 1.5 }, { count: 5001 }, { requestId: '../bad' }]) {
+    const req = deductionRequest(); Object.assign(req.data, data);
+    await assert.rejects(f.exports.consumeReportCredits(req), { code: 'invalid-argument' });
+  }
+  const live = deductionRequest(); live.data.mode = 'live';
+  await assert.rejects(f.exports.consumeReportCredits(live), { code: 'failed-precondition' });
+  f.records.get('users/head').status = 'disabled';
+  await assert.rejects(f.exports.consumeReportCredits(deductionRequest()), { code: 'permission-denied' });
+});
+test('active teachers can consume test credits', async () => {
+  const f = fixture();
+  f.records.get('users/head').role = 'teacher';
+  f.records.get('schools/school/billing/account').testBalance = 1;
+  assert.equal((await f.exports.consumeReportCredits(deductionRequest())).balance, 0);
 });

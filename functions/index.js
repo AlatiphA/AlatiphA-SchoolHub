@@ -174,9 +174,9 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
   return { credited: true, mode, balance: newBalance, reference };
 });
 
-exports.consumeReportCredits = onCall({ region: 'us-central1' }, async (request) => {
+exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
-  if (CHECKOUT_TEST_ONLY) throw new HttpsError('failed-precondition', 'Paid report billing is not active yet.');
+  if (!CHECKOUT_TEST_ONLY || request.data?.mode !== 'test') throw new HttpsError('failed-precondition', 'Only test-credit deductions are enabled.');
   const userSnap = await db.collection('users').doc(request.auth.uid).get();
   const user = userSnap.data() || {};
   if (!['headteacher', 'teacher'].includes(user.role) || user.status !== 'active' || !user.schoolId) {
@@ -185,23 +185,33 @@ exports.consumeReportCredits = onCall({ region: 'us-central1' }, async (request)
   const schoolId = user.schoolId;
   const count = Number(request.data?.count || 0);
   if (!Number.isInteger(count) || count < 1 || count > 5000) throw new HttpsError('invalid-argument', 'Invalid credit count.');
+  const requestId = request.data?.requestId;
+  if (typeof requestId !== 'string' || !/^[A-Za-z0-9_-]{16,100}$/.test(requestId)) throw new HttpsError('invalid-argument', 'Invalid generation request.');
 
   const billRef = db.collection('schools').doc(schoolId).collection('billing').doc('account');
-  const usageRef = db.collection('schools').doc(schoolId).collection('billingUsage').doc();
+  const usageRef = db.collection('schools').doc(schoolId).collection('billingUsage').doc(requestId);
   let balance = 0;
   await db.runTransaction(async t => {
     const billSnap = await t.get(billRef);
-    const current = Number((billSnap.data() || {}).balance || 0);
+    const usageSnap = await t.get(usageRef);
+    const current = Number((billSnap.data() || {}).testBalance || 0);
+    if (usageSnap.exists) {
+      const usage = usageSnap.data();
+      if (usage.uid !== request.auth.uid || usage.count !== count || usage.mode !== 'test') throw new HttpsError('failed-precondition', 'Generation request does not match the original deduction.');
+      balance = current;
+      return;
+    }
     if (current < count) throw new HttpsError('failed-precondition', `Not enough report credits. You have ${current}.`);
     balance = current - count;
-    t.update(billRef, { balance, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    t.set(billRef, { testBalance: balance, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
     t.set(usageRef, {
       uid: request.auth.uid,
       schoolId,
       count,
+      mode: 'test',
       action: 'report_card_generation',
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
   });
-  return { balance, consumed: count };
+  return { balance, consumed: count, mode: 'test' };
 });

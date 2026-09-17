@@ -4709,7 +4709,7 @@ function renderReportCreditStatus() {
   } else {
     const balance = displayedBillingBalance();
     const status = BILLING_SUSPENDED
-      ? 'Live billing disabled. All report generation, including class batch PDFs, is free. No credits are deducted.'
+      ? reportBillingMessage()
       : 'Single Black &amp; White reports are free; class batch PDFs require credits.';
     host.innerHTML = `<span><strong>${balance} ${isBillingTestMode() ? 'test' : 'report'} credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} ${isBillingTestMode() ? 'test value (no real money)' : 'value'} · <em>${status}</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
   }
@@ -5147,6 +5147,13 @@ document.getElementById('startNewTermBtn').addEventListener('click', () => {
 // Billing is temporarily suspended while the Staff module is being expanded.
 // All billing/payment code remains in this build for later reactivation.
 const BILLING_SUSPENDED = true;
+const TEST_CREDIT_DEDUCTIONS = true;
+function testCreditDeductionsEnabled() { return TEST_CREDIT_DEDUCTIONS && isBillingTestMode(); }
+function reportBillingIsFree() { return BILLING_SUSPENDED && !testCreditDeductionsEnabled(); }
+function reportBillingMessage() {
+  if (testCreditDeductionsEnabled()) return 'Test deductions enabled. Premium single reports use 1 test credit; class batches use 1 per report. Single Black & White reports are free. Live billing is disabled; no real money is charged.';
+  return 'Live billing disabled. All report generation, including class batch PDFs, is free. No credits are deducted.';
+}
 function isBillingTestMode() { return String(window.PAYSTACK_PUBLIC_KEY || '').startsWith('pk_test_'); }
 function pendingPaymentKey() { return `arc_pending_payment_${currentSchoolId}_${currentUid}`; }
 function pendingPaymentReference() { return localStorage.getItem(pendingPaymentKey()) || ''; }
@@ -5210,24 +5217,38 @@ function requireSchoolAccountForPaidFeature(actionText) {
   return true;
 }
 async function ensureCreditsAvailable(count = 1, actionText = 'continue') {
-  if (BILLING_SUSPENDED) return true;
+  if (reportBillingIsFree()) return true;
   if (!requireSchoolAccountForPaidFeature(actionText)) return false;
-  const balance = localBillingBalance();
+  const balance = displayedBillingBalance();
   if (balance >= count) return true;
   await refreshBillingAccount(true);
-  if (localBillingBalance() >= count) return true;
-  alert(`This action requires ${count} report credit${count === 1 ? '' : 's'}. Your school currently has ${localBillingBalance()} credit${localBillingBalance() === 1 ? '' : 's'}. The Head Teacher can buy more from Billing & Credits.`);
+  if (displayedBillingBalance() >= count) return true;
+  alert(`This action requires ${count} report credit${count === 1 ? '' : 's'}. Your school currently has ${displayedBillingBalance()} credit${displayedBillingBalance() === 1 ? '' : 's'}. The Head Teacher can buy more from Billing & Credits.`);
   return false;
 }
-async function consumeReportCredits(count) {
+async function consumeReportCredits(count, requestId = crypto.randomUUID()) {
   if (!Number.isInteger(count) || count < 1) throw new Error('Invalid report credit count.');
-  if (BILLING_SUSPENDED) return { balance: localBillingBalance(), suspended: true };
+  if (reportBillingIsFree()) return { balance: displayedBillingBalance(), suspended: true };
   if (!requireSchoolAccountForPaidFeature('generating report cards')) throw new Error('School account required.');
   if (!firebase.functions) throw new Error('Billing service is not available.');
   const fn = billingFunctions().httpsCallable('consumeReportCredits');
-  const result = await fn({ count });
-  const balance = Number(result.data?.balance || 0);
-  setLocalBillingBalance(balance);
+  const deductionSchool = currentSchoolId;
+  const deductionUid = currentUid;
+  let result;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { result = await fn({ count, requestId, mode: 'test' }); break; }
+    catch (error) {
+      if (attempt || !['functions/unavailable', 'functions/deadline-exceeded', 'functions/internal'].includes(error.code)) throw error;
+    }
+  }
+  if (result.data?.mode !== 'test') throw new Error('Unexpected credit deduction mode.');
+  const balance = Number(result.data.balance);
+  if (currentSchoolId === deductionSchool && currentUid === deductionUid) {
+    const account = DB.get(KEYS.billing, {});
+    account.testBalance = balance;
+    DB.set(KEYS.billing, account);
+    renderReportCreditStatus();
+  }
   auditAction('consume', 'report-credit', '', `Used ${count} report credit${count === 1 ? '' : 's'} to generate report card${count === 1 ? '' : 's'}.`);
   return result.data;
 }
@@ -5328,20 +5349,20 @@ async function renderBilling() {
   }
   if (billingSchool !== currentSchoolId) return;
   wrap.innerHTML = `
-    ${isBillingTestMode() ? '<div class="billing-note"><strong>Paystack test checkout</strong><span>No real money is charged. Test credits are separate from live credits. Reports remain free while billing is suspended.</span></div>' : ''}
+    ${isBillingTestMode() ? `<div class="billing-note"><strong>Paystack test checkout</strong><span>No real money is charged. Test credits are separate from live credits. ${reportBillingMessage()}</span></div>` : ''}
     <div class="billing-summary-card">
       <div><span class="billing-kicker">${escapeHtml(school)}</span><h3>Report Credits</h3><p class="hint">School-owned credits shared by authorized teachers.</p></div>
       <div class="billing-balance"><strong>${balance}</strong><span>${isBillingTestMode() ? 'test credits' : 'credits'}</span><small>GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} ${isBillingTestMode() ? 'test value (no real money)' : 'remaining value'}</small></div>
     </div>
     <div class="billing-info-grid">
-      <div class="billing-info-card"><strong>${BILLING_SUSPENDED ? 'Free' : 'GH₵0.20'}</strong><span>${BILLING_SUSPENDED ? 'all report generation while billing is disabled' : 'per generated report card'}</span></div>
+      <div class="billing-info-card"><strong>${testCreditDeductionsEnabled() ? 'Test credits' : BILLING_SUSPENDED ? 'Free' : 'GH₵0.20'}</strong><span>${testCreditDeductionsEnabled() ? '1 per premium single report or per report in a batch' : BILLING_SUSPENDED ? 'all report generation while billing is disabled' : 'per generated report card'}</span></div>
       <div class="billing-info-card"><strong>Free</strong><span>students, classes, grades, attendance and remarks</span></div>
       <div class="billing-info-card"><strong>Free preview</strong><span>report themes can be previewed before purchase</span></div>
     </div>
-    ${head ? `<div class="billing-section"><div class="billing-section-head"><div><h3>Buy Report Credits</h3><p class="hint">The Head Teacher purchases credits for the whole school. Teachers never pay individually.</p></div></div><div class="billing-packages">${REPORT_CREDIT_PACKAGES.map(p => `<article class="billing-package"><strong>${p.credits}</strong><span>report credits</span><b>GH₵${p.amount.toFixed(2)}</b><small>GH₵0.20 each</small><button type="button" class="btn-primary" data-buy-credits="${p.id}">Buy ${p.credits}</button></article>`).join('')}</div></div>` : `<div class="billing-section"><h3>School Credits</h3><p class="hint">Your Head Teacher manages purchases for the school. ${BILLING_SUSPENDED ? 'Report generation is free. No credits are deducted.' : "Your report generation uses the school's shared credit balance."}</p></div>`}
+    ${head ? `<div class="billing-section"><div class="billing-section-head"><div><h3>Buy Report Credits</h3><p class="hint">The Head Teacher purchases credits for the whole school. Teachers never pay individually.</p></div></div><div class="billing-packages">${REPORT_CREDIT_PACKAGES.map(p => `<article class="billing-package"><strong>${p.credits}</strong><span>report credits</span><b>GH₵${p.amount.toFixed(2)}</b><small>GH₵0.20 each</small><button type="button" class="btn-primary" data-buy-credits="${p.id}">Buy ${p.credits}</button></article>`).join('')}</div></div>` : `<div class="billing-section"><h3>School Credits</h3><p class="hint">Your Head Teacher manages purchases for the school. ${BILLING_SUSPENDED ? reportBillingMessage() : "Your report generation uses the school's shared credit balance."}</p></div>`}
     ${head && pending ? `<div class="billing-pending"><strong>Payment pending</strong><span>Reference: ${escapeHtml(pending)}</span><button type="button" id="verifyBillingPaymentBtn" class="btn-primary">Verify Payment</button></div>` : ''}
     ${head && recent.length ? `<div class="billing-section"><h3>Recent payments</h3>${recent.map(p => `<div class="billing-pending"><span>${escapeHtml(p.reference)} · ${Number(p.credits)} ${p.mode === 'test' ? 'test ' : ''}credits · ${escapeHtml(p.status)}</span><button type="button" class="btn-primary" data-verify-payment="${escapeHtml(p.reference)}">${p.status === 'credited' ? 'Check receipt' : 'Verify Payment'}</button></div>`).join('')}</div>` : ''}
-    <div class="billing-note"><strong>How it works</strong><span>${BILLING_SUSPENDED ? 'Live billing is disabled. Single reports and class batch PDFs are free, and no credits are deducted. Test credits are separate from live credits and have no real-money value.' : 'One generated report card uses one credit. Printing or downloading that generated report does not charge another credit. Credits belong to the school and can be used by authorized teachers.'}</span></div>
+    <div class="billing-note"><strong>How it works</strong><span>${BILLING_SUSPENDED ? reportBillingMessage() : 'One generated report card uses one credit. Printing or downloading that generated report does not charge another credit. Credits belong to the school and can be used by authorized teachers.'}</span></div>
   `;
   wrap.querySelectorAll('[data-buy-credits]').forEach(b => b.addEventListener('click', () => buyReportCredits(b.dataset.buyCredits)));
   wrap.querySelectorAll('[data-verify-payment]').forEach(b => b.addEventListener('click', () => verifyPendingCreditPayment(b.dataset.verifyPayment)));
@@ -5839,7 +5860,27 @@ function reportUsesCredits(settings) {
   return getReportTheme(settings).id !== 'bw';
 }
 
+async function downloadGeneratedReport(doc, filename, count) {
+  // Serialize before deducting, then download the same prepared PDF.
+  const url = URL.createObjectURL(doc.output('blob'));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  try {
+    if (count) {
+      try { await consumeReportCredits(count); }
+      catch (error) { alert(error.message || 'Test credits could not be deducted. The report was not downloaded.'); return; }
+    }
+    link.click();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+}
+let reportGenerationBusy = false;
 async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
+  if (reportGenerationBusy) return;
+  reportGenerationBusy = true;
+  try {
   if (!result.entries.length) { alert('No grades entered for this student yet.'); return; }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
@@ -5853,13 +5894,14 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
     assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
   }
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
-  if (reportUsesCredits(settings)) {
-    try { await consumeReportCredits(1); } catch (creditError) { alert(creditError.message || 'Report credits could not be charged. The report was not downloaded.'); return; }
-  }
-  doc.save(`${result.student.name.replace(/\s+/g, '_')}_report.pdf`);
+  await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, reportUsesCredits(settings) ? 1 : 0);
+  } finally { reportGenerationBusy = false; }
 }
 
 async function generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settingsOverride) {
+  if (reportGenerationBusy) return;
+  reportGenerationBusy = true;
+  try {
   const usable = results.filter(r => r.entries.length > 0);
   if (!usable.length) { alert('No grades entered for this class yet.'); return; }
   const settings = settingsOverride || DB.get(KEYS.settings, {});
@@ -5884,13 +5926,8 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
     }
     drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, assets);
   }
-  try {
-    await consumeReportCredits(usable.length);
-  } catch (creditError) {
-    alert(creditError.message || 'Report credits could not be charged. The batch was not downloaded.');
-    return;
-  }
-  doc.save('class_report_cards.pdf');
+  await downloadGeneratedReport(doc, 'class_report_cards.pdf', usable.length);
+  } finally { reportGenerationBusy = false; }
 }
 
 /* ---------- utils ---------- */
