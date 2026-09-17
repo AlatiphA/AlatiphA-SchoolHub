@@ -140,7 +140,7 @@ function isTeacher() {
 }
 
 function accessibleClassIds() {
-  if (isHeadTeacher()) return DB.get(KEYS.classes, []).map(c => c.id);
+  if (isHeadTeacher() || isActiveGuest()) return DB.get(KEYS.classes, []).map(c => c.id);
   if (isTeacher()) return Array.isArray(currentAssignedClassIds) ? currentAssignedClassIds : [];
   return [];
 }
@@ -302,7 +302,7 @@ function repairDuplicateSubjects(subjects, grades) {
 function getAccessibleSubjects() {
   const all = DB.get(KEYS.subjects, []);
   const ordered = sortSubjectsByOrder(all);
-  if (isHeadTeacher()) return ordered;
+  if (isHeadTeacher() || isActiveGuest()) return ordered;
   const ids = new Set(Array.isArray(currentAssignedSubjectIds) ? currentAssignedSubjectIds : []);
   return ordered.filter(s => ids.has(s.id));
 }
@@ -312,11 +312,12 @@ function canAccessClass(classId) {
 }
 
 function canAccessSubject(subjectId) {
-  if (isHeadTeacher()) return true;
+  if (isHeadTeacher() || isActiveGuest()) return true;
   return Array.isArray(currentAssignedSubjectIds) && currentAssignedSubjectIds.indexOf(subjectId) !== -1;
 }
 
 function requireHeadTeacher(action) {
+  if (isActiveGuest()) return true; // Local workspace only; never grants a school role.
   if (!isHeadTeacher()) {
     alert('Only the Head Teacher can ' + action + '.');
     return false;
@@ -512,6 +513,7 @@ function saveAttendanceTabState(mode) {
 /* ---------- view switching ---------- */
 const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
+  if (!enforceGuestTrial()) return;
   // Never render role-sensitive views while an authenticated session is still
   // being resolved. Guest mode explicitly marks itself ready before calling
   // proceedToApp().
@@ -770,7 +772,7 @@ function refreshProfileMenu() {
     logoutBtn.classList.remove('hidden');
     loginBtn.classList.add('hidden');
   } else {
-    accountLine.textContent = 'Guest data (separate from any account on this device)';
+    accountLine.textContent = `Guest trial: ${Math.ceil(guestTrialRemaining() / 86400000)} days left — data saved on this device`;
     logoutBtn.classList.add('hidden');
     loginBtn.classList.remove('hidden');
   }
@@ -1300,6 +1302,7 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   s.nextTermBegins = document.getElementById('nextTermBegins').value;
   s.reportLayout = document.getElementById('reportLayout').value;
   s.reportTheme = document.getElementById('reportThemeSelect') ? document.getElementById('reportThemeSelect').value : (s.reportTheme || 'schoolhub');
+  if (isActiveGuest()) s.reportTheme = 'bw';
   s.headTeacherId = document.getElementById('headTeacherSelect').value;
   DB.set(KEYS.settings, s);
   auditAction('update', 'settings', 'school', 'Updated school and report settings');
@@ -4683,8 +4686,8 @@ const REPORT_THEMES={
 };
 function getReportTheme(settings){return REPORT_THEMES[(settings&&settings.reportTheme)||'bw']||REPORT_THEMES.bw;}
 function renderReportThemePicker(){const host=document.getElementById('reportThemePicker');if(!host)return;const activeId=DB.get(KEYS.settings,{}).reportTheme||'bw';host.innerHTML=`<div class="report-theme-active"><div class="report-theme-active-icon">✦</div><div><span class="report-theme-kicker">ACTIVE THEME</span><h3>${escapeHtml(REPORT_THEMES[activeId].title)}</h3><p>${escapeHtml(REPORT_THEMES[activeId].description)}</p></div></div><div class="report-theme-grid">${Object.values(REPORT_THEMES).map(t=>`<article class="report-theme-card ${t.id===activeId?'active':''}"><div class="report-theme-preview" data-theme="${t.id}"><div class="rtp-head"><span></span><b>${escapeHtml(t.title)}</b><i></i></div><div class="rtp-meta"><span></span><span></span></div><div class="rtp-table"><b></b><b></b><b></b><b></b><b></b></div><div class="rtp-bottom"><span></span><span></span></div><div class="rtp-footer"></div></div><div class="report-theme-card-body"><h3>${escapeHtml(t.name)} <small>${escapeHtml(t.title)}</small></h3><p>${escapeHtml(t.description)}</p><div class="report-theme-actions"><button type="button" class="report-theme-preview-btn" data-theme-preview="${t.id}">⌕ Preview</button><button type="button" class="btn-primary report-theme-apply" data-theme-apply="${t.id}">${t.id===activeId?'✓ Active':'Apply'}</button></div></div></article>`).join('')}</div>`;host.querySelectorAll('[data-theme-apply]').forEach(b=>b.addEventListener('click',()=>applyReportTheme(b.dataset.themeApply)));host.querySelectorAll('[data-theme-preview]').forEach(b=>b.addEventListener('click',()=>previewReportTheme(b.dataset.themePreview)));}
-async function applyReportTheme(themeId){if(!REPORT_THEMES[themeId])return;if(!requireHeadTeacher('change the report card theme'))return;if(themeId!=='bw' && !(await ensureCreditsAvailable(1,'using a premium report theme')))return;const s=DB.get(KEYS.settings,{});s.reportTheme=themeId;DB.set(KEYS.settings,s);const sel=document.getElementById('reportThemeSelect');if(sel)sel.value=themeId;auditAction('update','report-theme',themeId,`Applied report card theme: ${REPORT_THEMES[themeId].title}`);renderReportThemePicker();}
-async function previewReportTheme(themeId){const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,remarksAll[result.student.id]||{},assets);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
+async function applyReportTheme(themeId){if(!enforceGuestTrial())return;if(!REPORT_THEMES[themeId])return;if(isActiveGuest() && themeId!=='bw'){requireSchoolAccountForPaidFeature('using a premium report theme');return;}if(!requireHeadTeacher('change the report card theme'))return;if(themeId!=='bw' && !(await ensureCreditsAvailable(1,'using a premium report theme')))return;const s=DB.get(KEYS.settings,{});s.reportTheme=themeId;DB.set(KEYS.settings,s);const sel=document.getElementById('reportThemeSelect');if(sel)sel.value=themeId;auditAction('update','report-theme',themeId,`Applied report card theme: ${REPORT_THEMES[themeId].title}`);renderReportThemePicker();}
+async function previewReportTheme(themeId){if(!enforceGuestTrial())return;if(isActiveGuest() && themeId!=='bw'){requireSchoolAccountForPaidFeature('previewing a premium report theme');return;}const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,remarksAll[result.student.id]||{},assets);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
 
 /* ---------- Reports ---------- */
 document.getElementById('reportThemesBtn')?.addEventListener('click', () => {
@@ -5217,6 +5220,8 @@ function requireSchoolAccountForPaidFeature(actionText) {
   return true;
 }
 async function ensureCreditsAvailable(count = 1, actionText = 'continue') {
+  if (!enforceGuestTrial()) return false;
+  if (!currentUid && !requireSchoolAccountForPaidFeature(actionText)) return false;
   if (reportBillingIsFree()) return true;
   if (!requireSchoolAccountForPaidFeature(actionText)) return false;
   const balance = displayedBillingBalance();
@@ -5861,6 +5866,7 @@ function reportUsesCredits(settings) {
 }
 
 async function downloadGeneratedReport(doc, filename, count) {
+  if (!enforceGuestTrial()) return;
   // Serialize before deducting, then download the same prepared PDF.
   const url = URL.createObjectURL(doc.output('blob'));
   const link = document.createElement('a');
@@ -5878,7 +5884,7 @@ async function downloadGeneratedReport(doc, filename, count) {
 }
 let reportGenerationBusy = false;
 async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
-  if (reportGenerationBusy) return;
+  if (!enforceGuestTrial() || reportGenerationBusy) return;
   reportGenerationBusy = true;
   try {
   if (!result.entries.length) { alert('No grades entered for this student yet.'); return; }
@@ -5899,7 +5905,7 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
 }
 
 async function generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settingsOverride) {
-  if (reportGenerationBusy) return;
+  if (!enforceGuestTrial() || reportGenerationBusy) return;
   reportGenerationBusy = true;
   try {
   const usable = results.filter(r => r.entries.length > 0);
@@ -5940,6 +5946,57 @@ function escapeHtml(str) {
 /* ---------- Accounts (Firebase Auth) — optional, off until firebase-config.js has real values ---------- */
 const FIREBASE_ENABLED = !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey && window.FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY');
 const GUEST_MODE_KEY = 'arc_guest_mode';
+const GUEST_TRIAL_KEY = 'arc_guest_trial_started';
+const GUEST_TRIAL_DURATION = 7 * 24 * 60 * 60 * 1000;
+
+function guestTrialRemaining(now = Date.now()) {
+  const raw = localStorage.getItem(GUEST_TRIAL_KEY);
+  if (raw === null) return GUEST_TRIAL_DURATION;
+  const started = Number(raw);
+  if (!Number.isFinite(started) || started <= 0 || started > now) return 0;
+  return Math.max(0, started + GUEST_TRIAL_DURATION - now);
+}
+
+function isActiveGuest() {
+  return !currentUid && !currentSchoolId && sessionReady
+    && localStorage.getItem(GUEST_MODE_KEY) === '1' && guestTrialRemaining() > 0;
+}
+
+function updateGuestTrialUI() {
+  const remaining = guestTrialRemaining();
+  const button = document.getElementById('authGuestBtn');
+  button.disabled = remaining <= 0;
+  button.textContent = remaining <= 0 ? 'Guest trial ended — register your school'
+    : localStorage.getItem(GUEST_TRIAL_KEY) === null ? 'Start 7-day guest trial'
+    : `Continue guest trial (${Math.ceil(remaining / 86400000)} days left)`;
+  document.getElementById('guestTrialNotice').textContent = remaining <= 0
+    ? 'Your guest trial has ended. Create an account and register your school to continue. Your guest data is still saved on this device.'
+    : 'Try SchoolHub for 7 days, then create an account and register your school. Guest data is saved on this device only.';
+}
+
+function enforceGuestTrial() {
+  if (currentUid || currentSchoolId || localStorage.getItem(GUEST_MODE_KEY) !== '1') return true;
+  // Existing guests receive their first seven-day window when opening this update.
+  if (localStorage.getItem(GUEST_TRIAL_KEY) === null) localStorage.setItem(GUEST_TRIAL_KEY, String(Date.now()));
+  if (guestTrialRemaining() > 0) return true;
+  sessionReady = false;
+  sessionDataReady = false;
+  hideSyncingMessage();
+  showAuthGate();
+  updateGuestTrialUI();
+  return false;
+}
+
+// Check open tabs as well as reloads; block an expired interaction before its handler runs.
+setInterval(enforceGuestTrial, 1000);
+window.addEventListener('focus', enforceGuestTrial);
+document.addEventListener('visibilitychange', enforceGuestTrial);
+['click', 'change', 'submit', 'keydown'].forEach(type => document.addEventListener(type, event => {
+  if (!enforceGuestTrial() && !event.target.closest('#authGate, #lockScreen')) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true));
 let authMode = 'login'; // 'login' or 'signup', toggled in the gate
 
 function hasExistingLocalData() {
@@ -5956,7 +6013,7 @@ function hasExistingLocalData() {
 // Never runs for "Join a school" — that would mean injecting one
 // device's old data into someone else's school.
 function migrateDataIntoSchool(schoolId) {
-  const legacyKeys = ['arc_settings', 'arc_classes', 'arc_subjects', 'arc_students', 'arc_grades', 'arc_attendance', 'arc_teacher_attendance', 'arc_remarks', 'arc_staff'];
+  const legacyKeys = ['arc_settings', 'arc_classes', 'arc_subjects', 'arc_students', 'arc_grades', 'arc_attendance', 'arc_teacher_attendance', 'arc_school_calendar', 'arc_remarks', 'arc_staff'];
   legacyKeys.forEach(base => {
     const schoolKey = `${base}__${schoolId}`;
     if (localStorage.getItem(schoolKey) !== null) return;
@@ -7785,6 +7842,7 @@ function hideSyncingMessage() {
 }
 
 function renderAuthForm() {
+  updateGuestTrialUI();
   const login = authMode === 'login';
   document.getElementById('authHeading').textContent = login ? 'Welcome back' : 'Create an account';
   document.getElementById('authSubtitle').textContent = login ? 'Sign in to your school account.' : 'Start your SchoolHub journey. Join or register your school next.';
@@ -7881,6 +7939,8 @@ function registerSchool(schoolName, address, email) {
         currentRole = 'headteacher';
         currentStatus = 'active';
         currentUserData = Object.assign({}, userData);
+        sessionReady = true;
+        sessionDataReady = true;
         return joinCode;
       });
   });
@@ -8418,6 +8478,8 @@ function initAuth() {
   });
 
   document.getElementById('authGuestBtn').addEventListener('click', () => {
+    if (guestTrialRemaining() <= 0) { updateGuestTrialUI(); return; }
+    if (localStorage.getItem(GUEST_TRIAL_KEY) === null) localStorage.setItem(GUEST_TRIAL_KEY, String(Date.now()));
     sessionGeneration += 1;
     localStorage.setItem(GUEST_MODE_KEY, '1');
     currentUid = null;
@@ -8447,13 +8509,25 @@ function initAuth() {
     const email = document.getElementById('regSchoolEmail').value.trim();
     if (!name) { setSchoolChoiceError('Enter a school name.'); return; }
     registerSchool(name, address, email).then(joinCode => {
+      const token = sessionGeneration;
+      const uid = currentUid;
+      const schoolId = currentSchoolId;
       hideSchoolChoiceGate();
-      showSyncingMessage(); showAuthGate();
-      return pushAllFieldsNow().then(() => {
-        hideSyncingMessage(); hideAuthGate();
-        initLockScreen();
-        if (!appStarted) { appStarted = true; proceedToApp(); }
-        alert(`School registered! Your join code is ${joinCode} — share this with your teachers. You can view it again anytime in Setup.`);
+      hideSyncingMessage(); hideAuthGate();
+      initLockScreen();
+      sessionReady = true;
+      sessionDataReady = true;
+      appStarted = true;
+      // The new school's local workspace is ready. Upload in the background:
+      // a slow/offline mobile connection must not hold navigation behind a gate.
+      proceedToApp();
+      renderQuickAccessList();
+      refreshProfileMenu();
+      alert(`School registered! Your join code is ${joinCode} — share this with your teachers. You can view it again anytime in Setup.`);
+      return pushAllFieldsNow().catch(err => {
+        if (!isCurrentSession(token, uid, schoolId)) return;
+        console.warn('Initial school upload failed:', err);
+        alert('Your school is registered and your data is saved on this device. Cloud upload could not finish. Retry from Sync Center when your connection is ready.');
       });
     }).catch(err => setSchoolChoiceError(err.message));
   });
@@ -8600,7 +8674,9 @@ function initAuth() {
       // in. Invalidate every pending operation from the previous account.
       resetWorkspaceState();
       if (localStorage.getItem(GUEST_MODE_KEY)) {
+        if (!enforceGuestTrial()) { renderAuthForm(); return; }
         sessionReady = true;
+        sessionDataReady = true;
         hideAuthGate(); hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
         initLockScreen();
         if (!appStarted) { appStarted = true; proceedToApp(); }
@@ -8742,6 +8818,7 @@ function initLockScreen() {
 }
 
 function proceedToApp() {
+  if (!enforceGuestTrial()) return;
   if (FIREBASE_ENABLED && !sessionReady) return;
   ensureDefaults();
   renderPinSection();

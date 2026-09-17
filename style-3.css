@@ -73,7 +73,7 @@ h1,h2,h3,.brand{
 
 .back-btn{
   flex:none;
-  width:32px;height:32px;
+  width:44px;height:44px;
   display:flex;align-items:center;justify-content:center;
   background:none;border:none;color:var(--paper);
   cursor:pointer;padding:0;margin-right:2px;
