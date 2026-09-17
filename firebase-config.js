@@ -16,4 +16,4 @@ window.FIREBASE_CONFIG = {
 
 // Paystack public key only. Never place the Paystack secret key in this file.
 // Use a test public key while testing, then replace it with the live public key.
-window.PAYSTACK_PUBLIC_KEY = "";
+window.PAYSTACK_PUBLIC_KEY = "pk_test_20c396303090791c7267c5c93c6204efa33b1655";

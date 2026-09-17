@@ -5,6 +5,17 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 const db = admin.firestore();
 const PAYSTACK_SECRET_KEY = defineSecret('PAYSTACK_SECRET_KEY');
+// Keep real-money checkout disabled until the end-to-end test is approved.
+const CHECKOUT_TEST_ONLY = true;
+
+function paymentMode() {
+  const key = PAYSTACK_SECRET_KEY.value();
+  const mode = key.startsWith('sk_test_') ? 'test' : key.startsWith('sk_live_') ? 'live' : '';
+  if (!mode || (CHECKOUT_TEST_ONLY && mode !== 'test')) {
+    throw new HttpsError('failed-precondition', 'Checkout is configured for test payments only.');
+  }
+  return mode;
+}
 
 const PACKAGES = {
   '10': { credits: 10, amountPesewas: 200 },
@@ -44,8 +55,9 @@ async function paystackRequest(path, options = {}) {
 exports.initializeReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY], region: 'us-central1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
   const { schoolId } = await getHeadSchool(request.auth.uid);
+  const mode = paymentMode();
   const packageId = String(request.data?.packageId || '');
-  const pack = PACKAGES[packageId];
+  const pack = Object.hasOwn(PACKAGES, packageId) ? PACKAGES[packageId] : null;
   if (!pack) throw new HttpsError('invalid-argument', 'Invalid credit package.');
 
   const email = String(request.auth.token.email || request.data?.email || '').trim();
@@ -57,6 +69,7 @@ exports.initializeReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY]
     schoolId,
     uid: request.auth.uid,
     type: 'credit_purchase',
+    mode,
     packageId,
     credits: pack.credits,
     expectedAmountPesewas: pack.amountPesewas,
@@ -89,7 +102,7 @@ exports.initializeReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY]
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
-    return { reference, accessCode: result.data.access_code, authorizationUrl: result.data.authorization_url, credits: pack.credits, amountPesewas: pack.amountPesewas };
+    return { reference, mode, accessCode: result.data.access_code, authorizationUrl: result.data.authorization_url, credits: pack.credits, amountPesewas: pack.amountPesewas };
   } catch (err) {
     await db.collection('schools').doc(schoolId).collection('billingTransactions').doc(reference).set({
       status: 'initialization_failed',
@@ -104,26 +117,31 @@ exports.verifyReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY], re
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
   const { schoolId } = await getHeadSchool(request.auth.uid);
   const reference = String(request.data?.reference || '').trim();
-  if (!reference) throw new HttpsError('invalid-argument', 'Payment reference is required.');
+  if (!/^[A-Za-z0-9_.=-]{1,200}$/.test(reference)) throw new HttpsError('invalid-argument', 'A valid payment reference is required.');
 
   const txRef = db.collection('schools').doc(schoolId).collection('billingTransactions').doc(reference);
   const txSnap = await txRef.get();
   if (!txSnap.exists) throw new HttpsError('not-found', 'Payment record not found.');
   const tx = txSnap.data() || {};
   if (tx.uid !== request.auth.uid) throw new HttpsError('permission-denied', 'Payment does not belong to this account.');
+  const mode = paymentMode();
+  if (tx.mode !== mode) throw new HttpsError('failed-precondition', 'Payment environment does not match.');
+  const balanceField = mode === 'test' ? 'testBalance' : 'balance';
 
   if (tx.status === 'credited') {
     const billSnap = await db.collection('schools').doc(schoolId).collection('billing').doc('account').get();
-    return { credited: true, balance: Number((billSnap.data() || {}).balance || 0), reference };
+    return { credited: true, mode, balance: Number((billSnap.data() || {})[balanceField] || 0), reference };
   }
 
   const verified = await paystackRequest(`/transaction/verify/${encodeURIComponent(reference)}`);
   const data = verified.data || {};
   const expectedAmount = Number(tx.expectedAmountPesewas || 0);
   const paidAmount = Number(data.amount || 0);
-  const success = data.status === 'success' && paidAmount === expectedAmount && String(data.currency || 'GHS').toUpperCase() === 'GHS';
+  const success = data.status === 'success' && expectedAmount > 0 && paidAmount === expectedAmount
+    && data.currency === 'GHS' && data.reference === reference && data.domain === mode
+    && data.metadata?.schoolId === schoolId && data.metadata?.uid === tx.uid;
   if (!success) {
-    await txRef.set({ status: data.status || 'verification_failed', paidAmountPesewas: paidAmount, verifiedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+    // Do not overwrite a concurrently credited transaction with a stale response.
     throw new HttpsError('failed-precondition', 'Payment could not be verified for the expected amount.');
   }
 
@@ -133,13 +151,13 @@ exports.verifyReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY], re
     const [billSnap, latestTx] = await Promise.all([t.get(billRef), t.get(txRef)]);
     const latest = latestTx.data() || {};
     if (latest.status === 'credited') {
-      newBalance = Number((billSnap.data() || {}).balance || 0);
+      newBalance = Number((billSnap.data() || {})[balanceField] || 0);
       return;
     }
-    const current = Number((billSnap.data() || {}).balance || 0);
+    const current = Number((billSnap.data() || {})[balanceField] || 0);
     newBalance = current + Number(tx.credits || 0);
     t.set(billRef, {
-      balance: newBalance,
+      [balanceField]: newBalance,
       currency: 'GHS',
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -151,11 +169,12 @@ exports.verifyReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY], re
     }, { merge: true });
   });
 
-  return { credited: true, balance: newBalance, reference };
+  return { credited: true, mode, balance: newBalance, reference };
 });
 
 exports.consumeReportCredits = onCall({ region: 'us-central1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
+  if (CHECKOUT_TEST_ONLY) throw new HttpsError('failed-precondition', 'Paid report billing is not active yet.');
   const userSnap = await db.collection('users').doc(request.auth.uid).get();
   const user = userSnap.data() || {};
   if (!['headteacher', 'teacher'].includes(user.role) || user.status !== 'active' || !user.schoolId) {

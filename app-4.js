@@ -5144,6 +5144,11 @@ document.getElementById('startNewTermBtn').addEventListener('click', () => {
 // Billing is temporarily suspended while the Staff module is being expanded.
 // All billing/payment code remains in this build for later reactivation.
 const BILLING_SUSPENDED = true;
+function isBillingTestMode() { return String(window.PAYSTACK_PUBLIC_KEY || '').startsWith('pk_test_'); }
+function pendingPaymentKey() { return `arc_pending_payment_${currentSchoolId}_${currentUid}`; }
+function pendingPaymentReference() { return localStorage.getItem(pendingPaymentKey()) || ''; }
+let checkoutBusy = false;
+let verificationBusy = false;
 const REPORT_CREDIT_PRICE_GHS = 0.20;
 const REPORT_CREDIT_PACKAGES = [
   { id: '10', credits: 10, amount: 2.00 },
@@ -5171,8 +5176,11 @@ function setLocalBillingBalance(balance) {
 }
 async function refreshBillingAccount(silent = true) {
   if (!FIREBASE_ENABLED || !currentSchoolId || !firebase.firestore) return null;
+  const billingSchool = currentSchoolId;
+  const billingUid = currentUid;
   try {
     const snap = await schoolRef().collection('billing').doc('account').get();
+    if (currentSchoolId !== billingSchool || currentUid !== billingUid) return null;
     const data = snap.exists ? snap.data() : { balance: 0, currency: 'GHS' };
     setLocalBillingBalance(Number(data.balance || 0));
     return data;
@@ -5214,6 +5222,7 @@ async function consumeReportCredits(count) {
   return result.data;
 }
 async function buyReportCredits(packageId) {
+  if (checkoutBusy) return;
   if (!isHeadTeacher()) { alert('Only the Head Teacher can purchase report credits for the school.'); return; }
   const pack = REPORT_CREDIT_PACKAGES.find(p => p.id === String(packageId));
   if (!pack) return;
@@ -5226,46 +5235,66 @@ async function buyReportCredits(packageId) {
     return;
   }
   const btn = document.querySelector(`[data-buy-credits="${pack.id}"]`);
+  checkoutBusy = true;
+  const paymentSchool = currentSchoolId;
+  const paymentUid = currentUid;
+  const pendingKey = pendingPaymentKey();
+  let popupStarted = false;
   if (btn) { btn.disabled = true; btn.textContent = 'Opening payment…'; }
   try {
     const init = await billingFunctions().httpsCallable('initializeReportCreditPurchase')({ packageId: pack.id });
     const data = init.data || {};
-    if (!data.accessCode) throw new Error('Payment initialization did not return an access code.');
+    if (!data.accessCode || !data.reference || data.mode !== 'test') throw new Error('A valid test checkout was not returned.');
+    localStorage.setItem(pendingKey, data.reference);
+    if (currentSchoolId !== paymentSchool || currentUid !== paymentUid) return;
+    await renderBilling();
     const popup = new PaystackPop();
-    popup.resumeTransaction(data.accessCode);
-    // The success callback is attached through the transaction event hooks by
-    // Paystack Popup V2. The verify button remains available if a popup closes
-    // after payment before the callback reaches the app.
-    window.__schoolHubPendingPayment = data.reference;
-    alert(`Payment window opened for ${pack.credits} report credits. After payment, return to SchoolHub and use Verify Payment if needed.`);
-    renderBilling();
+    popup.resumeTransaction(data.accessCode, {
+      onSuccess: () => {
+        checkoutBusy = false;
+        if (currentSchoolId === paymentSchool && currentUid === paymentUid) verifyPendingCreditPayment(data.reference);
+      },
+      onCancel: () => { checkoutBusy = false; renderBilling(); },
+      onError: () => { checkoutBusy = false; alert('Checkout could not open. Your payment reference is saved; use Verify Payment if you already paid.'); renderBilling(); }
+    });
+    popupStarted = true;
   } catch (e) {
     console.error('Credit purchase initialization failed:', e);
     alert(e.message || 'Unable to start payment.');
   } finally {
+    if (!popupStarted) checkoutBusy = false;
     if (btn) { btn.disabled = false; btn.textContent = `Buy ${pack.credits}`; }
   }
 }
 async function verifyPendingCreditPayment(reference) {
-  reference = String(reference || window.__schoolHubPendingPayment || '').trim();
+  if (verificationBusy) return;
+  reference = String(reference || pendingPaymentReference()).trim();
   if (!reference) { alert('No pending payment reference was found.'); return; }
   if (!isHeadTeacher()) { alert('Only the Head Teacher can verify a purchase.'); return; }
+  verificationBusy = true;
+  const paymentSchool = currentSchoolId;
+  const paymentUid = currentUid;
+  const pendingKey = pendingPaymentKey();
   try {
     const result = await billingFunctions().httpsCallable('verifyReportCreditPurchase')({ reference });
-    setLocalBillingBalance(Number(result.data?.balance || 0));
-    window.__schoolHubPendingPayment = '';
+    if (!result.data?.credited) throw new Error('Payment has not been confirmed yet.');
+    if (localStorage.getItem(pendingKey) === reference) localStorage.removeItem(pendingKey);
+    if (currentSchoolId !== paymentSchool || currentUid !== paymentUid) return;
+    if (result.data.mode !== 'test') setLocalBillingBalance(Number(result.data.balance || 0));
     auditAction('purchase', 'report-credit', reference, `Purchased report credits. Payment reference: ${reference}.`);
     await renderBilling();
-    alert(`Payment verified successfully. Your school now has ${Number(result.data?.balance || 0)} report credits.`);
+    alert(`Payment verified successfully. Your school now has ${Number(result.data?.balance || 0)} ${result.data.mode === 'test' ? 'test credits. No real money was charged' : 'report credits'}.`);
   } catch (e) {
     console.error('Payment verification failed:', e);
     alert(e.message || 'Payment could not be verified yet. If you just paid, wait a moment and try Verify Payment again.');
+  } finally {
+    verificationBusy = false;
   }
 }
 async function renderBilling() {
   const wrap = document.getElementById('billingWrap');
   if (!wrap) return;
-  if (BILLING_SUSPENDED) {
+  if (BILLING_SUSPENDED && !isBillingTestMode()) {
     wrap.innerHTML = `<div class="billing-card"><h3>Billing &amp; Credits</h3><p class="hint">Billing and report credits are temporarily suspended while SchoolHub is being updated. No payment or credit is required during this period.</p></div>`;
     return;
   }
@@ -5273,12 +5302,23 @@ async function renderBilling() {
     wrap.innerHTML = `<div class="billing-card"><h3>School Billing</h3><p class="hint">Billing and report credits are available after you sign in to a school account.</p></div>`;
     return;
   }
-  await refreshBillingAccount(true);
-  const balance = localBillingBalance();
+  const billingSchool = currentSchoolId;
+  const account = await refreshBillingAccount(true);
+  if (billingSchool !== currentSchoolId) return;
+  const balance = isBillingTestMode() ? Number(account?.testBalance || 0) : localBillingBalance();
   const school = DB.get(KEYS.settings, {}).schoolName || 'Your School';
   const head = isHeadTeacher();
-  const pending = window.__schoolHubPendingPayment || '';
+  const pending = pendingPaymentReference();
+  let recent = [];
+  if (head) {
+    try {
+      const records = await schoolRef().collection('billingTransactions').where('uid', '==', currentUid).get();
+      recent = records.docs.map(d => ({ reference: d.id, ...d.data() })).sort((a,b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 10);
+    } catch (e) { console.warn('Payment history unavailable'); }
+  }
+  if (billingSchool !== currentSchoolId) return;
   wrap.innerHTML = `
+    ${isBillingTestMode() ? '<div class="billing-note"><strong>Paystack test checkout</strong><span>No real money is charged. Test credits are separate from live credits. Reports remain free while billing is suspended.</span></div>' : ''}
     <div class="billing-summary-card">
       <div><span class="billing-kicker">${escapeHtml(school)}</span><h3>Report Credits</h3><p class="hint">School-owned credits shared by authorized teachers.</p></div>
       <div class="billing-balance"><strong>${balance}</strong><span>credits</span><small>GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} remaining value</small></div>
@@ -5290,9 +5330,11 @@ async function renderBilling() {
     </div>
     ${head ? `<div class="billing-section"><div class="billing-section-head"><div><h3>Buy Report Credits</h3><p class="hint">The Head Teacher purchases credits for the whole school. Teachers never pay individually.</p></div></div><div class="billing-packages">${REPORT_CREDIT_PACKAGES.map(p => `<article class="billing-package"><strong>${p.credits}</strong><span>report credits</span><b>GH₵${p.amount.toFixed(2)}</b><small>GH₵0.20 each</small><button type="button" class="btn-primary" data-buy-credits="${p.id}">Buy ${p.credits}</button></article>`).join('')}</div></div>` : `<div class="billing-section"><h3>School Credits</h3><p class="hint">Your Head Teacher manages purchases for the school. Your report generation uses the school's shared credit balance.</p></div>`}
     ${head && pending ? `<div class="billing-pending"><strong>Payment pending</strong><span>Reference: ${escapeHtml(pending)}</span><button type="button" id="verifyBillingPaymentBtn" class="btn-primary">Verify Payment</button></div>` : ''}
+    ${head && recent.length ? `<div class="billing-section"><h3>Recent payments</h3>${recent.map(p => `<div class="billing-pending"><span>${escapeHtml(p.reference)} · ${Number(p.credits)} ${p.mode === 'test' ? 'test ' : ''}credits · ${escapeHtml(p.status)}</span><button type="button" class="btn-primary" data-verify-payment="${escapeHtml(p.reference)}">${p.status === 'credited' ? 'Check receipt' : 'Verify Payment'}</button></div>`).join('')}</div>` : ''}
     <div class="billing-note"><strong>How it works</strong><span>One generated report card uses one credit. Printing or downloading that generated report does not charge another credit. Credits belong to the school and can be used by authorized teachers.</span></div>
   `;
   wrap.querySelectorAll('[data-buy-credits]').forEach(b => b.addEventListener('click', () => buyReportCredits(b.dataset.buyCredits)));
+  wrap.querySelectorAll('[data-verify-payment]').forEach(b => b.addEventListener('click', () => verifyPendingCreditPayment(b.dataset.verifyPayment)));
   document.getElementById('verifyBillingPaymentBtn')?.addEventListener('click', () => verifyPendingCreditPayment());
 }
 
