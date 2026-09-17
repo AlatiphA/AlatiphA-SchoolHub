@@ -3,7 +3,7 @@
 // Keep the public app version at v40, but change this internal cache key for
 // the shared app redesign so installed PWAs receive the updated
 // markup and screen styles together.
-const CACHE_NAME = 'schoolhub-cache-v40-checkout-test-1';
+const CACHE_NAME = 'schoolhub-cache-v40-checkout-test-2';
 
 const APP_SHELL = [
   './',
@@ -40,7 +40,7 @@ self.addEventListener('install', event => {
     caches.open(CACHE_NAME).then(cache => {
       return Promise.all(
         APP_SHELL.map(url =>
-          fetch(url, { mode: url.startsWith('http') ? 'no-cors' : 'same-origin' })
+          fetch(url, { cache: 'reload', mode: url.startsWith('http') ? 'no-cors' : 'same-origin' })
             .then(res => cache.put(url, res))
             .catch(() => {})
         )
