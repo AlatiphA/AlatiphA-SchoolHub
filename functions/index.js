@@ -52,7 +52,9 @@ async function paystackRequest(path, options = {}) {
   return json;
 }
 
-exports.initializeReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY], region: 'us-central1' }, async (request) => {
+// Browser callable requests (including CORS preflight) must reach Firebase's
+// token validation. Authorization is enforced below using request.auth and role.
+exports.initializeReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYSTACK_SECRET_KEY], region: 'us-central1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
   const { schoolId } = await getHeadSchool(request.auth.uid);
   const mode = paymentMode();
@@ -113,7 +115,7 @@ exports.initializeReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY]
   }
 });
 
-exports.verifyReportCreditPurchase = onCall({ secrets: [PAYSTACK_SECRET_KEY], region: 'us-central1' }, async (request) => {
+exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYSTACK_SECRET_KEY], region: 'us-central1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
   const { schoolId } = await getHeadSchool(request.auth.uid);
   const reference = String(request.data?.reference || '').trim();

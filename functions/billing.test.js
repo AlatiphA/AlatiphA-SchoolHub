@@ -68,3 +68,20 @@ test('another account cannot verify the purchase', async () => {
   await assert.rejects(f.exports.verifyReportCreditPurchase(f.request), { code: 'permission-denied' });
   assert.equal(f.fetches(), 0);
 });
+
+test('public checkout endpoints reject requests without Firebase sign-in', async () => {
+  const f = fixture();
+  for (const name of ['initializeReportCreditPurchase', 'verifyReportCreditPurchase']) {
+    await assert.rejects(f.exports[name]({ data: {} }), { code: 'unauthenticated' });
+  }
+  assert.equal(f.fetches(), 0);
+});
+
+test('signed-in teachers cannot initialize or verify purchases', async () => {
+  const f = fixture();
+  f.records.get('users/head').role = 'teacher';
+  for (const name of ['initializeReportCreditPurchase', 'verifyReportCreditPurchase']) {
+    await assert.rejects(f.exports[name](f.request), { code: 'permission-denied' });
+  }
+  assert.equal(f.fetches(), 0);
+});
