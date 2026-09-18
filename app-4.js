@@ -2249,7 +2249,7 @@ function renderStaff() {
   const visible = staff.filter(st => columns.some(f => String(st[f.key] || '').toLowerCase().includes(search)));
   count.textContent = 'Showing ' + visible.length + ' of ' + staff.length + ' staff';
   const header = columns.map(f => '<th scope="col">' + escapeHtml(f.label) + '</th>').join('');
-  const rows = visible.map(st => '<tr>' + columns.map(f => '<td>' + escapeHtml(String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : '') || '—')) + '</td>').join('') +
+  const rows = visible.map(st => '<tr>' + columns.map(f => '<td>' + (f.key === 'name' ? '<span class="staff-name-text">' : '') + escapeHtml(String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : '') || '—')) + (f.key === 'name' ? '</span>' : '') + '</td>').join('') +
     '<td class="staff-table-actions"><button type="button" class="view-staff" data-id="' + escapeHtml(st.id) + '">View</button><button type="button" class="edit-staff" data-id="' + escapeHtml(st.id) + '">Edit</button><button type="button" class="del-staff" data-id="' + escapeHtml(st.id) + '">Delete</button></td></tr>').join('');
   list.innerHTML = visible.length ? '' : '<p class="empty">' + (staff.length ? 'No staff match your search.' : 'No staff yet. Add a staff member above or import a file.') + '</p>';
   const editor = document.createElement('ul');
