@@ -66,6 +66,8 @@ function isCurrentSession(token, uid, schoolId) {
 }
 
 function resetWorkspaceState() {
+  const recoveryPreview = document.getElementById('staffRecoveryPreview');
+  if (recoveryPreview) { recoveryPreview.innerHTML = ''; recoveryPreview.classList.add('hidden'); }
   pendingStaffImport = null;
   const preview = document.getElementById('staffImportPreview');
   if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
@@ -2382,10 +2384,16 @@ function renderStaff() {
     });
   });
   list.querySelectorAll('.del-staff').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       if (!canManageStaffWorkspace()) return;
       if (!confirm('Delete this staff member? Any class or Head Teacher signature assignment referencing them will be cleared.')) return;
       const id = btn.dataset.id;
+      const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
+      if (currentSchoolId) {
+        try { await staffRef(id).delete(); }
+        catch (error) { alert('Could not delete this staff member. Please reconnect and try again.'); return; }
+        if (!isCurrentSession(token, userId, schoolId)) return;
+      }
       DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== id));
       auditAction('delete', 'staff', id, 'Deleted staff record');
       const classes = DB.get(KEYS.classes, []); classes.forEach(c => { if (c.classTeacherId === id) c.classTeacherId = ''; }); DB.set(KEYS.classes, classes);
@@ -2605,6 +2613,61 @@ function printStaffDetails() {
   document.body.appendChild(frame);
 }
 
+document.getElementById('checkStaffRecoveryBtn').addEventListener('click', async () => {
+  if (!canManageStaffWorkspace()) return;
+  const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
+  const host = document.getElementById('staffRecoveryPreview');
+  host.classList.remove('hidden'); host.textContent = 'Checking saved copies…';
+  try {
+    let candidates = [];
+    for (const key of [recoveryKey(schoolId), recoveryKey(schoolId) + '__staff_repair_original']) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const backup = JSON.parse(raw);
+      if (schoolId && String(backup.schoolId) === String(schoolId) && Array.isArray(backup.data?.staff)) candidates.push(...backup.data.staff);
+    }
+    if (schoolId) {
+      const [school, cloud] = await Promise.all([schoolRef().get(), schoolRef().collection('staff').get()]);
+      if (school.exists && Array.isArray(school.data().staff)) candidates.push(...school.data().staff);
+      cloud.forEach(doc => candidates.push(Object.assign({}, doc.data(), { id: doc.id })));
+    }
+    if (!isCurrentSession(token, userId, schoolId)) return;
+    const existing = DB.get(KEYS.staff, []);
+    const knownIds = new Set(existing.map(s => String(s.id)));
+    const knownStaffIds = new Set(existing.map(s => String(s.staffId || '').trim().toLowerCase()).filter(Boolean));
+    const missing = [];
+    for (const record of candidates.reverse()) {
+      if (!record || !record.id || !record.name) continue;
+      const id = String(record.id), staffId = String(record.staffId || '').trim().toLowerCase();
+      if (knownIds.has(id) || (staffId && knownStaffIds.has(staffId))) continue;
+      knownIds.add(id); if (staffId) knownStaffIds.add(staffId);
+      missing.push(record);
+    }
+    host.innerHTML = '<h3>Staff recovery check</h3><p>' + (missing.length ? 'Found ' + missing.length + ' staff in saved copies who are not in the current list. Select only staff who should be restored.' : 'No additional staff found in this browser’s saved copies or the current cloud records. An older backup or another device may still have them.') + '</p>';
+    missing.forEach((record, index) => {
+      const label = document.createElement('label');
+      label.innerHTML = '<input type="checkbox" data-recovery-index="' + index + '"> ' + escapeHtml(record.name) + ' · Staff ID: ' + escapeHtml(record.staffId || '—');
+      host.appendChild(label);
+    });
+    if (!missing.length) return;
+    const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = 'Restore selected staff';
+    host.appendChild(restore);
+    restore.addEventListener('click', () => {
+      if (!isCurrentSession(token, userId, schoolId) || !canManageStaffWorkspace()) return;
+      const selected = Array.from(host.querySelectorAll('input:checked')).map(el => missing[Number(el.dataset.recoveryIndex)]);
+      if (!selected.length) return;
+      const latest = DB.get(KEYS.staff, []);
+      const additions = selected.filter(record => !latest.some(s => String(s.id) === String(record.id) || (record.staffId && String(s.staffId || '').trim().toLowerCase() === String(record.staffId).trim().toLowerCase())));
+      try {
+        DB.set(KEYS.staff, latest.concat(additions));
+        host.textContent = additions.length + ' staff restored to this device. Cloud sync will run when connected.';
+        renderStaff(); renderClasses(); refreshHeadTeacherSelect();
+      } catch (error) { host.textContent = 'Could not save restored staff: ' + error.message; }
+    });
+  } catch (error) {
+    if (isCurrentSession(token, userId, schoolId)) host.textContent = 'Could not finish the recovery check: ' + error.message;
+  }
+});
 document.getElementById('printStaffBtn').addEventListener('click', printStaffDetails);
 document.getElementById('staffSearch').addEventListener('input', renderStaff);
 document.getElementById('exportStaffBtn').addEventListener('click', () => exportStaffWorkbook(false));
@@ -7362,7 +7425,7 @@ function mergeLocalImage(field, cloudValue, id) {
   if (field === 'staff') {
     const local = DB.get(KEYS.staff, []).find(s => s.id === id);
     const cached = getCachedLocalImage(imageCacheKey('staff', id));
-    return Object.assign({}, cloudValue, { signature: (local && isDataImage(local.signature) ? local.signature : '') || cached || '' });
+    return Object.assign({}, cloudValue, { id: String(id), signature: (local && isDataImage(local.signature) ? local.signature : '') || cached || '' });
   }
   return cloudValue;
 }
@@ -7512,6 +7575,10 @@ function recoveryKey(schoolId) {
 function backupLocalSchoolData(reason) {
   if (!currentSchoolId) return false;
   try {
+    // Preserve the pre-repair snapshot before a smaller cache can replace it.
+    const preservedKey = recoveryKey(currentSchoolId) + '__staff_repair_original';
+    const previous = localStorage.getItem(recoveryKey(currentSchoolId));
+    if (previous && localStorage.getItem(preservedKey) === null) localStorage.setItem(preservedKey, previous);
     const fields = ['settings','classes','subjects','students','grades','attendance','teacherAttendance','schoolCalendar','remarks','staff','activity','billing'];
     const snapshot = { version:'v40', schoolId:String(currentSchoolId), createdAt:new Date().toISOString(), reason:String(reason || 'cloud-pull'), data:{} };
     fields.forEach(field => {
@@ -7765,13 +7832,13 @@ function scheduleCloudPush(rawKey) {
 }
 
 
-function syncCollectionArray(ref, items, cleanFn) {
+function syncCollectionArray(ref, items, cleanFn, options) {
   const safeItems = Array.isArray(items) ? items : [];
   const currentIds = new Set(safeItems.map(item => item && item.id).filter(Boolean).map(String));
   return ref.get().then(snapshot => {
     const cloudCount = snapshot && typeof snapshot.size === 'number' ? snapshot.size : 0;
     // v40: empty local data is not proof that cloud data should be deleted.
-    const allowDeletes = safeItems.length > 0 || cloudCount === 0;
+    const allowDeletes = !(options && options.preserveMissing) && (safeItems.length > 0 || cloudCount === 0);
     const ops = [];
     safeItems.forEach(item => {
       if (!item || !item.id) return;
@@ -7850,7 +7917,7 @@ function pushFieldToCloud(match) {
   if (field === 'staff') {
     if (!isHeadTeacher()) return Promise.resolve();
     return syncCollectionArray(schoolRef().collection('staff'), value,
-      s => stripImagesForCloud('staff', s))
+      s => stripImagesForCloud('staff', s), { preserveMissing: true })
       .then(() => setLastSyncedNow());
   }
 
