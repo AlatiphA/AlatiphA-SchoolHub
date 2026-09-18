@@ -54,14 +54,18 @@
   #app .welcome-subtext{font-size:15px;}
   #app .stats-summary{margin:0 auto 24px;border-radius:999px;background:var(--surface);padding:12px 16px;color:var(--muted);flex-wrap:wrap;max-width:100%;text-align:center;}
   #app .staff-data-toolbar{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:22px 0 10px;}
-  #app .staff-data-toolbar>label{flex:1 1 240px;margin:0;}
+  #app .staff-data-toolbar>label{flex:1 1 420px;min-width:0;margin:0;}
+  #app #staffSearch{width:100%;max-width:none;box-sizing:border-box;}
+  #app .staff-data-toolbar>.staff-data-actions{flex-direction:column;flex-wrap:nowrap;align-items:center;margin-inline:auto;}
+  #app .staff-data-toolbar>.staff-data-actions button{width:190px;max-width:100%;text-align:center;}
   #app .staff-data-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
   #app .staff-data-actions button{min-height:44px;}
   #app .staff-table-scroll{max-width:100%;overflow:auto;max-height:65vh;}
   #app .staff-details-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:13px;}
-  #app .staff-details-table :is(th,td){white-space:nowrap;text-align:left;min-width:120px;}
+  #app .staff-details-table :is(th,td){white-space:nowrap;text-align:center;min-width:120px;}
   #app .staff-details-table th{position:sticky;top:0;z-index:2;}
-  #app .staff-details-table :is(th,td):first-child{position:sticky;left:0;min-width:170px;max-width:240px;white-space:normal;background:var(--surface);box-shadow:2px 0 0 var(--rule);z-index:1;}
+  #app .staff-details-table :is(th,td):first-child{position:sticky;left:0;width:200px;min-width:200px;max-width:200px;white-space:normal;overflow-wrap:anywhere;background:var(--surface);box-shadow:2px 0 0 var(--rule);z-index:1;}
+  #app .staff-details-table td:first-child{text-align:left;}
   #app .staff-details-table th:first-child{z-index:3;background:var(--surface-alt);}
   #app .staff-table-actions button{margin-right:6px;min-height:36px;}
   #app .staff-import-preview{border:1px solid var(--gold);border-radius:14px;padding:18px;margin:16px 0;scroll-margin-top:85px;}
