@@ -3,7 +3,7 @@
 // Keep the public app version at v40, but change this internal cache key for
 // the shared app redesign so installed PWAs receive the updated
 // markup and screen styles together.
-const CACHE_NAME = 'schoolhub-cache-v40-staff-recovery-5';
+const CACHE_NAME = 'schoolhub-cache-v40-staff-recovery-6';
 
 const APP_SHELL = [
   './',
@@ -13,6 +13,7 @@ const APP_SHELL = [
   './style-3.css',
   './ui-polish.css',
   './app-4.js',
+  './app-4.js?v=staff-recovery-6',
   './staff-transfer.js',
   './firebase-config.js',
   './manifest.json',
