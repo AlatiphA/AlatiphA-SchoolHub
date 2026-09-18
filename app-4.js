@@ -45,6 +45,7 @@ let currentStatus = null; // 'active' | 'pending'
 let currentAssignedClassIds = [];
 let currentAssignedSubjectIds = [];
 let currentUserData = null;
+let pendingStaffImport = null;
 
 // Session isolation: every authentication transition receives a new token.
 // Any asynchronous work started by a previous user must stop using its data
@@ -65,6 +66,16 @@ function isCurrentSession(token, uid, schoolId) {
 }
 
 function resetWorkspaceState() {
+  pendingStaffImport = null;
+  const preview = document.getElementById('staffImportPreview');
+  if (preview) { preview.innerHTML = ''; preview.classList.add('hidden'); }
+  const staffSearch = document.getElementById('staffSearch');
+  if (staffSearch) staffSearch.value = '';
+  const staffCount = document.getElementById('staffTableCount');
+  if (staffCount) staffCount.textContent = '';
+  const staffDetails = document.getElementById('staffDetailsContent');
+  if (staffDetails) staffDetails.innerHTML = '';
+  document.getElementById('staffDetailsDialog')?.classList.add('hidden');
   currentUid = null;
   currentSchoolId = null;
   currentRole = null;
@@ -621,7 +632,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const cards = QUICK_ACCESS_CARDS.filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher'));
+  const cards = QUICK_ACCESS_CARDS.filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
       <span class="qa-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${c.icon}</svg></span>
@@ -2221,14 +2232,30 @@ function staffFieldControl(f, value) {
 }
 
 
-function renderStaff() {
-  if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('staffList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
-  const list = document.getElementById('staffList');
-  const staff = DB.get(KEYS.staff, []);
-  list.innerHTML = '';
-  if (!staff.length) { list.innerHTML = '<li class="empty">No staff yet — use “Expand” above to add one.</li>'; return; }
+function canManageStaffWorkspace() {
+  return sessionReady && sessionDataReady && (isHeadTeacher() || isActiveGuest());
+}
 
-  staff.forEach(st => {
+let staffTableVisible = true;
+function renderStaff() {
+  const list = document.getElementById('staffList');
+  const count = document.getElementById('staffTableCount');
+  const ready = canManageStaffWorkspace();
+  ['exportStaffBtn', 'staffTemplateBtn', 'importStaffBtn', 'printStaffBtn'].forEach(id => { document.getElementById(id).disabled = !ready; });
+  if (!ready) { list.innerHTML = '<p class="empty">Staff details are available to the Head Teacher once the workspace is ready.</p>'; count.textContent = ''; return; }
+  const staff = DB.get(KEYS.staff, []);
+  const columns = StaffTransfer.columns(STAFF_FIELDS);
+  const search = document.getElementById('staffSearch').value.trim().toLowerCase();
+  const visible = staff.filter(st => columns.some(f => String(st[f.key] || '').toLowerCase().includes(search)));
+  count.textContent = 'Showing ' + visible.length + ' of ' + staff.length + ' staff';
+  const header = columns.map(f => '<th scope="col">' + escapeHtml(f.label) + '</th>').join('');
+  const rows = visible.map(st => '<tr>' + columns.map(f => '<td>' + escapeHtml(String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : '') || '—')) + '</td>').join('') +
+    '<td class="staff-table-actions"><button type="button" class="view-staff" data-id="' + escapeHtml(st.id) + '">View</button><button type="button" class="edit-staff" data-id="' + escapeHtml(st.id) + '">Edit</button><button type="button" class="del-staff" data-id="' + escapeHtml(st.id) + '">Delete</button></td></tr>').join('');
+  list.innerHTML = visible.length ? '' : '<p class="empty">' + (staff.length ? 'No staff match your search.' : 'No staff yet. Add a staff member above or import a file.') + '</p>';
+  const editor = document.createElement('ul');
+  editor.className = 'list staff-editor-list';
+  list.appendChild(editor);
+  staff.filter(st => visible.includes(st) || editingStaffId === st.id).forEach(st => {
     const li = document.createElement('li');
     if (editingStaffId === st.id) {
       const fieldInputs = STAFF_FIELDS.map(f =>
@@ -2261,25 +2288,28 @@ function renderStaff() {
           <button class="cancel-btn cancel-staff">Cancel</button>
         </div>
       </div>`;
-    } else {
-      li.innerHTML = `<div class="staff-list-main">
-          <strong>${escapeHtml(st.name || 'Unnamed staff')}</strong>
-          <div class="meta">${escapeHtml(st.role || 'Staff')}${st.staffId ? ' · ID ' + escapeHtml(st.staffId) : ' · ID not set'}</div>
-        </div>
-        <div class="staff-list-actions">
-          <button data-id="${st.id}" class="view-staff" type="button">View</button>
-          <button data-id="${st.id}" class="edit-staff" type="button">Edit</button>
-          <button data-id="${st.id}" class="del-staff" type="button">Delete</button>
-        </div>`;
     }
-    list.appendChild(li);
+    if (editingStaffId !== st.id) {
+      li.innerHTML = '<div class="staff-list-main"><strong>' + escapeHtml(st.name || 'Unnamed staff') + '</strong><div class="meta">' + escapeHtml(st.role || 'Teacher') + ' · Staff ID: ' + escapeHtml(st.staffId || '—') + '</div></div><div class="staff-list-actions"><button type="button" class="view-staff" data-id="' + escapeHtml(st.id) + '">View</button><button type="button" class="edit-staff" data-id="' + escapeHtml(st.id) + '">Edit</button><button type="button" class="del-staff" data-id="' + escapeHtml(st.id) + '">Delete</button></div>';
+    }
+    editor.appendChild(li);
+  });
+
+  const tableSection = document.createElement('div');
+  tableSection.innerHTML = '<div class="staff-data-toolbar"><strong>Staff details table</strong><button type="button" id="toggleStaffTableBtn" aria-controls="staffDetailsTablePanel" aria-expanded="' + staffTableVisible + '">' + (staffTableVisible ? 'Hide table' : 'Show table') + '</button></div><div id="staffDetailsTablePanel"' + (staffTableVisible ? '' : ' hidden') + '><p class="hint">Scroll sideways to see all staff details.</p><div class="table-scroll staff-table-scroll" tabindex="0" role="region" aria-label="Staff details, scroll horizontally for more columns"><table class="grades-table staff-details-table"><caption class="sr-only">Staff details</caption><thead><tr>' + header + '<th scope="col">Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  list.appendChild(tableSection);
+  document.getElementById('toggleStaffTableBtn').addEventListener('click', event => {
+    staffTableVisible = !staffTableVisible;
+    document.getElementById('staffDetailsTablePanel').hidden = !staffTableVisible;
+    event.currentTarget.textContent = staffTableVisible ? 'Hide table' : 'Show table';
+    event.currentTarget.setAttribute('aria-expanded', String(staffTableVisible));
   });
 
   list.querySelectorAll('.view-staff').forEach(btn => {
     btn.addEventListener('click', () => showStaffDetails(btn.dataset.id));
   });
   list.querySelectorAll('.edit-staff').forEach(btn => {
-    btn.addEventListener('click', () => { editingStaffId = btn.dataset.id; renderStaff(); });
+    btn.addEventListener('click', () => { editingStaffId = btn.dataset.id; renderStaff(); document.querySelector('.staff-editor-list')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
   });
   list.querySelectorAll('.cancel-staff').forEach(btn => {
     btn.addEventListener('click', () => { editingStaffId = null; renderStaff(); });
@@ -2319,6 +2349,7 @@ function renderStaff() {
   });
   list.querySelectorAll('.remove-staff-signature').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (!canManageStaffWorkspace()) return;
       const staffList = DB.get(KEYS.staff, []); const st = staffList.find(x => x.id === btn.dataset.id); if (!st) return;
       const oldUrl = st.signatureUrl || st.signature || '';
       const oldStoragePath = st.signatureStoragePath || '';
@@ -2330,6 +2361,7 @@ function renderStaff() {
   });
   list.querySelectorAll('.save-staff').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (!canManageStaffWorkspace()) return;
       const li = btn.closest('li');
       const validation = li.querySelector('.edit-staff-validation');
       const name = li.querySelector('.edit-staff-name').value.trim();
@@ -2351,6 +2383,7 @@ function renderStaff() {
   });
   list.querySelectorAll('.del-staff').forEach(btn => {
     btn.addEventListener('click', () => {
+      if (!canManageStaffWorkspace()) return;
       if (!confirm('Delete this staff member? Any class or Head Teacher signature assignment referencing them will be cleared.')) return;
       const id = btn.dataset.id;
       DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== id));
@@ -2363,6 +2396,7 @@ function renderStaff() {
 }
 
 function showStaffDetails(staffId) {
+  if (!canManageStaffWorkspace()) return;
   const st = DB.get(KEYS.staff, []).find(x => x.id === staffId);
   if (!st) return;
   const content = document.getElementById('staffDetailsContent');
@@ -2453,6 +2487,147 @@ document.getElementById('addStaffBtn').addEventListener('click', async () => {
     }
     renderStaff();
   } catch (err) { alert('Could not save the staff member: ' + (err.message || err)); }
+});
+
+
+/* ---------- Staff spreadsheet controls ---------- */
+function exportStaffWorkbook(templateOnly = false) {
+  if (!canManageStaffWorkspace()) return;
+  if (typeof XLSX === 'undefined') { alert('Spreadsheet tools are still loading. Please reconnect and try again.'); return; }
+  const fields = StaffTransfer.columns(STAFF_FIELDS);
+  const staff = templateOnly ? [] : DB.get(KEYS.staff, []);
+  const rows = [fields.map(f => f.label), ...staff.map(st => fields.map(f => String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : ''))))];
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  // Export identifiers, bank accounts and phone numbers as text, including leading zeros.
+  Object.keys(sheet).filter(key => key[0] !== '!').forEach(key => { sheet[key].t = 's'; sheet[key].z = '@'; delete sheet[key].f; });
+  sheet['!cols'] = fields.map(f => ({ wch: Math.max(18, Math.min(34, f.label.length + 6)) }));
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, 'Staff');
+  const instructions = [
+    ['Staff import instructions'],
+    ['Full name and Staff ID are required for every row. Keep Staff IDs unique and formatted as text.'],
+    ['Existing Staff IDs update their matching records. New Staff IDs add new records.'],
+    ['Blank cells and omitted columns preserve existing details. No records are deleted.'],
+    ['Signatures, class assignments and linked accounts stay unchanged.'],
+    ['Enter dates as YYYY-MM-DD or use Excel date cells.'],
+    ['Use the Staff sheet. Preview the import in SchoolHub before saving.'],
+    ...fields.filter(f => f.options).map(f => [f.label, f.options.map(o => o[0]).join(', ')])
+  ];
+  const help = XLSX.utils.aoa_to_sheet(instructions); help['!cols'] = [{ wch: 105 }, { wch: 100 }];
+  XLSX.utils.book_append_sheet(book, help, 'Instructions');
+  XLSX.writeFile(book, templateOnly ? 'SchoolHub_staff_template.xlsx' : 'SchoolHub_staff_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+}
+
+function staffRowsFromWorkbook(book) {
+  const sheet = book.Sheets[book.SheetNames.includes('Staff') ? 'Staff' : book.SheetNames[0]];
+  if (!sheet || !sheet['!ref']) throw new Error('The staff sheet is empty.');
+  const range = XLSX.utils.decode_range(sheet['!ref']);
+  if (range.e.r - range.s.r > 5000 || range.e.c - range.s.c > 100) throw new Error('Import at most 5,000 staff rows and 100 columns at a time.');
+  const rows = [];
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const row = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({r, c})];
+      if (cell?.f) throw new Error('The staff sheet contains formulas. Paste their values before importing.');
+      if (cell?.t === 'e') throw new Error('The staff sheet contains an Excel error. Correct it before importing.');
+      if (cell?.t === 'd') {
+        const date = cell.v instanceof Date ? cell.v : new Date(cell.v);
+        if (!Number.isFinite(date.getTime())) throw new Error('The staff sheet contains an invalid date.');
+        row.push(`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`);
+      } else row.push(cell == null ? '' : String(cell.w ?? cell.v ?? ''));
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function clearStaffImport() {
+  pendingStaffImport = null;
+  const host = document.getElementById('staffImportPreview');
+  host.innerHTML = ''; host.classList.add('hidden');
+}
+
+function showStaffImportPreview(rows) {
+  const existing = DB.get(KEYS.staff, []);
+  const result = StaffTransfer.plan(rows, existing, STAFF_FIELDS);
+  const host = document.getElementById('staffImportPreview');
+  host.classList.remove('hidden');
+  pendingStaffImport = null;
+  if (result.errors.length) {
+    host.innerHTML = '<h3>Correct the file before importing</h3><p>No staff records have been changed.</p><ul>' + result.errors.slice(0, 30).map(error => '<li>' + escapeHtml(error) + '</li>').join('') + '</ul>' + (result.errors.length > 30 ? '<p>Showing the first 30 errors.</p>' : '') + '<button type="button" id="cancelStaffImport">Close</button>';
+  } else {
+    const added = result.changes.filter(c => !c.existingId).length;
+    pendingStaffImport = { rows, snapshot: JSON.stringify(existing), token: sessionGeneration, schoolId: currentSchoolId, uid: currentUid };
+    host.innerHTML = '<h3>Review staff import</h3><p>' + added + ' new staff; ' + (result.changes.length-added) + ' existing staff to update. Blank cells preserve existing details.</p><div class="table-scroll"><table class="grades-table"><thead><tr><th>Action</th><th>Staff ID</th><th>Full name</th></tr></thead><tbody>' + result.changes.map(c => '<tr><td>' + (c.existingId ? 'Update' : 'Add') + '</td><td>' + escapeHtml(c.values.staffId) + '</td><td>' + escapeHtml(c.values.name) + '</td></tr>').join('') + '</tbody></table></div><div class="staff-data-actions"><button type="button" id="applyStaffImport" class="btn-primary">Save imported staff</button><button type="button" id="cancelStaffImport">Cancel</button></div>';
+    document.getElementById('applyStaffImport').addEventListener('click', () => {
+      const pending = pendingStaffImport;
+      if (!pending || !canManageStaffWorkspace() || !isCurrentSession(pending.token, pending.uid, pending.schoolId)) { clearStaffImport(); return; }
+      const latest = DB.get(KEYS.staff, []);
+      if (JSON.stringify(latest) !== pending.snapshot) { showStaffImportPreview(pending.rows); alert('Staff details changed while this preview was open. Review the refreshed preview before saving.'); return; }
+      const checked = StaffTransfer.plan(pending.rows, latest, STAFF_FIELDS);
+      if (checked.errors.length) { showStaffImportPreview(pending.rows); return; }
+      try {
+        DB.set(KEYS.staff, StaffTransfer.merge(latest, checked.changes, uid));
+        auditAction('import', 'staff', '', 'Imported ' + checked.changes.length + ' staff records.');
+        clearStaffImport(); editingStaffId = null;
+        renderStaff(); renderClasses(); refreshHeadTeacherSelect();
+        alert('Staff import saved. ' + added + ' added; ' + (checked.changes.length-added) + ' updated.');
+      } catch (error) { alert('Could not save the import: ' + error.message); }
+    });
+  }
+  document.getElementById('cancelStaffImport').addEventListener('click', clearStaffImport);
+  host.scrollIntoView({block:'start',behavior:'smooth'});
+}
+
+function printStaffDetails() {
+  if (!canManageStaffWorkspace()) return;
+  const columns = StaffTransfer.columns(STAFF_FIELDS);
+  const search = document.getElementById('staffSearch').value.trim().toLowerCase();
+  const staff = DB.get(KEYS.staff, []).filter(st => columns.some(f => String(st[f.key] || '').toLowerCase().includes(search)));
+  if (!staff.length) { alert('No staff to print. Clear your search or add staff first.'); return; }
+  document.getElementById('staffPrintFrame')?.remove();
+  const frame = document.createElement('iframe');
+  frame.id = 'staffPrintFrame';
+  frame.title = 'Staff print preview';
+  frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:1100px;height:800px;border:0';
+  const identity = columns.slice(0, 2), details = columns.slice(2);
+  const sections = [];
+  for (let i = 0; i < details.length; i += 5) {
+    const fields = identity.concat(details.slice(i, i + 5));
+    sections.push('<section><h1>' + escapeHtml(DB.get(KEYS.settings, {}).schoolName || 'School') + '</h1><h2>Staff details — Part ' + (i / 5 + 1) + '</h2><p>' + staff.length + ' staff · ' + escapeHtml(new Date().toLocaleDateString()) + (search ? ' · Search: ' + escapeHtml(search) : '') + '</p><table><thead><tr>' + fields.map(f => '<th>' + escapeHtml(f.label) + '</th>').join('') + '</tr></thead><tbody>' + staff.map(st => '<tr>' + fields.map(f => '<td>' + escapeHtml(String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : '') || '—')) + '</td>').join('') + '</tr>').join('') + '</tbody></table></section>');
+  }
+  frame.onload = () => {
+    frame.contentWindow.addEventListener('afterprint', () => frame.remove(), { once: true });
+    try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    catch (error) { frame.remove(); alert('Unable to open printing. Please try again.'); }
+  };
+  frame.srcdoc = '<!doctype html><html><head><meta charset="utf-8"><title>Staff details</title><style>@page{size:A4 landscape;margin:12mm}body{font:11px Arial,sans-serif;color:#111}h1{font-size:20px;margin:0 0 6px}h2{font-size:15px}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #aaa;padding:7px;text-align:left;overflow-wrap:anywhere}th{background:#eee}thead{display:table-header-group}tr{break-inside:avoid}section+section{break-before:page}</style></head><body>' + sections.join('') + '</body></html>';
+  document.body.appendChild(frame);
+}
+
+document.getElementById('printStaffBtn').addEventListener('click', printStaffDetails);
+document.getElementById('staffSearch').addEventListener('input', renderStaff);
+document.getElementById('exportStaffBtn').addEventListener('click', () => exportStaffWorkbook(false));
+document.getElementById('staffTemplateBtn').addEventListener('click', () => exportStaffWorkbook(true));
+document.getElementById('importStaffBtn').addEventListener('click', () => {
+  if (canManageStaffWorkspace()) document.getElementById('staffImportFile').click();
+});
+document.getElementById('staffImportFile').addEventListener('change', async event => {
+  const file = event.target.files[0]; event.target.value = '';
+  if (!file || !canManageStaffWorkspace()) return;
+  clearStaffImport();
+  const token = sessionGeneration, schoolId = currentSchoolId, userId = currentUid;
+  try {
+    if (file.size > 5 * 1024 * 1024) throw new Error('Choose a spreadsheet smaller than 5 MB.');
+    if (!/\.(xlsx|xls|csv)$/i.test(file.name)) throw new Error('Choose an Excel or CSV file.');
+    if (typeof XLSX === 'undefined') throw new Error('Spreadsheet tools are still loading. Please reconnect and try again.');
+    const bytes = await file.arrayBuffer();
+    if (!isCurrentSession(token, userId, schoolId) || !canManageStaffWorkspace()) return;
+    const book = XLSX.read(bytes, { type:'array', cellDates:true, raw:true });
+    showStaffImportPreview(staffRowsFromWorkbook(book));
+  } catch (error) {
+    if (isCurrentSession(token, userId, schoolId)) alert('Could not import staff: ' + error.message);
+  }
 });
 
 /* ---------- Attendance: Students + Teachers + School Calendar ---------- */

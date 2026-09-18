@@ -409,7 +409,20 @@
       <p id="addStaffValidation" class="form-validation" role="alert"></p>
       <button id="addStaffBtn" class="btn-primary">Add Staff</button>
     </div>
-    <ul id="staffList" class="list"></ul>
+    <div class="staff-data-toolbar">
+      <label for="staffSearch">Search staff<input id="staffSearch" type="search" placeholder="Name, Staff ID, role or other details"></label>
+      <div class="staff-data-actions">
+        <button type="button" id="exportStaffBtn" class="btn-primary">Export Excel</button>
+        <button type="button" id="staffTemplateBtn" class="btn-secondary">Download template</button>
+        <button type="button" id="importStaffBtn" class="btn-secondary">Import staff</button>
+        <button type="button" id="printStaffBtn" class="btn-secondary">Print / Save as PDF</button>
+        <input id="staffImportFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+      </div>
+    </div>
+    <p class="hint">Excel exports include all staff details except signatures and account links. Print the current search results, then choose Save as PDF in the print dialog.</p>
+    <div id="staffImportPreview" class="staff-import-preview hidden" aria-live="polite"></div>
+    <p id="staffTableCount" class="hint" role="status"></p>
+    <div id="staffList"></div>
     <p class="hint">Assign a staff member as a Class Teacher from the Classes tab, and as Head Teacher from Setup — their uploaded signature will then appear automatically on report cards.</p>
   </section>
 
@@ -782,6 +795,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
+<script src="staff-transfer.js"></script>
 <script src="app-4.js"></script>
 <script src="install.js"></script>
 </body>
