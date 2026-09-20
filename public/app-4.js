@@ -9504,20 +9504,36 @@ function bulkRefreshToolbarV40(kind){
   host.querySelector('.bulk-select-all').checked=!!ids.length&&ids.every(id=>set.has(id));
   host.querySelector('.bulk-unselect-all').checked=!!ids.length&&ids.every(id=>!set.has(id));
 }
+function syncBulkRowChecksV40(kind,list,rowSelector,rows,set){
+  const candidates=Array.from(list.querySelectorAll(rowSelector)).filter(el=>!el.querySelector('.edit-row'));
+  rows.forEach((record,i)=>{
+    const row=candidates[i];if(!row)return;
+    const id=String(record.id);
+    const existing=Array.from(row.children).filter(el=>el.classList&&el.classList.contains('bulk-record-select'));
+    let wrap=existing.shift();existing.forEach(el=>el.remove());
+    if(!wrap){wrap=document.createElement('span');wrap.className='bulk-record-select';row.insertBefore(wrap,row.firstChild);}
+    wrap.dataset.bulkKind=kind;wrap.dataset.bulkId=id;
+    let cb=wrap.querySelector('.bulk-record-check');
+    if(!cb){cb=document.createElement('input');cb.type='checkbox';cb.className='bulk-record-check';wrap.replaceChildren(cb);}
+    cb.setAttribute('aria-label',`Select ${record.name||'record'}`);
+    cb.checked=set.has(id);
+    cb.onchange=()=>{cb.checked?set.add(id):set.delete(id);bulkRefreshToolbarV40(kind);};
+  });
+}
 function installBulkUiV40(kind,listId,rowSelector){
   const list=document.getElementById(listId);if(!list)return;
   document.querySelectorAll(`.bulk-selection-toolbar[data-kind="${kind}"]`).forEach(x=>x.remove());
-  const rows=bulkVisibleRecordsV40(kind);if(!rows.length)return;
+  const rows=bulkVisibleRecordsV40(kind);if(!rows.length){list.querySelectorAll('.bulk-record-select').forEach(x=>x.remove());return;}
   const ids=rows.map(x=>String(x.id)), set=bulkSelectionsV40[kind];
   Array.from(set).forEach(id=>{if(!ids.includes(id))set.delete(id);});
   const bar=document.createElement('div');bar.className='bulk-selection-toolbar';bar.dataset.kind=kind;
   bar.innerHTML=`<label><input type="checkbox" class="bulk-select-all"> Select All</label><label><input type="checkbox" class="bulk-unselect-all"> Unselect All</label><span class="bulk-count"></span><button type="button" class="bulk-delete-btn">Delete Selected</button>`;
   list.parentNode.insertBefore(bar,list);
-  bar.querySelector('.bulk-select-all').addEventListener('change',e=>{if(e.target.checked)ids.forEach(id=>set.add(id));else ids.forEach(id=>set.delete(id));installBulkUiV40(kind,listId,rowSelector);});
-  bar.querySelector('.bulk-unselect-all').addEventListener('change',e=>{if(e.target.checked)ids.forEach(id=>set.delete(id));installBulkUiV40(kind,listId,rowSelector);});
+  const syncChecks=()=>syncBulkRowChecksV40(kind,list,rowSelector,rows,set);
+  bar.querySelector('.bulk-select-all').addEventListener('change',e=>{if(e.target.checked)ids.forEach(id=>set.add(id));else ids.forEach(id=>set.delete(id));syncChecks();bulkRefreshToolbarV40(kind);});
+  bar.querySelector('.bulk-unselect-all').addEventListener('change',e=>{if(e.target.checked)ids.forEach(id=>set.delete(id));syncChecks();bulkRefreshToolbarV40(kind);});
   bar.querySelector('.bulk-delete-btn').addEventListener('click',()=>bulkDeleteV40(kind));
-  const candidates=Array.from(list.querySelectorAll(rowSelector)).filter(el=>!el.querySelector('.edit-row'));
-  rows.forEach((record,i)=>{const row=candidates[i];if(!row)return;const wrap=document.createElement('span');wrap.className='bulk-record-select';wrap.innerHTML=`<input type="checkbox" class="bulk-record-check" aria-label="Select ${escapeHtml(record.name||'record')}">`;const cb=wrap.firstChild;cb.checked=set.has(String(record.id));cb.addEventListener('change',()=>{cb.checked?set.add(String(record.id)):set.delete(String(record.id));bulkRefreshToolbarV40(kind);});row.insertBefore(wrap,row.firstChild);});
+  syncChecks();
   bulkRefreshToolbarV40(kind);
 }
 function classDepsV40(id){const st=DB.get(KEYS.students,[]).filter(x=>x.classId===id).length,g=Object.keys(DB.get(KEYS.grades,{})).filter(k=>k.startsWith(id+'__')).length,a=Object.keys(DB.get(KEYS.attendance,{})).filter(k=>k.startsWith(id+'__')).length,r=Object.keys(DB.get(KEYS.remarks,{})).filter(k=>k.startsWith(id+'__')).length;return{st,g,a,r,total:st+g+a+r};}

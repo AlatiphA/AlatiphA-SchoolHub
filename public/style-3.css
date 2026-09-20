@@ -1182,14 +1182,14 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
 .attendance-date-navigator #attendancePrevDate,.attendance-date-navigator #attendanceNextDate{flex:0 0 42px;min-width:42px;min-height:42px;padding:6px 10px;font-size:18px;line-height:1}
 
 /* v40 floating quick-access pill */
-#schoolHubFloatingPill{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));z-index:9000;transform:translate(-50%,0);display:flex;align-items:center;gap:3px;max-width:calc(100vw - 20px);padding:6px;border:1px solid rgba(128,128,128,.22);border-radius:999px;background:var(--card,#fff);box-shadow:0 10px 30px rgba(0,0,0,.16);transition:transform .22s ease,opacity .22s ease;opacity:1}
+#schoolHubFloatingPill{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));z-index:9000;transform:translate(-50%,0);display:flex;align-items:center;gap:2px;max-width:calc(100vw - 20px);padding:4px;border:1px solid rgba(128,128,128,.22);border-radius:999px;background:var(--card,#fff);box-shadow:0 8px 24px rgba(0,0,0,.14);transition:transform .22s ease,opacity .22s ease;opacity:1}
 @supports (backdrop-filter:blur(16px)){#schoolHubFloatingPill{background:color-mix(in srgb,var(--card,#fff) 88%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}}
-#schoolHubFloatingPill.pill-hidden{transform:translate(-50%,calc(100% + 30px));opacity:0;pointer-events:none}
-#schoolHubFloatingPill button{appearance:none;border:0;background:transparent;color:inherit;border-radius:999px;min-height:44px;padding:7px 11px;display:flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer}
-#schoolHubFloatingPill button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+#schoolHubFloatingPill.pill-hidden{transform:translate(-50%,calc(100% + 26px));opacity:0;pointer-events:none}
+#schoolHubFloatingPill button{appearance:none;border:0;background:transparent;color:inherit;border-radius:999px;min-height:38px;padding:5px 9px;display:flex;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer}
+#schoolHubFloatingPill button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
 #schoolHubFloatingPill button.active{background:var(--accent,#956433);color:#fff}
-@media(max-width:520px){#schoolHubFloatingPill{width:max-content;max-width:calc(100vw - 12px);padding:5px;gap:1px}#schoolHubFloatingPill button{padding:7px 9px;font-size:11px;gap:4px}#schoolHubFloatingPill button svg{width:17px;height:17px}}
-@media(max-width:390px){#schoolHubFloatingPill button{padding:7px 8px}#schoolHubFloatingPill .pill-label{font-size:10px}}
+@media(max-width:520px){#schoolHubFloatingPill{width:max-content;max-width:calc(100vw - 12px);padding:3px;gap:1px}#schoolHubFloatingPill button{min-height:36px;padding:4px 7px;font-size:10.5px;gap:3px}#schoolHubFloatingPill button svg{width:15px;height:15px}}
+@media(max-width:390px){#schoolHubFloatingPill button{padding:4px 6px}#schoolHubFloatingPill .pill-label{font-size:9.5px}}
 
 /* v40 Bulk Selection & Safe Delete */
 .bulk-selection-toolbar{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin:.65rem 0;padding:.65rem .75rem;border:1px solid var(--border,#ddd);border-radius:12px;background:var(--card,#fff)}
