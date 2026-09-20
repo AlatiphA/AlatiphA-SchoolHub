@@ -938,6 +938,13 @@ async function countCachedInventoryItems(inventory) {
   return count;
 }
 
+function withUiTimeout(promise, milliseconds, message) {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(message || 'Operation timed out.')), milliseconds))
+  ]);
+}
+
 async function updateSyncCenter() {
   const cloudEl = document.getElementById('syncCloudImages');
   const localEl = document.getElementById('syncLocalImages');
@@ -963,7 +970,7 @@ async function updateSyncCenter() {
   }
 
   try {
-    const inventory = await getCloudImageInventory();
+    const inventory = await withUiTimeout(getCloudImageInventory({ probeLegacy: false }), 10000, 'Image inventory check is taking too long. Core school data is still available.');
     const localCount = await countCachedInventoryItems(inventory);
     cloudEl.textContent = String(inventory.length);
     localEl.textContent = String(localCount);
@@ -6767,6 +6774,46 @@ const IMAGE_DB_STORE = 'images';
 let imageDbPromise = null;
 const imageMemoryCache = new Map();
 
+// Missing cloud images are optional. Remember Storage 404s for this session so
+// stale Firestore photo metadata cannot trigger the same failed request over
+// and over while the rest of SchoolHub is synchronizing.
+const missingCloudImageCache = new Map();
+const MISSING_CLOUD_IMAGE_TTL_MS = 30 * 60 * 1000;
+
+function missingCloudImageKey(kind, id) {
+  return `${currentSchoolId || 'local'}__${kind || 'image'}__${id || 'default'}`;
+}
+
+function isMissingStorageObjectError(error) {
+  if (!error) return false;
+  const code = String(error.code || '').toLowerCase();
+  const message = String(error.message || error || '').toLowerCase();
+  return code === 'storage/object-not-found' ||
+    code === 'object-not-found' ||
+    /(^|\D)404(\D|$)/.test(message) ||
+    message.includes('object does not exist') ||
+    message.includes('object-not-found');
+}
+
+function rememberMissingCloudImage(kind, id) {
+  missingCloudImageCache.set(missingCloudImageKey(kind, id), Date.now() + MISSING_CLOUD_IMAGE_TTL_MS);
+}
+
+function isKnownMissingCloudImage(kind, id) {
+  const key = missingCloudImageKey(kind, id);
+  const until = Number(missingCloudImageCache.get(key) || 0);
+  if (!until) return false;
+  if (Date.now() >= until) {
+    missingCloudImageCache.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function clearMissingCloudImage(kind, id) {
+  missingCloudImageCache.delete(missingCloudImageKey(kind, id));
+}
+
 function stripImagesForLocalStorage(key, value) {
   if (key === KEYS.settings && value && typeof value === 'object') {
     const c = Object.assign({}, value);
@@ -7025,9 +7072,12 @@ async function cloudImageDescriptor(kind, id, storagePath, sourceUrl) {
     const ref = storagePath ? storageRef(storagePath) : firebase.storage().refFromURL(sourceUrl);
     const meta = await ref.getMetadata();
     updatedAt = meta && meta.updated ? String(meta.updated) : '';
-    return { storagePath: storagePath || (meta && meta.fullPath ? meta.fullPath : ''), sourceUrl: sourceUrl || '', updatedAt };
+    clearMissingCloudImage(kind, id);
+    return { storagePath: storagePath || (meta && meta.fullPath ? meta.fullPath : ''), sourceUrl: sourceUrl || '', updatedAt, missing: false };
   } catch (e) {
-    return { storagePath: storagePath || '', sourceUrl: sourceUrl || '', updatedAt: '' };
+    const missing = isMissingStorageObjectError(e);
+    if (missing) rememberMissingCloudImage(kind, id);
+    return { storagePath: storagePath || '', sourceUrl: sourceUrl || '', updatedAt: '', missing };
   }
 }
 
@@ -7119,8 +7169,16 @@ function formatImageSyncError(error) {
 
 async function syncOneCloudImage(kind, id, storagePath, sourceUrl, force) {
   const key = imageCacheKey(kind, id);
+
+  if (!force && isKnownMissingCloudImage(kind, id)) {
+    return { ok: false, skipped: true, key, kind, id, errorMessage: 'Cloud image is missing; using placeholder/local cache.' };
+  }
+
   const descriptor = await cloudImageDescriptor(kind, id, storagePath, sourceUrl);
   if (!descriptor) return { ok: false, skipped: true, key, kind, id, errorMessage: 'No image descriptor.' };
+  if (descriptor.missing) {
+    return { ok: false, skipped: true, key, kind, id, errorMessage: 'Cloud image is missing; using placeholder/local cache.' };
+  }
 
   const existing = await getCachedImageRecordAsync(key);
   const existingUrl = existing && existing.dataUrl ? existing.dataUrl : (getCachedLocalImage(key) || '');
@@ -7292,7 +7350,8 @@ async function repairCloudImageMetadata(inventory) {
   return repaired;
 }
 
-async function getCloudImageInventory() {
+async function getCloudImageInventory(options) {
+  const opts = options || {};
   const firestoreItems = [];
   if (!FIREBASE_ENABLED || !currentSchoolId) return firestoreItems;
 
@@ -7373,56 +7432,62 @@ async function getCloudImageInventory() {
     }
   }
 
-  // v32 legacy recovery: when old versions uploaded an image using the
-  // deterministic path but failed to create its manifest entry, probe the
-  // exact known path for each authorized record. This does NOT list Storage
-  // folders and therefore does not require broad Storage list permission.
-  try {
-    const all = isHeadTeacher();
-    const classIds = all ? null : classIdsForCloudSync();
-    const students = DB.get(KEYS.students, []);
-    for (const st of students) {
-      if (!st || !st.id || !st.classId) continue;
-      if (!all && !classIds.has(st.classId)) continue;
-      const path = `schools/${currentSchoolId}/student-photos/${st.classId}/${st.id}`;
-      try {
-        const ref = storageRef(path);
-        const meta = await ref.getMetadata();
-        const url = await ref.getDownloadURL();
-        await upsertImageManifest('student', st.id, {
-          classId: st.classId, storagePath: path, sourceUrl: url,
-          storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
-        });
-      } catch (e) {}
-    }
-    const staff = DB.get(KEYS.staff, []);
-    if (all) {
-      for (const st of staff) {
-        if (!st || !st.id) continue;
-        const path = `schools/${currentSchoolId}/signatures/${st.id}`;
+  // Legacy deterministic-path probing is intentionally opt-in. Normal startup,
+  // background sync, and Sync Center checks must never probe every student
+  // photo one-by-one because stale/missing files can create a long 404 queue.
+  // A future explicit repair action may call getCloudImageInventory({ probeLegacy: true }).
+  if (opts.probeLegacy === true) {
+    // v32 legacy recovery: when old versions uploaded an image using the
+    // deterministic path but failed to create its manifest entry, probe the
+    // exact known path for each authorized record. This does NOT list Storage
+    // folders and therefore does not require broad Storage list permission.
+    try {
+      const all = isHeadTeacher();
+      const classIds = all ? null : classIdsForCloudSync();
+      const students = DB.get(KEYS.students, []);
+      for (const st of students) {
+        if (!st || !st.id || !st.classId) continue;
+        if (!all && !classIds.has(st.classId)) continue;
+        const path = `schools/${currentSchoolId}/student-photos/${st.classId}/${st.id}`;
         try {
           const ref = storageRef(path);
           const meta = await ref.getMetadata();
           const url = await ref.getDownloadURL();
-          await upsertImageManifest('staff', st.id, {
-            storagePath: path, sourceUrl: url,
+          await upsertImageManifest('student', st.id, {
+            classId: st.classId, storagePath: path, sourceUrl: url,
             storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
           });
         } catch (e) {}
       }
+      const staff = DB.get(KEYS.staff, []);
+      if (all) {
+        for (const st of staff) {
+          if (!st || !st.id) continue;
+          const path = `schools/${currentSchoolId}/signatures/${st.id}`;
+          try {
+            const ref = storageRef(path);
+            const meta = await ref.getMetadata();
+            const url = await ref.getDownloadURL();
+            await upsertImageManifest('staff', st.id, {
+              storagePath: path, sourceUrl: url,
+              storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
+            });
+          } catch (e) {}
+        }
+      }
+      const logoPath = `schools/${currentSchoolId}/logos/school-logo`;
+      try {
+        const ref = storageRef(logoPath);
+        const meta = await ref.getMetadata();
+        const url = await ref.getDownloadURL();
+        await upsertImageManifest('logo', 'school', {
+          storagePath: logoPath, sourceUrl: url,
+          storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
+        });
+      } catch (e) {}
+    } catch (e) {
+      console.warn('Could not probe deterministic legacy image paths:', e);
     }
-    const logoPath = `schools/${currentSchoolId}/logos/school-logo`;
-    try {
-      const ref = storageRef(logoPath);
-      const meta = await ref.getMetadata();
-      const url = await ref.getDownloadURL();
-      await upsertImageManifest('logo', 'school', {
-        storagePath: logoPath, sourceUrl: url,
-        storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
-      });
-    } catch (e) {}
-  } catch (e) {
-    console.warn('Could not probe deterministic legacy image paths:', e);
   }
 
   // Re-read the manifest after seeding/probing so the returned inventory
@@ -7600,7 +7665,7 @@ async function publishLocalImagesToCloud() {
 async function syncImagesFromCloud(options) {
   const opts = options || {};
   if (!FIREBASE_ENABLED || !currentSchoolId) return { total: 0, local: 0, downloaded: 0, failed: 0, skipped: 0, repaired: 0, details: [] };
-  const inventory = await getCloudImageInventory();
+  const inventory = await getCloudImageInventory({ probeLegacy: false });
   const repaired = await repairCloudImageMetadata(inventory);
   let downloaded = 0, failed = 0, skipped = 0, local = 0;
   const details = [];
