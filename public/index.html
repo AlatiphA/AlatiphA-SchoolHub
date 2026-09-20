@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16241C">
+<title>AlatiphA SchoolHub</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SchoolHub">
+<link rel="stylesheet" href="style-3.css">
+<link rel="stylesheet" href="ui-polish.css">
+<script src="firebase-config.js"></script>
+<script src="https://js.paystack.co/v2/inline.js"></script>
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem('arc_theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+      if (localStorage.getItem('arc_pin_hash')) document.documentElement.classList.add('locked');
+      if (window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey && window.FIREBASE_CONFIG.apiKey !== 'YOUR_API_KEY') {
+        document.documentElement.classList.add('sessionRestoring');
+      }
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+
+<div id="sessionRestoreGate" aria-live="polite" aria-busy="true">
+  <div class="lock-box session-restore-box">
+    <img src="icon.svg" alt="AlatiphA SchoolHub" class="lock-seal">
+    <h2>Restoring your session…</h2>
+    <p class="hint">Please wait while SchoolHub securely restores your signed-in session.</p>
+  </div>
+</div>
+
+<div id="authGate">
+  <div class="lock-box auth-card">
+    <a class="auth-brand" href="./"><img src="icon.svg" alt="" width="36" height="36"><span>AlatiphA SchoolHub</span></a>
+    <h2 id="authHeading">Welcome back</h2>
+    <p id="authSubtitle" class="auth-subtitle">Sign in to your school account.</p>
+    <div id="authFormFields">
+      <button type="button" id="authGoogleBtn" class="google-signin-btn">
+        <span class="google-mark" aria-hidden="true">G</span>
+        <span id="authGoogleBtnLabel">Continue with Google</span>
+      </button>
+      <div class="auth-divider" aria-hidden="true"><span>or continue with email</span></div>
+      <label class="auth-label" for="authEmail">Email</label>
+      <input type="email" id="authEmail" placeholder="Enter your email" autocomplete="email" inputmode="email" autocapitalize="none">
+      <div class="auth-password-label"><label class="auth-label" for="authPassword">Password</label><button type="button" id="authForgotBtn">Forgot password?</button></div>
+      <div class="password-field">
+        <input type="password" id="authPassword" placeholder="Enter your password" autocomplete="current-password">
+        <button type="button" id="authPasswordToggle" class="password-toggle" aria-label="Show password" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </div>
+      <div id="authConfirmField" class="hidden">
+        <label class="auth-label" for="authConfirmPassword">Confirm password</label>
+        <div class="password-field">
+          <input type="password" id="authConfirmPassword" placeholder="Re-enter your password" autocomplete="new-password">
+          <button type="button" id="authConfirmToggle" class="password-toggle" aria-label="Show confirm password" aria-pressed="false">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <p class="auth-password-hint">Use at least 6 characters.</p>
+      </div>
+      <button type="button" id="authSubmitBtn" class="btn-primary">Sign in</button>
+      <p class="auth-switch"><span id="authSwitchPrompt">Don’t have an account?</span> <button type="button" id="authToggleModeBtn">Sign up</button></p>
+      <button type="button" id="authGuestBtn" class="btn-text">Start 7-day guest trial</button>
+    </div>
+    <p id="authSyncingMsg" class="hint hidden" role="status">Syncing your data from the cloud…</p>
+    <p id="authError" class="lock-error hidden" role="alert"></p>
+    <p id="guestTrialNotice" class="auth-privacy-note">Try SchoolHub for 7 days, then create an account and register your school. Guest data is saved on this device only.</p>
+  </div>
+  <footer class="auth-footer" aria-label="SchoolHub information">
+    <div class="auth-footer-brand"><strong>AlatiphA SchoolHub</strong><p>More time for teaching. One place for your school.</p></div>
+    <nav aria-label="Help and contact"><a href="faq.html">Help &amp; FAQ</a><a href="tel:0243443688">0243443688</a><a href="mailto:alatipha@ymail.com">Email support</a></nav>
+    <span>© 2026 AlatiphA Multimedia</span>
+  </footer>
+</div>
+
+<div id="schoolChoiceGate">
+  <div class="lock-box">
+    <img src="icon.svg" alt="" class="lock-seal">
+    <h2>Register or Join a School</h2>
+
+    <div class="school-choice-section">
+      <h3 class="subsection-title">Head Teacher — Register a School</h3>
+      <input type="text" id="regSchoolName" placeholder="School name">
+      <input type="text" id="regSchoolAddress" placeholder="Address (optional)">
+      <input type="text" id="regSchoolEmail" placeholder="Email (optional)">
+      <button id="registerSchoolBtn" class="btn-primary">Create School</button>
+    </div>
+
+    <p class="school-choice-divider">— or —</p>
+
+    <div class="school-choice-section">
+      <h3 class="subsection-title">Teacher — Join with a Code</h3>
+      <input type="text" id="joinCodeInput" placeholder="Join code (e.g. TML-4X9K)">
+      <button id="joinSchoolBtn" class="btn-primary">Join School</button>
+    </div>
+
+    <p id="schoolChoiceError" class="lock-error hidden"></p>
+    <p class="hint">Registering a school makes you its Head Teacher — you'll get a join code to share with your teachers. Joining with a code sends a request that your Head Teacher must approve before you get access.</p>
+    <button type="button" id="schoolChoiceLogoutBtn" class="btn-text">Log Out</button>
+  </div>
+</div>
+
+<div id="pendingGate">
+  <div class="lock-box">
+    <img src="icon.svg" alt="" class="lock-seal">
+    <h2>Waiting for Approval</h2>
+    <p class="hint">Your request to join this school has been sent. Your Head Teacher needs to approve you and assign your classes before you can get in — check back after they've had a chance to do that.</p>
+    <button type="button" id="pendingLogoutBtn" class="btn-text">Log Out</button>
+  </div>
+</div>
+
+<div id="disabledGate">
+  <div class="lock-box">
+    <img src="icon.svg" alt="" class="lock-seal">
+    <h2>Access Disabled</h2>
+    <p class="hint">Your access to this school has been disabled by your Head Teacher. Your data is safe — contact them if you believe this is a mistake.</p>
+    <button type="button" id="disabledLogoutBtn" class="btn-text">Log Out</button>
+  </div>
+</div>
+
+<div id="lockOverlay">
+  <div class="lock-box">
+    <img src="icon.svg" alt="" class="lock-seal">
+    <h2>Enter PIN</h2>
+    <input type="password" inputmode="numeric" pattern="[0-9]*" id="lockPinInput" maxlength="8" placeholder="PIN">
+    <button id="lockUnlockBtn" class="btn-primary">Unlock</button>
+    <p id="lockError" class="lock-error hidden">Incorrect PIN. Try again.</p>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <button id="backBtn" class="back-btn hidden" type="button" aria-label="Back">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <span class="brand">
+      <img src="icon.svg" alt="" class="seal">
+      <span id="brandText">AlatiphA SchoolHub</span>
+    </span>
+  </div>
+  <div class="topbar-right">
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle theme"></button>
+    <div class="profile-menu">
+      <button id="profileBtn" class="profile-btn" type="button" aria-label="Account menu">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+        <svg class="chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id="profileDropdown" class="profile-dropdown hidden">
+        <div id="profileSchoolName" class="profile-school-name">—</div>
+        <div id="profileTermYear" class="profile-term-year">—</div>
+        <div id="profileAccountLine" class="profile-account-line">—</div>
+        <button type="button" id="profileSetupLink" class="profile-link">Go to Setup</button>
+        <button type="button" id="profileTourBtn" class="profile-link">Show Guided Tour</button>
+        <a href="faq.html" class="profile-link">Help &amp; FAQ</a>
+        <button type="button" id="profileInstallBtn" class="profile-link">Install SchoolHub</button>
+        <button type="button" id="profileAboutBtn" class="profile-link">About SchoolHub</button>
+        <button type="button" id="profileSyncCenterBtn" class="profile-link">Sync Center</button>
+        <button type="button" id="profileSystemHealthBtn" class="profile-link">System Health</button>
+        <button type="button" id="profileBillingBtn" class="profile-link">Billing &amp; Credits</button>
+        <button type="button" id="profileLoginBtn" class="profile-link hidden">Log In</button>
+        <button type="button" id="logoutBtn" class="profile-link profile-link-danger hidden">Log Out</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main id="app">
+
+  <div id="tourOverlay" class="hidden">
+    <div class="tour-box">
+      <h2 id="tourTitle">Welcome</h2>
+      <p id="tourBody" class="hint"></p>
+      <div id="tourDots" class="tour-dots"></div>
+      <div class="tour-actions">
+        <button type="button" id="tourBackBtn" class="btn-text hidden">Back</button>
+        <button type="button" id="tourSkipBtn" class="btn-text">Skip</button>
+        <button type="button" id="tourNextBtn" class="btn-primary">Next</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- HOME DASHBOARD -->
+  <section id="view-home" class="view">
+    <div class="welcome-block">
+      <h1 id="welcomeHeading">Welcome back</h1>
+      <p id="welcomeSubtext" class="welcome-subtext">Here's what's happening with your classes.</p>
+    </div>
+    <div id="statsSummary" class="stats-summary"></div>
+    <div class="quick-access-list" id="quickAccessList"></div>
+  </section>
+
+  <!-- SETUP -->
+  <section id="view-setup" class="view hidden">
+    <h2>School Setup</h2>
+    <label>Teacher Name (optional)
+      <input type="text" id="teacherName" placeholder="e.g. Abdul-Latif Ahmed">
+    </label>
+    <label>School Name
+      <input type="text" id="schoolName" placeholder="e.g. Zoozugu T. I. Ahmadiyya Pri/KG">
+    </label>
+    <label>Address
+      <input type="text" id="schoolAddress" placeholder="e.g. P. O. Box 799, Tamale, N/R">
+    </label>
+    <label>Email
+      <input type="text" id="schoolEmail" placeholder="e.g. school@gmail.com">
+    </label>
+    <label>School Logo
+      <input type="file" id="schoolLogo" accept="image/*">
+    </label>
+    <div id="logoPreviewWrap" class="hidden">
+      <img id="logoPreview" alt="Logo preview">
+      <button type="button" id="removeLogo" class="btn-text">Remove logo</button>
+    </div>
+    <div class="row">
+      <label>Term
+        <select id="currentTerm">
+          <option value="Term 1">Term One (1)</option>
+          <option value="Term 2">Term Two (2)</option>
+          <option value="Term 3">Term Three (3)</option>
+        </select>
+      </label>
+      <label>Academic Year
+        <input type="text" id="currentYear" placeholder="e.g. 2025/2026">
+      </label>
+    </div>
+    <div class="row">
+      <label>Term Opens
+        <input type="date" id="termStartDate">
+      </label>
+      <label>Term Closes
+        <input type="date" id="termEndDate">
+      </label>
+    </div>
+    <div class="row">
+      <label>Times Open (calculated)
+        <input type="number" min="0" id="attendanceOutOf" readonly placeholder="Calculated from term dates and calendar">
+      </label>
+      <label>Next Term Begins
+        <input type="date" id="nextTermBegins">
+      </label>
+    </div>
+    <label>Report Layout
+      <select id="reportLayout">
+        <option value="standard">Standard (Class + Exam Score, both used)</option>
+        <option value="simple">Simple (Exam Score only — Class Score hidden and unused)</option>
+      </select>
+    </label>
+    <label>Report Card Theme
+      <select id="reportThemeSelect">
+        <option value="bw">Theme 1 · Black &amp; White</option>
+        <option value="schoolhub">Theme 2 · SchoolHub Professional</option>
+        <option value="modern">Theme 3 · Modern Academic</option>
+        <option value="classic">Theme 4 · Classic Academic</option>
+        <option value="executive">Theme 5 · Executive</option>
+        <option value="sage">Theme 6 · Sage Minimal</option>
+        <option value="blueair">Theme 7 · Blue Air</option>
+        <option value="rose">Theme 8 · Rose Editorial</option>
+      </select>
+    </label>
+    <label>Head Teacher (for signatures on report cards)
+      <select id="headTeacherSelect"></select>
+    </label>
+    <button id="saveSettings" class="btn-primary">Save Settings</button>
+    <p class="hint">Grade: 80–100=1 · 75–79=2 · 70–74=3 · 65–69=4 · 60–64=5 · 50–59=6 · 45–49=7 · 40–44=8 · 0–39=9. Remark: 80–100 Highly Proficient · 54–79 Proficient · 46–53 Approaching Proficiency · 40–45 Developing · 0–39 Emerging. The school name only appears on report cards after you tap Save Settings.</p>
+
+    <div class="backup-section">
+      <h3 class="subsection-title">Backup &amp; Restore</h3>
+      <button id="exportBackupBtn" class="btn-primary">Export Backup (.json)</button>
+      <label>Import Backup
+        <input type="file" id="importBackupInput" accept="application/json,.json">
+      </label>
+      <p class="hint">Export saves everything — classes, students, subjects, grades, remarks and staff — to a file you can keep safe or move to another phone. Importing replaces all current data with the contents of that file, so keep a recent backup before you do.</p>
+    </div>
+
+    <div class="backup-section">
+      <h3 class="subsection-title">PIN Lock</h3>
+      <div id="pinStatusWrap"></div>
+    </div>
+
+    <div class="backup-section">
+      <h3 class="subsection-title">Cloud Sync</h3>
+      <div id="cloudSyncStatus"></div>
+      <div id="joinCodeDisplay" class="hidden"></div>
+      <button id="syncNowBtn" class="btn-primary hidden">Sync Now</button>
+    </div>
+  </section>
+
+  <!-- STAFF -->
+  <section id="view-staff" class="view hidden">
+    <h2>Staff</h2>
+    <div class="staff-add-toolbar">
+      <div>
+        <strong>Add Staff</strong>
+        <p class="hint">Add a staff member and their personnel details.</p>
+      </div>
+      <button type="button" id="toggleAddStaffBtn" class="staff-toggle-btn" aria-expanded="false">Expand</button>
+    </div>
+    <div id="addStaffForm" class="stack staff-add-form hidden">
+      <label>Full name <span class="required-mark">*</span>
+        <input type="text" id="newStaffName" placeholder="Full name" required>
+      </label>
+      <label>Sex
+        <select id="newStaff_sex">
+          <option value="">Select Sex</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+        </select>
+      </label>
+      <label>DOB
+        <input type="date" id="newStaff_dob">
+      </label>
+      <label>Staff ID <span class="required-mark">*</span>
+        <input type="text" id="newStaff_staffId" placeholder="Staff ID" required>
+      </label>
+      <label>Registered No.
+        <input type="text" id="newStaff_registeredNo" placeholder="Registered No.">
+      </label>
+      <label>License No.
+        <input type="text" id="newStaff_licenseNo" placeholder="License No.">
+      </label>
+      <label>EMIS No.
+        <input type="text" id="newStaff_emisNo" placeholder="EMIS No.">
+      </label>
+      <label>SSNIT No.
+        <input type="text" id="newStaff_ssnitNo" placeholder="SSNIT No.">
+      </label>
+      <label>Ghana Card ID
+        <input type="text" id="newStaff_ghanaCardId" placeholder="Ghana Card ID">
+      </label>
+      <label>Rank/Grade
+        <select id="newStaff_rank">
+          <option value="">Select Rank/Grade</option>
+          <option value="Pupil Teacher">Pupil Teacher</option>
+          <option value="Superintendent II">Superintendent II</option>
+          <option value="Superintendent I">Superintendent I</option>
+          <option value="Senior Superintendent II">Senior Superintendent II</option>
+          <option value="Senior Superintendent I">Senior Superintendent I</option>
+          <option value="Principal Superintendent">Principal Superintendent</option>
+          <option value="Assistant Director II">Assistant Director II</option>
+          <option value="Assistant Director I">Assistant Director I</option>
+          <option value="Deputy Director">Deputy Director</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+      <label>Notional Date
+        <input type="date" id="newStaff_notionalDate">
+      </label>
+      <label>Substantive Date
+        <input type="date" id="newStaff_substantiveDate">
+      </label>
+      <label>Academic Qualification
+        <select id="newStaff_academicQualification">
+          <option value="">Select Academic Qualification</option>
+          <option value="Certificate">Certificate</option>
+          <option value="Diploma">Diploma</option>
+          <option value="HND">HND</option>
+          <option value="Bachelor's Degree">Bachelor's Degree</option>
+          <option value="Postgraduate Diploma">Postgraduate Diploma</option>
+          <option value="Master's Degree">Master's Degree</option>
+          <option value="PhD">PhD</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+      <label>Professional Qualification
+        <select id="newStaff_professionalQualification">
+          <option value="">Select Professional Qualification</option>
+          <option value="Teacher's Certificate">Teacher's Certificate</option>
+          <option value="Diploma in Basic Education">Diploma in Basic Education</option>
+          <option value="Bachelor of Education">Bachelor of Education</option>
+          <option value="Postgraduate teaching qualification">Postgraduate teaching qualification</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+      <label>Bank &amp; Branch
+        <input type="text" id="newStaff_bankBranch" placeholder="Bank &amp; Branch">
+      </label>
+      <label>Bank Account
+        <input type="text" id="newStaff_bankAccount" placeholder="Bank Account">
+      </label>
+      <label>Phone
+        <input type="tel" id="newStaff_phone" placeholder="Phone">
+      </label>
+      <label>Email
+        <input type="email" id="newStaff_email" placeholder="Email">
+      </label>
+      <label>Role
+        <select id="newStaffRole">
+          <option value="Teacher">Teacher</option>
+          <option value="Head Teacher">Head Teacher</option>
+          <option value="Assistant Head Teacher">Assistant Head Teacher</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
+      <label>Signature
+        <input type="file" id="newStaffSignature" accept="image/*">
+      </label>
+      <p id="addStaffValidation" class="form-validation" role="alert"></p>
+      <button id="addStaffBtn" class="btn-primary">Add Staff</button>
+    </div>
+    <div class="staff-data-toolbar">
+      <label for="staffSearch">Search staff<input id="staffSearch" type="search" placeholder="Name, Staff ID, role or other details"></label>
+      <div class="staff-data-actions">
+        <button type="button" id="exportStaffBtn" class="btn-primary">Export Excel</button>
+        <button type="button" id="staffTemplateBtn" class="btn-secondary">Download template</button>
+        <button type="button" id="importStaffBtn" class="btn-secondary">Import staff</button>
+        <button type="button" id="printStaffBtn" class="btn-secondary">Print / Save as PDF</button>
+        <input id="staffImportFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+      </div>
+    </div>
+    <p class="hint">Excel exports include all staff details except signatures and account links. Print the current search results, then choose Save as PDF in the print dialog.</p>
+    <div id="staffImportPreview" class="staff-import-preview hidden" aria-live="polite"></div>
+    <p id="staffTableCount" class="hint" role="status"></p>
+    <button type="button" id="checkStaffRecoveryBtn" class="btn-secondary">Check for missing staff</button>
+    <div id="staffRecoveryPreview" class="staff-import-preview hidden" aria-live="polite"></div>
+    <div id="staffList"></div>
+    <p class="hint">Assign a staff member as a Class Teacher from the Classes tab, and as Head Teacher from Setup — their uploaded signature will then appear automatically on report cards.</p>
+  </section>
+
+  <!-- CLASSES -->
+  <section id="view-classes" class="view hidden">
+    <h2>Classes</h2>
+    <div class="class-add-toolbar">
+      <div>
+        <strong>Add Class</strong>
+        <p class="hint">Create a class only when needed. You can assign a Class Teacher when adding or editing it.</p>
+      </div>
+      <button type="button" id="toggleAddClassBtn" class="class-toggle-btn" aria-expanded="false">Expand</button>
+    </div>
+    <div id="addClassForm" class="stack class-add-form hidden">
+      <input type="text" id="newClassName" placeholder="e.g. Basic One (1)">
+      <label>Class Teacher
+        <select id="newClassTeacherSelect"></select>
+      </label>
+      <button id="addClassBtn" class="btn-primary">Add Class</button>
+    </div>
+    <ul id="classList" class="list"></ul>
+  </section>
+
+  <!-- STUDENTS -->
+  <section id="view-students" class="view hidden">
+    <h2>Students</h2>
+    <label>Search All Classes
+      <input type="text" id="studentSearchInput" placeholder="Search by name or ID...">
+    </label>
+    <label>Class
+      <select id="studentClassSelect"></select>
+    </label>
+    <div class="student-add-toolbar">
+      <div>
+        <strong>Add Student</strong>
+        <p class="hint">Add a student only when needed. More student fields can be added here later.</p>
+      </div>
+      <button type="button" id="toggleAddStudentBtn" class="student-toggle-btn" aria-expanded="false">Expand</button>
+    </div>
+    <div id="addStudentForm" class="stack student-add-form hidden">
+      <label>Full name <span class="required-mark">*</span>
+        <input type="text" id="newStudentName" placeholder="Full name" required>
+      </label>
+      <label>Sex <span class="required-mark">*</span>
+        <select id="newStudentGender" required>
+          <option value="">Select sex</option>
+          <option value="M">Male</option>
+          <option value="F">Female</option>
+        </select>
+      </label>
+      <div class="student-dob-age-grid">
+        <label>Date of Birth <span class="required-mark">*</span>
+          <input type="date" id="newStudentDob" required>
+        </label>
+        <label>Age
+          <input type="text" id="newStudentAge" placeholder="Auto" readonly>
+        </label>
+      </div>
+      <input type="text" id="newStudentId" placeholder="Student ID (optional)">
+      <input type="tel" id="newStudentPhone" placeholder="Parent phone (optional, for WhatsApp)">
+      <p id="addStudentValidation" class="form-validation" role="alert"></p>
+      <button id="addStudentBtn" class="btn-primary">Add Student</button>
+    </div>
+    <div class="stack">
+      <label>Bulk Add — one name per line, optionally "Name, ID"
+        <textarea id="bulkStudentInput" rows="4" placeholder="Jane Doe, 101&#10;John Smith"></textarea>
+      </label>
+      <button id="bulkAddStudentsBtn" class="btn-primary">Add All</button>
+    </div>
+    <ul id="studentList" class="list"></ul>
+  </section>
+
+  <!-- SUBJECTS -->
+  <section id="view-subjects" class="view hidden">
+    <h2>Subjects</h2>
+    <div class="stack">
+      <input type="text" id="newSubjectName" placeholder="e.g. Mathematics">
+      <button id="addSubjectBtn" class="btn-primary">Add Subject</button>
+    </div>
+    <div class="subject-order-toolbar">
+      <button id="toggleSubjectArrangeBtn" class="btn-text" type="button">Arrange Order</button>
+      <span id="subjectOrderHint" class="hint">Aggregate uses the first 4 subjects in this order, plus the 2 best grades from the remaining subjects.</span>
+    </div>
+    <ul id="subjectList" class="list"></ul>
+    <p class="hint">Leave both scores blank for a subject a student does not take — it will be skipped on their report.</p>
+  </section>
+
+  <!-- ATTENDANCE -->
+  <section id="view-attendance" class="view hidden">
+    <h2>Attendance</h2>
+    <div id="attendanceModeBar" class="attendance-mode-bar" role="tablist" aria-label="Attendance type">
+      <button type="button" id="attendanceStudentOption" class="attendance-mode active" data-mode="students">Students</button>
+      <button type="button" id="attendanceTeacherOption" class="attendance-mode hidden" data-mode="teachers">Teachers</button>
+      <button type="button" id="attendanceCalendarOption" class="attendance-mode" data-mode="calendar">Calendar</button>
+      <button type="button" id="attendanceSummaryOption" class="attendance-mode" data-mode="summary">Summary</button>
+      <button type="button" id="attendanceAnalysisOption" class="attendance-mode" data-mode="analysis">Analytics</button>
+      <button type="button" id="attendanceReportsOption" class="attendance-mode" data-mode="reports">Reports</button>
+    </div>
+
+    <div id="studentAttendancePanel">
+      <div class="row">
+        <label>Class
+          <select id="attendanceClassSelect"></select>
+        </label>
+        <label>Date
+          <input type="date" id="attendanceDate">
+        </label>
+      </div>
+      <div id="attendanceFormWrap"></div>
+      <button id="saveAttendanceBtn" class="btn-primary">Save Student Attendance</button>
+      <p class="hint">Record daily student attendance as Present, Absent, or Late. Late is counted as present in the term total. Holidays and Midterm days are excluded from attendance and Times Open. The attendance total is automatically reflected on report cards.</p>
+    </div>
+
+    <div id="teacherAttendancePanel" class="hidden">
+      <div class="row">
+        <label>Date
+          <input type="date" id="teacherAttendanceDate">
+        </label>
+      </div>
+      <div id="teacherAttendanceFormWrap"></div>
+      <button id="saveTeacherAttendanceBtn" class="btn-primary">Save Teacher Attendance</button>
+      <p class="hint">Head Teacher only. Record teacher attendance as Present, Absent, Late, Excused, or On Leave. Holidays and Midterm days are excluded from attendance and Times Open. Teacher attendance is separate from student attendance.</p>
+    </div>
+    <div id="schoolCalendarPanel" class="hidden">
+      <div id="schoolCalendarWrap"></div>
+    </div>
+
+    <div id="attendanceSummaryPanel" class="hidden">
+      <div id="attendanceSummaryWrap"></div>
+    </div>
+
+    <div id="attendanceAnalysisPanel" class="hidden">
+      <div id="attendanceAnalysisWrap"></div>
+    </div>
+
+    <div id="attendanceReportsPanel" class="hidden">
+      <div id="attendanceReportsWrap"></div>
+    </div>
+  </section>
+
+  <!-- GRADES -->
+  <section id="view-grades" class="view hidden">
+    <h2>Grade Entry</h2>
+    <label>Class
+      <select id="gradesClassSelect"></select>
+    </label>
+    <div id="gradesTableWrap"></div>
+    <button id="saveGradesBtn" class="btn-primary">Save Grades</button>
+    <p class="hint">Standard layout: Class Score is out of 60, scaled to 50; Exam Score is out of 100, scaled to 50; Total is out of 100. Simple layout: only Exam Score (out of 100) is entered and used as the Total — Class Score is hidden.</p>
+
+    <div class="backup-section">
+      <h3 class="subsection-title">Bulk Grade (Excel)</h3>
+      <button id="exportGradesXlsxBtn" class="btn-primary">Export Grades to Excel</button>
+      <label>Import Grades from Excel
+        <input type="file" id="importGradesXlsxInput" accept=".xlsx,.xls,.csv">
+      </label>
+      <p class="hint">Export the current class's grade sheet, fill it in offline in Excel, then import it back — this replaces all scores for this class, term and year with what's in the file.</p>
+    </div>
+  </section>
+
+  <!-- REMARKS -->
+  <section id="view-remarks" class="view hidden">
+    <h2>Remarks</h2>
+    <label>Class
+      <select id="remarksClassSelect"></select>
+    </label>
+    <div id="remarksStudentToolbar" class="remarks-student-toolbar hidden">
+      <div class="remarks-progress-row">
+        <span>Remarks completed</span>
+        <strong id="remarksProgress">0 / 0 completed</strong>
+      </div>
+      <label class="remarks-search-label">Search student
+        <input type="search" id="remarksStudentSearch" placeholder="Search by name or ID..." autocomplete="off">
+      </label>
+      <label class="remarks-student-label">Student
+        <select id="remarksStudentSelect"></select>
+      </label>
+      <div class="remarks-nav-row">
+        <button type="button" id="remarksPrevBtn" class="remarks-nav-btn">‹ Prev</button>
+        <span id="remarksStudentCounter">Student</span>
+        <button type="button" id="remarksNextBtn" class="remarks-nav-btn">Next ›</button>
+      </div>
+    </div>
+    <div id="remarksFormWrap"></div>
+    <div class="remarks-save-actions">
+      <button id="saveRemarksBtn" class="btn-primary">Save Remarks</button>
+      <button id="saveNextRemarksBtn" class="btn-secondary">Save &amp; Next</button>
+    </div>
+  </section>
+
+  <!-- BILLING -->
+  <section id="view-billing" class="view hidden">
+    <h2>Billing &amp; Credits</h2>
+    <div id="billingWrap"></div>
+  </section>
+
+  <!-- REPORTS -->
+  <section id="view-reports" class="view hidden">
+    <h2>Reports</h2>
+    <div class="report-themes-launch"><div><strong>Report Card Themes</strong><span>Choose and apply the visual style used when generating report cards.</span></div><button type="button" id="reportThemesBtn" class="btn-primary">Choose Theme</button></div>
+    <div id="reportCreditStatus" class="report-credit-status"></div>
+    <div id="reportThemePicker" class="report-theme-picker hidden"></div>
+    <label>Class
+      <select id="reportsClassSelect"></select>
+    </label>
+    <div class="stack">
+      <button id="generateAllBtn" class="btn-primary">Generate Class Batch PDF (Credits Required)</button>
+      <button id="exportCsvBtn" class="btn-primary">Export Results as CSV</button>
+    </div>
+    <ul id="reportsStudentList" class="list"></ul>
+    <div id="classStatsWrap" class="backup-section"></div>
+  </section>
+
+  <!-- TERM HISTORY -->
+  <section id="view-history" class="view hidden">
+    <h2>Term History</h2>
+    <label>Term / Year
+      <select id="historyTermYearSelect"></select>
+    </label>
+    <label>Class
+      <select id="historyClassSelect"></select>
+    </label>
+    <div id="historyStatsWrap"></div>
+    <div class="stack">
+      <button id="historyGenerateAllBtn" class="btn-primary">Generate Class Batch PDF (Credits Required)</button>
+      <button id="historyExportCsvBtn" class="btn-primary">Export Results as CSV</button>
+    </div>
+    <ul id="historyStudentList" class="list"></ul>
+
+    <div class="backup-section">
+      <h3 class="subsection-title">Start New Term</h3>
+      <div class="row">
+        <label>Term
+          <select id="newTermSelect">
+            <option value="Term 1">Term One (1)</option>
+            <option value="Term 2">Term Two (2)</option>
+            <option value="Term 3">Term Three (3)</option>
+          </select>
+        </label>
+        <label>Academic Year
+          <input type="text" id="newTermYearInput" placeholder="e.g. 2026/2027">
+        </label>
+      </div>
+      <button id="startNewTermBtn" class="btn-primary">Start New Term</button>
+      <p class="hint">Classes, students and subjects are shared across every term — nothing needs to be re-entered. This just moves the app's current Term/Year forward for new grade entry; every past term's data stays saved and browsable above.</p>
+    </div>
+  </section>
+
+  <!-- MANAGE TEACHERS (Head Teacher only) -->
+  <section id="view-activity" class="view hidden">
+    <h2>Activity Log</h2>
+    <p class="hint">A record of important changes made in this school. The Head Teacher can see school-wide activity; teachers see their own activity.</p>
+    <p id="activityLogStatus" class="hint"></p>
+    <ul id="activityLogList" class="list"></ul>
+  </section>
+
+  <!-- MANAGE TEACHERS (Head Teacher only) -->
+  <section id="view-manage-teachers" class="view hidden">
+    <h2>Manage Teachers</h2>
+    <p class="hint">Approve pending requests (assigning their classes as you go), or disable/reactivate a teacher already in the school. Disabling never deletes their data — it just blocks their access.</p>
+    <ul id="manageTeachersList" class="list"></ul>
+  </section>
+
+</main>
+
+<!-- STUDENT DETAILS -->
+<div id="studentDetailsDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="studentDetailsTitle">
+  <div class="about-box student-details-box">
+    <h2 id="studentDetailsTitle">Student Details</h2>
+    <div id="studentDetailsContent" class="student-details-content"></div>
+    <div class="about-actions">
+      <button type="button" id="studentDetailsCloseBtn" class="btn-primary">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- STAFF DETAILS -->
+<div id="staffDetailsDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="staffDetailsTitle">
+  <div class="about-box staff-details-box">
+    <h2 id="staffDetailsTitle">Staff Details</h2>
+    <div id="staffDetailsContent" class="staff-details-content"></div>
+    <div class="about-actions">
+      <button type="button" id="staffDetailsCloseBtn" class="btn-primary">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- SYNC CENTER -->
+<div id="syncCenterDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="syncCenterTitle">
+  <div class="about-box diagnostic-box">
+    <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
+    <h2 id="syncCenterTitle">Sync Center</h2>
+    <p class="about-version">Cloud ↔ browser synchronization via Firestore image manifest + diagnostic recovery</p>
+    <div class="about-details diagnostic-details">
+      <div><span>Cloud images (manifest)</span><strong id="syncCloudImages">Checking…</strong></div>
+      <div><span>Local images</span><strong id="syncLocalImages">Checking…</strong></div>
+      <div><span>Last image sync</span><strong id="syncLastImage">Checking…</strong></div>
+      <div><span>Last data sync</span><strong id="syncLastData">Checking…</strong></div>
+    </div>
+    <div id="syncOverallState" class="diagnostic-state">Checking…</div>
+    <p id="syncDetail" class="hint about-status"></p>
+    <pre id="syncDiagnostics" class="sync-diagnostics hidden" aria-live="polite"></pre>
+    <p id="syncCenterActionStatus" class="hint about-status"></p>
+    <div class="about-actions">
+      <button type="button" id="syncCenterSyncBtn" class="btn-primary">Sync Everything</button>
+      <button type="button" id="syncCenterRecoverBtn" class="btn-primary">Recover Local Images</button>
+      <button type="button" id="syncCenterRefreshBtn" class="btn-primary">Refresh</button>
+      <button type="button" id="syncCenterCloseBtn" class="btn-text">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- SYSTEM HEALTH -->
+<div id="systemHealthDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="systemHealthTitle">
+  <div class="about-box diagnostic-box health-box">
+    <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
+    <h2 id="systemHealthTitle">System Health</h2>
+    <p class="about-version">Read-only diagnostics</p>
+    <div class="health-list">
+      <div><span>Authentication</span><strong id="healthAuth">Checking…</strong></div>
+      <div><span>Firestore</span><strong id="healthFirestore">Checking…</strong></div>
+      <div><span>Firebase Storage</span><strong id="healthStorage">Checking…</strong></div>
+      <div><span>IndexedDB</span><strong id="healthIndexedDB">Checking…</strong></div>
+      <div><span>LocalStorage</span><strong id="healthLocalStorage">Checking…</strong></div>
+      <div><span>Service Worker</span><strong id="healthServiceWorker">Checking…</strong></div>
+      <div><span>School session</span><strong id="healthSchool">Checking…</strong></div>
+      <div><span>Role / permissions</span><strong id="healthRole">Checking…</strong></div>
+      <div><span>Image synchronization</span><strong id="healthImages">Checking…</strong></div>
+      <div><span>Report engine</span><strong id="healthReport">Checking…</strong></div>
+    </div>
+    <p id="healthQuota" class="hint about-status"></p>
+    <p id="healthSummary" class="hint about-status">Running diagnostics…</p>
+    <div class="about-actions">
+      <button type="button" id="systemHealthRefreshBtn" class="btn-primary">Run Diagnostics</button>
+      <button type="button" id="systemHealthCloseBtn" class="btn-text">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ABOUT -->
+<div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div class="about-box">
+    <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
+    <h2 id="aboutTitle">AlatiphA SchoolHub</h2>
+    <p class="about-version">Version <strong id="aboutVersion">v40</strong></p>
+    <div class="about-details">
+      <div><span>Developer</span><strong id="aboutDeveloper">AlatiphA Multimedia</strong></div>
+      <div><span>Browser</span><strong id="aboutBrowserStatus">Checking…</strong></div>
+      <div><span>Image storage</span><strong id="aboutImageCacheStatus">Checking…</strong></div>
+      <div><span>Cloud images</span><strong id="aboutCloudImageStatus">Checking…</strong></div>
+      <div><span>Image sync</span><strong id="aboutImageSyncStatus">Checking…</strong></div>
+      <div><span>Local storage</span><strong id="aboutLocalStorageStatus">Checking…</strong></div>
+      <div><span>Service worker</span><strong id="aboutSwStatus">Checking…</strong></div>
+    </div>
+    <p id="aboutUpdateStatus" class="hint about-status">Use “Check for Updates” after deploying a new version.</p>
+    <div class="about-actions">
+      <button type="button" id="aboutSyncImagesBtn" class="btn-primary">Sync Images</button>
+      <button type="button" id="aboutCheckUpdateBtn" class="btn-primary">Check for Updates</button>
+      <button type="button" id="aboutCloseBtn" class="btn-text">Close</button>
+    </div>
+    <p class="about-copyright">© 2026 AlatiphA Multimedia</p>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
+<script src="staff-transfer.js"></script>
+<script src="app-4.js?v=v40-report-name-wrap-1"></script>
+<script src="install.js"></script>
+</body>
+</html>

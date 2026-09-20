@@ -1,0 +1,10 @@
+// AlatiphA SchoolHub — service worker
+const CACHE_NAME = 'schoolhub-cache-v40-report-name-wrap-1';
+const APP_SHELL = ['./','./index.html','./faq.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./staff-transfer.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
+const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
+self.addEventListener('message',e=>{if(e.data&&e.data.type==='SKIP_WAITING')self.skipWaiting();});
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(c=>Promise.all(APP_SHELL.map(u=>fetch(u,{cache:'reload'}).then(r=>r&&r.ok?c.put(u,r.clone()):null).catch(()=>{})))).then(()=>self.skipWaiting()));});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
+async function networkFirst(request){const cache=await caches.open(CACHE_NAME);try{const response=await fetch(request,{cache:'no-store'});if(response&&response.ok)cache.put(request,response.clone()).catch(()=>{});return response;}catch(error){const cached=await caches.match(request);if(cached)return cached;if(request.mode==='navigate'){const fallback=await caches.match('./index.html')||await caches.match('./');if(fallback)return fallback;}throw error;}}
+async function cacheFirst(request){const cached=await caches.match(request);if(cached)return cached;const response=await fetch(request);if(response&&(response.ok||response.type==='opaque')){const cache=await caches.open(CACHE_NAME);cache.put(request,response.clone()).catch(()=>{});}return response;}
+self.addEventListener('fetch',event=>{const request=event.request;if(request.method!=='GET')return;const url=new URL(request.url);const sameOrigin=url.origin===self.location.origin;const core=sameOrigin&&(request.mode==='navigate'||CORE_FILES.test(url.pathname));event.respondWith(core?networkFirst(request):cacheFirst(request));});
