@@ -1,0 +1,2 @@
+const assert=require('node:assert/strict');const fs=require('node:fs');const s=fs.readFileSync('app-4.js','utf8');const css=fs.readFileSync('style-3.css','utf8');
+assert.match(s,/Select All/);assert.match(s,/Unselect All/);assert.match(s,/Delete Selected/);assert.match(s,/bulkDeleteV40/);assert.match(s,/classDepsV40/);assert.match(s,/subjectDepsV40/);assert.match(s,/commitChunks\(ids\.map/);assert.match(s,/requireClassAccess\(x\.classId\)/);assert.match(css,/bulk-selection-toolbar/);console.log('v40 bulk safe delete regression checks passed.');

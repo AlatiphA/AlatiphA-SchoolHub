@@ -1175,3 +1175,60 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
   .auth-subtitle{font-size:14px;}
   #authGate .auth-footer{margin-top:24px;}
 }
+
+/* v40 quick attendance date navigation */
+.attendance-date-navigator{display:flex;align-items:center;gap:8px;width:100%}
+.attendance-date-navigator #attendanceDate{flex:1 1 auto;min-width:0}
+.attendance-date-navigator #attendancePrevDate,.attendance-date-navigator #attendanceNextDate{flex:0 0 42px;min-width:42px;min-height:42px;padding:6px 10px;font-size:18px;line-height:1}
+
+/* v40 floating quick-access pill */
+#schoolHubFloatingPill{position:fixed;left:50%;bottom:max(14px,env(safe-area-inset-bottom));z-index:9000;transform:translate(-50%,0);display:flex;align-items:center;gap:3px;max-width:calc(100vw - 20px);padding:6px;border:1px solid rgba(128,128,128,.22);border-radius:999px;background:var(--card,#fff);box-shadow:0 10px 30px rgba(0,0,0,.16);transition:transform .22s ease,opacity .22s ease;opacity:1}
+@supports (backdrop-filter:blur(16px)){#schoolHubFloatingPill{background:color-mix(in srgb,var(--card,#fff) 88%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}}
+#schoolHubFloatingPill.pill-hidden{transform:translate(-50%,calc(100% + 30px));opacity:0;pointer-events:none}
+#schoolHubFloatingPill button{appearance:none;border:0;background:transparent;color:inherit;border-radius:999px;min-height:44px;padding:7px 11px;display:flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer}
+#schoolHubFloatingPill button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+#schoolHubFloatingPill button.active{background:var(--accent,#956433);color:#fff}
+@media(max-width:520px){#schoolHubFloatingPill{width:max-content;max-width:calc(100vw - 12px);padding:5px;gap:1px}#schoolHubFloatingPill button{padding:7px 9px;font-size:11px;gap:4px}#schoolHubFloatingPill button svg{width:17px;height:17px}}
+@media(max-width:390px){#schoolHubFloatingPill button{padding:7px 8px}#schoolHubFloatingPill .pill-label{font-size:10px}}
+
+/* v40 Bulk Selection & Safe Delete */
+.bulk-selection-toolbar{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin:.65rem 0;padding:.65rem .75rem;border:1px solid var(--border,#ddd);border-radius:12px;background:var(--card,#fff)}
+.bulk-selection-toolbar label{display:inline-flex;align-items:center;gap:.35rem;font-weight:600;cursor:pointer}.bulk-selection-toolbar input,.bulk-record-check{width:18px;height:18px;accent-color:var(--accent,#956433)}.bulk-selection-toolbar .bulk-delete-btn{margin-left:auto}.bulk-selection-toolbar .bulk-delete-btn:disabled{opacity:.5}.bulk-record-select{display:inline-flex;align-items:center;margin-right:.45rem}@media(max-width:520px){.bulk-selection-toolbar .bulk-delete-btn{margin-left:0;width:100%}}
+
+
+/* v40 report list: long student names wrap without displacing actions */
+#reportsStudentList .report-student-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  column-gap:12px;
+}
+#reportsStudentList .report-student-info{
+  min-width:0;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+#reportsStudentList .report-student-info strong{
+  display:block;
+  white-space:normal;
+  line-height:1.28;
+}
+#reportsStudentList .report-student-actions{
+  display:flex;
+  align-items:center;
+  flex-wrap:nowrap;
+  gap:8px;
+  flex:none;
+}
+#reportsStudentList .report-student-actions button{
+  flex:0 0 auto;
+  width:auto;
+  white-space:nowrap;
+  margin-right:0;
+  padding:0 10px;
+}
+@media(max-width:480px){
+  #reportsStudentList .report-student-row{column-gap:7px;}
+  #reportsStudentList .report-student-actions{gap:4px;}
+  #reportsStudentList .report-student-actions button{padding:0 7px;font-size:12px;}
+}

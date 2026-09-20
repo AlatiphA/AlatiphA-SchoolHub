@@ -1,73 +1,10 @@
 // AlatiphA SchoolHub — service worker
-// Keep CACHE_NAME's version in sync with APP_VERSION in app-4.js
-// Keep the public app version at v40, but change this internal cache key for
-// the shared app redesign so installed PWAs receive the updated
-// markup and screen styles together.
-const CACHE_NAME = 'schoolhub-cache-v40-staff-recovery-6';
-
-const APP_SHELL = [
-  './',
-  './index.html',
-  './faq.html',
-  './install.js',
-  './style-3.css',
-  './ui-polish.css',
-  './app-4.js',
-  './app-4.js?v=staff-recovery-6',
-  './staff-transfer.js',
-  './firebase-config.js',
-  './manifest.json',
-  './icon.svg',
-  './icon-192.png',
-  './icon-512.png',
-  './icon-512-maskable.png',
-  './apple-touch-icon.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
-  'https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js',
-  'https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js',
-  'https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js',
-  'https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js',
-  'https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js',
-  'https://js.paystack.co/v2/inline.js',
-  'https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap'
-];
-
-self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
-});
-
-self.addEventListener('install', event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return Promise.all(
-        APP_SHELL.map(url =>
-          fetch(url, { cache: 'reload', mode: url.startsWith('http') ? 'no-cors' : 'same-origin' })
-            .then(res => cache.put(url, res))
-            .catch(() => {})
-        )
-      );
-    }).then(() => self.skipWaiting())
-  );
-});
-
-self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => {});
-        return res;
-      }).catch(() => cached);
-    })
-  );
-});
+const CACHE_NAME = 'schoolhub-cache-v40-report-name-wrap-1';
+const APP_SHELL = ['./','./index.html','./faq.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./staff-transfer.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
+const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
+self.addEventListener('message',e=>{if(e.data&&e.data.type==='SKIP_WAITING')self.skipWaiting();});
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(c=>Promise.all(APP_SHELL.map(u=>fetch(u,{cache:'reload'}).then(r=>r&&r.ok?c.put(u,r.clone()):null).catch(()=>{})))).then(()=>self.skipWaiting()));});
+self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
+async function networkFirst(request){const cache=await caches.open(CACHE_NAME);try{const response=await fetch(request,{cache:'no-store'});if(response&&response.ok)cache.put(request,response.clone()).catch(()=>{});return response;}catch(error){const cached=await caches.match(request);if(cached)return cached;if(request.mode==='navigate'){const fallback=await caches.match('./index.html')||await caches.match('./');if(fallback)return fallback;}throw error;}}
+async function cacheFirst(request){const cached=await caches.match(request);if(cached)return cached;const response=await fetch(request);if(response&&(response.ok||response.type==='opaque')){const cache=await caches.open(CACHE_NAME);cache.put(request,response.clone()).catch(()=>{});}return response;}
+self.addEventListener('fetch',event=>{const request=event.request;if(request.method!=='GET')return;const url=new URL(request.url);const sameOrigin=url.origin===self.location.origin;const core=sameOrigin&&(request.mode==='navigate'||CORE_FILES.test(url.pathname));event.respondWith(core?networkFirst(request):cacheFirst(request));});

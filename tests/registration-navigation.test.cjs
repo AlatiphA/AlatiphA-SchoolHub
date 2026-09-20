@@ -21,7 +21,7 @@ const context = vm.createContext({document:{getElementById:node},
   initLockScreen:()=>{}, proceedToApp:()=>{opened=true;}, renderQuickAccessList:()=>{},refreshProfileMenu:()=>{},
   alert:()=>{}, console, isCurrentSession:()=>true, setSchoolChoiceError:message=>{throw Error(message);},
   enforceGuestTrial:()=>true,isTeacher:()=>false,saveNavigationState:()=>{},
-  renderHome:()=>{}, renderClasses:()=>{},renderStudents:()=>{},renderSubjects:()=>{},renderStaff:()=>{},
+  renderHome:()=>{}, renderClasses:()=>{},renderStudents:()=>{},renderSubjects:()=>{},renderStaff:()=>{},renderFloatingPill:()=>{},showFloatingPill:()=>{},
   window:{scrollTo:()=>{}}
 });
 vm.runInContext(`let sessionGeneration=1,currentUid='new-user',currentSchoolId='new-school';

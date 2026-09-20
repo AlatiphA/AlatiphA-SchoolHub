@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs');
+const source=fs.readFileSync('app-4.js','utf8'),rules=fs.readFileSync('firestore.rules','utf8'),sw=fs.readFileSync('sw.js','utf8');
+assert.ok(source.includes("'subjects', 'billing', 'manage-teachers'"),'teacher billing route blocked');
+assert.match(rules,/match \/billing\/\{billingId\}[\s\S]*?allow read: if isHeadTeacher\(schoolId\);/);
+assert.match(source,/function studentClassIdByName\(name\)[\s\S]*?getAccessibleClasses\(\)/);
+assert.ok(source.includes('Students sheet contains formulas'));
+assert.ok(source.includes('Students sheet contains an Excel error'));
+assert.ok(source.includes('Date of Birth must be a valid YYYY-MM-DD date'));
+assert.ok(source.includes('Student was NOT added to SchoolHub'));
+assert.ok(source.includes('Student changes were NOT saved'));
+assert.equal((source.match(/mergeCloudCollection\('grades', grades, all\);/g)||[]).length,1);
+assert.ok(sw.includes('networkFirst(request)')); assert.ok(sw.includes("request.mode==='navigate'"));
+console.log('v40 stability/security regression checks passed.');

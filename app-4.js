@@ -1,4 +1,5 @@
 // AlatiphA SchoolHub — app-4.js
+// v40 sync-stability patch: authoritative full hydration, intentional empty deletes, cloud-confirmed critical writes.
 const APP_VERSION = 'v40';
 
 /* ---------- storage helpers ---------- */
@@ -531,7 +532,7 @@ function showView(name) {
   // being resolved. Guest mode explicitly marks itself ready before calling
   // proceedToApp().
   if (FIREBASE_ENABLED && !sessionReady) return;
-  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'manage-teachers'].indexOf(name) !== -1) {
+  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'billing', 'manage-teachers'].indexOf(name) !== -1) {
     name = 'home';
   }
   views.forEach(v => {
@@ -579,6 +580,8 @@ function showView(name) {
   renderStudents();
   renderSubjects();
   renderStaff();
+  renderFloatingPill();
+  showFloatingPill();
   window.scrollTo(0, 0);
 }
 
@@ -597,6 +600,18 @@ function sectionTitle(name) {
 }
 
 document.getElementById('backBtn').addEventListener('click', () => showView('home'));
+
+/* ---------- v40 floating quick-access pill ---------- */
+let floatingPillLastY = window.scrollY || 0, floatingPillTicking = false;
+function floatingPillIcon(name) {
+ const icons={home:'<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/></svg>',attendance:'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M7 3v4M17 3v4M4 9h16"/><path d="m8 15 2 2 5-5"/></svg>',reports:'<svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 17v-3M12 17v-6M15 17v-4"/></svg>',billing:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>'}; return icons[name]||'';
+}
+function currentVisibleViewName(){return views.find(v=>{const el=document.getElementById('view-'+v);return el&&!el.classList.contains('hidden')})||'home'}
+function floatingPillItems(){const x=[{view:'home',label:'Home',icon:'home'},{view:'attendance',label:'Attendance',icon:'attendance'},{view:'reports',label:'Reports',icon:'reports'}];if(isHeadTeacher())x.push({view:'billing',label:'Billing & Credits',icon:'billing'});return x}
+function renderFloatingPill(){if(!sessionReady&&FIREBASE_ENABLED)return;let p=document.getElementById('schoolHubFloatingPill');if(!p){p=document.createElement('nav');p.id='schoolHubFloatingPill';p.setAttribute('aria-label','Quick navigation');document.body.appendChild(p)}const active=currentVisibleViewName();p.innerHTML=floatingPillItems().map(i=>`<button type="button" data-view="${i.view}" class="${active===i.view?'active':''}">${floatingPillIcon(i.icon)}<span class="pill-label">${escapeHtml(i.label)}</span></button>`).join('');p.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{p.classList.remove('pill-hidden');showView(b.dataset.view);renderFloatingPill()}))}
+function showFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.remove('pill-hidden')}
+function hideFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.add('pill-hidden')}
+window.addEventListener('scroll',()=>{if(floatingPillTicking)return;floatingPillTicking=true;requestAnimationFrame(()=>{const y=Math.max(0,window.scrollY||document.documentElement.scrollTop||0),d=y-floatingPillLastY;if(y<80)showFloatingPill();else if(d>10)hideFloatingPill();else if(d<-10)showFloatingPill();floatingPillLastY=y;floatingPillTicking=false})},{passive:true});
 
 /* ---------- Home dashboard ---------- */
 const QUICK_ACCESS_CARDS = [
@@ -1128,10 +1143,15 @@ document.getElementById('profileSystemHealthBtn').addEventListener('click', () =
   document.getElementById('profileDropdown').classList.add('hidden');
   showSystemHealth();
 });
-document.getElementById('profileBillingBtn')?.addEventListener('click', () => {
-  document.getElementById('profileDropdown').classList.add('hidden');
-  showView('billing');
-});
+const profileBillingBtn = document.getElementById('profileBillingBtn');
+if (profileBillingBtn) {
+  profileBillingBtn.classList.toggle('hidden', isTeacher());
+  profileBillingBtn.addEventListener('click', () => {
+    document.getElementById('profileDropdown').classList.add('hidden');
+    if (!isHeadTeacher()) { showView('home'); return; }
+    showView('billing');
+  });
+}
 document.getElementById('syncCenterCloseBtn').addEventListener('click', hideSyncCenter);
 document.getElementById('syncCenterDialog').addEventListener('click', e => { if (e.target.id === 'syncCenterDialog') hideSyncCenter(); });
 document.getElementById('syncCenterRefreshBtn').addEventListener('click', updateSyncCenter);
@@ -1563,9 +1583,9 @@ function renderStudents() {
   let students;
   if (searchMode) {
     students = getAccessibleStudents().filter(s => {
-      const inName = s.name.toLowerCase().includes(query);
-      const inId = s.admissionId && s.admissionId.toLowerCase().includes(query);
-      return inName || inId;
+      const haystack = [s.name, s.admissionId, s.guardianName, s.parentPhone, s.houseGps, s.disability]
+        .map(v => String(v || '').toLowerCase()).join(' ');
+      return haystack.includes(query);
     });
     if (!students.length) { list.innerHTML = '<li class="empty">No students match your search.</li>'; return; }
   } else {
@@ -1607,6 +1627,15 @@ function renderStudents() {
         </div>
         <input type="text" class="edit-student-id" value="${st.admissionId ? escapeHtml(st.admissionId) : ''}" placeholder="Student ID (optional)">
         <input type="tel" class="edit-student-phone" value="${st.parentPhone ? escapeHtml(st.parentPhone) : ''}" placeholder="Parent phone (optional, for WhatsApp)">
+        <label>Disability
+          <select class="edit-student-disability">
+            <option value="">Select</option>
+            <option value="No" ${st.disability === 'No' ? 'selected' : ''}>No</option>
+            <option value="Yes" ${st.disability === 'Yes' ? 'selected' : ''}>Yes</option>
+          </select>
+        </label>
+        <input type="text" class="edit-student-guardian" value="${st.guardianName ? escapeHtml(st.guardianName) : ''}" placeholder="Guardian name">
+        <input type="text" class="edit-student-house-gps" value="${st.houseGps ? escapeHtml(st.houseGps) : ''}" placeholder="House No. / GhanaPost GPS">
         ${photoPreview}
         <label>Passport Photo
           <input type="file" class="edit-student-photo-input" accept="image/*" data-student="${st.id}">
@@ -1759,39 +1788,31 @@ function renderStudents() {
     });
   });
   list.querySelectorAll('.save-student').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const li = btn.closest('li');
-      const name = li.querySelector('.edit-student-name').value.trim();
-      const dob = li.querySelector('.edit-student-dob').value.trim();
-      const gender = li.querySelector('.edit-student-gender').value;
-      if (!name || !gender || !dob) {
-        const missing = [];
-        if (!name) missing.push('Full name');
-        if (!gender) missing.push('Sex');
-        if (!dob) missing.push('Date of Birth');
-        alert(missing.join(', ') + (missing.length === 1 ? ' is required.' : ' are required.'));
-        if (!name) li.querySelector('.edit-student-name').focus();
-        else if (!gender) li.querySelector('.edit-student-gender').focus();
-        else li.querySelector('.edit-student-dob').focus();
-        return;
-      }
-      const admissionId = li.querySelector('.edit-student-id').value.trim();
-      const parentPhone = li.querySelector('.edit-student-phone').value.trim();
-      const students = DB.get(KEYS.students, []);
-      const st = students.find(x => x.id === btn.dataset.id);
-      if (st) { st.name = name; st.dob = dob; st.admissionId = admissionId; st.parentPhone = parentPhone; st.gender = gender; }
-      DB.set(KEYS.students, students);
-      auditAction('update', 'student', st ? st.id : btn.dataset.id, `Updated student: ${st ? st.name : ''}`);
-      editingStudentId = null;
-      renderStudents();
-      renderClasses();
+    btn.addEventListener('click', async () => {
+      const li=btn.closest('li'),name=li.querySelector('.edit-student-name').value.trim(),dob=li.querySelector('.edit-student-dob').value.trim(),gender=li.querySelector('.edit-student-gender').value;
+      if(!name||!gender||!dob){const missing=[];if(!name)missing.push('Full name');if(!gender)missing.push('Sex');if(!dob)missing.push('Date of Birth');alert(missing.join(', ')+(missing.length===1?' is required.':' are required.'));return;}
+      const admissionId=li.querySelector('.edit-student-id').value.trim(),students=DB.get(KEYS.students,[]),current=students.find(x=>x.id===btn.dataset.id);
+      if(!current||!requireClassAccess(current.classId))return;
+      if(admissionId&&students.some(x=>x.id!==current.id&&String(x.admissionId||'').trim().toLowerCase()===admissionId.toLowerCase())){alert('Another student already uses this Student ID. Student IDs must be unique.');return;}
+      const updated=Object.assign({},current,{name,dob,gender,admissionId,parentPhone:li.querySelector('.edit-student-phone').value.trim(),disability:li.querySelector('.edit-student-disability')?.value||'',guardianName:li.querySelector('.edit-student-guardian')?.value.trim()||'',houseGps:li.querySelector('.edit-student-house-gps')?.value.trim()||''});
+      const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId,oldText=btn.textContent;btn.disabled=true;btn.textContent='Saving…';
+      try{if(FIREBASE_ENABLED&&currentSchoolId){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');await schoolRef().collection('students').doc(String(updated.id)).set(stripImagesForCloud('students',updated),{merge:true});if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
+        const latest=DB.get(KEYS.students,[]),pos=latest.findIndex(x=>x.id===updated.id);if(pos<0)throw new Error('Student details changed while saving. Please reopen the student.');latest[pos]=updated;DB.set(KEYS.students,latest,{skipCloudSync:true});auditAction('update','student',updated.id,`Updated student: ${updated.name}`);editingStudentId=null;renderStudents();renderClasses();
+      }catch(error){btn.disabled=false;btn.textContent=oldText;alert('Student changes were NOT saved. Existing details have been left unchanged.\n\n'+(error.message||error));}
     });
   });
   list.querySelectorAll('.del-student').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       if (!confirm('Delete this student and their grades?')) return;
       const id = btn.dataset.id;
-      DB.set(KEYS.students, DB.get(KEYS.students, []).filter(s => s.id !== id));
+      const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
+      if (FIREBASE_ENABLED && currentSchoolId) {
+        if (cloudHydrationInProgress || !sessionDataReady) { alert('School data is still synchronizing. Please wait a moment and try again.'); return; }
+        try { await schoolRef().collection('students').doc(id).delete(); }
+        catch (error) { alert('Could not delete this student from SchoolHub cloud. Nothing was removed. Please reconnect and try again.'); return; }
+        if (!isCurrentSession(token, userId, schoolId)) return;
+      }
+      DB.set(KEYS.students, DB.get(KEYS.students, []).filter(s => s.id !== id), {skipCloudSync:true});
       auditAction('delete', 'student', id, `Deleted student: ${id}`);
       const grades = DB.get(KEYS.grades, {});
       Object.keys(grades).forEach(k => { if (grades[k][id]) delete grades[k][id]; });
@@ -1829,67 +1850,34 @@ if (newStudentDob && newStudentAge) {
   newStudentDob.addEventListener('change', updateNewStudentAge);
 }
 
-document.getElementById('addStudentBtn').addEventListener('click', () => {
-  const classId = document.getElementById('studentClassSelect').value;
-  if (!classId) { alert('Add a class first.'); return; }
-  if (!requireClassAccess(classId)) return;
-  const nameInput = document.getElementById('newStudentName');
-  const dobInput = document.getElementById('newStudentDob');
-  const validation = document.getElementById('addStudentValidation');
-  const name = nameInput.value.trim();
-  const dob = dobInput.value.trim();
-  if (!name || !dob) {
-    validation.textContent = !name && !dob ? 'Full name and Date of Birth are required before the student can be added.' : (!name ? 'Full name is required before the student can be added.' : 'Date of Birth is required before the student can be added.');
-    validation.classList.add('show');
-    if (!name) nameInput.focus(); else dobInput.focus();
-    return;
-  }
-  validation.classList.remove('show');
-  const gender = document.getElementById('newStudentGender').value;
-  if (!gender) {
-    validation.textContent = 'Sex is required before the student can be added.';
-    validation.classList.add('show');
-    document.getElementById('newStudentGender').focus();
-    return;
-  }
-  const admissionId = document.getElementById('newStudentId').value.trim();
-  const parentPhone = document.getElementById('newStudentPhone').value.trim();
-  const students = DB.get(KEYS.students, []);
-  students.push({ id: uid(), classId, name, dob, gender, admissionId, parentPhone });
-  DB.set(KEYS.students, students);
-  nameInput.value = '';
-  dobInput.value = '';
-  newStudentAge.value = '';
-  document.getElementById('newStudentId').value = '';
-  document.getElementById('newStudentPhone').value = '';
-  renderStudents();
-  renderClasses();
-  addStudentForm.classList.add('hidden');
-  toggleAddStudentBtn.textContent = 'Expand';
-  toggleAddStudentBtn.setAttribute('aria-expanded', 'false');
+document.getElementById('addStudentBtn').addEventListener('click', async () => {
+  const classId=document.getElementById('studentClassSelect').value;if(!classId){alert('Add a class first.');return;}if(!requireClassAccess(classId))return;
+  const nameInput=document.getElementById('newStudentName'),dobInput=document.getElementById('newStudentDob'),validation=document.getElementById('addStudentValidation'),name=nameInput.value.trim(),dob=dobInput.value.trim();
+  if(!name||!dob){validation.textContent=!name&&!dob?'Full name and Date of Birth are required before the student can be added.':(!name?'Full name is required before the student can be added.':'Date of Birth is required before the student can be added.');validation.classList.add('show');return;}
+  validation.classList.remove('show');const gender=document.getElementById('newStudentGender').value;if(!gender){validation.textContent='Sex is required before the student can be added.';validation.classList.add('show');return;}
+  const admissionId=document.getElementById('newStudentId').value.trim(),students=DB.get(KEYS.students,[]);if(admissionId&&students.some(x=>String(x.admissionId||'').trim().toLowerCase()===admissionId.toLowerCase())){validation.textContent='Another student already uses this Student ID. Student IDs must be unique.';validation.classList.add('show');return;}
+  const record={id:uid(),classId,name,dob,gender,admissionId,parentPhone:document.getElementById('newStudentPhone').value.trim(),disability:document.getElementById('newStudentDisability')?.value||'',guardianName:document.getElementById('newStudentGuardian')?.value.trim()||'',houseGps:document.getElementById('newStudentHouseGps')?.value.trim()||''};
+  const btn=document.getElementById('addStudentBtn'),oldText=btn.textContent,token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;btn.disabled=true;btn.textContent='Saving…';
+  try{if(FIREBASE_ENABLED&&currentSchoolId){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');await schoolRef().collection('students').doc(String(record.id)).set(stripImagesForCloud('students',record));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
+    const latest=DB.get(KEYS.students,[]);latest.push(record);DB.set(KEYS.students,latest,{skipCloudSync:true});nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';renderStudents();renderClasses();addStudentForm.classList.add('hidden');toggleAddStudentBtn.textContent='Expand';toggleAddStudentBtn.setAttribute('aria-expanded','false');auditAction('create','student',record.id,`Added student: ${record.name}`);
+  }catch(error){alert('Student was NOT added to SchoolHub.\n\n'+(error.message||error));}finally{if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=oldText;}}
 });
 
 // Bulk add: one student per line, optionally "Name, ID". Gender and
 // parent phone are left unset — use Edit on each student afterward.
-document.getElementById('bulkAddStudentsBtn').addEventListener('click', () => {
-  const classId = document.getElementById('studentClassSelect').value;
-  if (!classId) { alert('Add a class first.'); return; }
-  const textarea = document.getElementById('bulkStudentInput');
-  const lines = textarea.value.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-  if (!lines.length) return;
-  const students = DB.get(KEYS.students, []);
-  lines.forEach(line => {
-    const parts = line.split(',');
-    const name = parts[0].trim();
-    if (!name) return;
-    const admissionId = parts.length > 1 ? parts.slice(1).join(',').trim() : '';
-    students.push({ id: uid(), classId, name, gender: '', admissionId, parentPhone: '' });
-  });
-  DB.set(KEYS.students, students);
-  textarea.value = '';
-  renderStudents();
-  renderClasses();
-  alert(`Added ${lines.length} student(s).`);
+document.getElementById('bulkAddStudentsBtn').addEventListener('click', async () => {
+  const classId=document.getElementById('studentClassSelect').value;
+  if(!classId){alert('Add a class first.');return;} if(!requireClassAccess(classId))return;
+  const textarea=document.getElementById('bulkStudentInput'),lines=textarea.value.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!lines.length)return;
+  const existing=DB.get(KEYS.students,[]),usedIds=new Set(existing.map(x=>String(x.admissionId||'').trim().toLowerCase()).filter(Boolean)),newRecords=[],errors=[];
+  lines.forEach((line,index)=>{const parts=line.split(','),name=parts[0].trim(),admissionId=parts.length>1?parts.slice(1).join(',').trim():'';if(!name)return;const key=admissionId.toLowerCase();if(key&&usedIds.has(key)){errors.push(`Line ${index+1}: Student ID ${admissionId} is already in use.`);return;}if(key)usedIds.add(key);newRecords.push({id:uid(),classId,name,gender:'',admissionId,parentPhone:''});});
+  if(errors.length){alert(errors.slice(0,20).join('\n'));return;} if(!newRecords.length)return;
+  const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
+  try{
+    if(FIREBASE_ENABLED&&currentSchoolId){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');const ref=schoolRef().collection('students');await commitChunks(newRecords.map(record=>batch=>batch.set(ref.doc(String(record.id)),stripImagesForCloud('students',record))));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
+    DB.set(KEYS.students,existing.concat(newRecords),{skipCloudSync:true});textarea.value='';renderStudents();renderClasses();auditAction('import','students','',`Bulk added ${newRecords.length} student records.`);alert(`Added ${newRecords.length} student(s) and saved to SchoolHub.`);
+  }catch(error){alert('Students were NOT added to SchoolHub. Your existing student list has been left unchanged.\n\n'+(error.message||error));}
 });
 
 async function showStudentDetails(studentId) {
@@ -1907,7 +1895,10 @@ async function showStudentDetails(studentId) {
     ['Date of Birth', st.dob || '—'],
     ['Age', calculateStudentAge(st.dob) || '—'],
     ['Class', cls ? cls.name : '—'],
-    ['Parent phone', st.parentPhone || '—']
+    ['Disability', st.disability || '—'],
+    ['Guardian name', st.guardianName || '—'],
+    ['Parent/Guardian phone', st.parentPhone || '—'],
+    ['House No. / GhanaPost GPS', st.houseGps || '—']
   ];
 
   // Student photos are stored in IndexedDB rather than the structured student
@@ -2185,6 +2176,331 @@ document.getElementById('addSubjectBtn').addEventListener('click', () => {
   input.value = '';
   renderSubjects();
 });
+
+
+/* ---------- v40 Students tab upgrade ---------- */
+const STUDENT_TRANSFER_FIELDS = [
+  {key:'name', label:'Full Name'},
+  {key:'admissionId', label:'Student ID'},
+  {key:'gender', label:'Sex'},
+  {key:'dob', label:'Date of Birth'},
+  {key:'disability', label:'Disability'},
+  {key:'guardianName', label:'Guardian Name'},
+  {key:'parentPhone', label:'Parent/Guardian Phone'},
+  {key:'houseGps', label:'House No. / GhanaPost GPS'},
+  {key:'className', label:'Class'}
+];
+let pendingStudentImport = null;
+let studentTableVisible = true;
+
+function installStudentTabUpgrade() {
+  const form = document.getElementById('addStudentForm');
+  const addBtn = document.getElementById('addStudentBtn');
+  if (form && addBtn && !document.getElementById('newStudentDisability')) {
+    const host = document.createElement('div');
+    host.className = 'student-extra-fields';
+    host.innerHTML = `
+      <label>Disability
+        <select id="newStudentDisability"><option value="">Select</option><option value="No">No</option><option value="Yes">Yes</option></select>
+      </label>
+      <label>Guardian name <input type="text" id="newStudentGuardian" placeholder="Guardian name"></label>
+      <label>House No. / GhanaPost GPS <input type="text" id="newStudentHouseGps" placeholder="e.g. House 12 / NT-123-4567"></label>`;
+    addBtn.parentNode.insertBefore(host, addBtn);
+  }
+
+  const search = document.getElementById('studentSearchInput');
+  if (search && !document.getElementById('studentDataToolbar')) {
+    const toolbar = document.createElement('div');
+    toolbar.id = 'studentDataToolbar';
+    toolbar.className = 'staff-data-actions student-data-actions';
+    toolbar.innerHTML = `
+      <button type="button" id="exportStudentsBtn">Export to Excel</button>
+      <button type="button" id="studentTemplateBtn">Download Template</button>
+      <button type="button" id="importStudentsBtn">Import Students</button>
+      <button type="button" id="printStudentsBtn">Print / Save as PDF</button>
+      <input type="file" id="studentImportInput" accept=".xlsx,.xls,.csv" hidden>
+      <div id="studentImportPreview" class="hidden" style="width:100%"></div>`;
+    search.parentNode.insertBefore(toolbar, search.nextSibling);
+    document.getElementById('exportStudentsBtn').addEventListener('click', () => exportStudentsWorkbook(false));
+    document.getElementById('studentTemplateBtn').addEventListener('click', () => exportStudentsWorkbook(true));
+    document.getElementById('importStudentsBtn').addEventListener('click', () => document.getElementById('studentImportInput').click());
+    document.getElementById('studentImportInput').addEventListener('change', handleStudentImportFile);
+    document.getElementById('printStudentsBtn').addEventListener('click', printStudentsDetailsTable);
+  }
+}
+
+function studentClassName(student) {
+  const c = DB.get(KEYS.classes, []).find(x => x.id === student.classId);
+  return c ? c.name : '';
+}
+function studentClassIdByName(name) {
+  const wanted = String(name || '').trim().toLowerCase();
+  const c = getAccessibleClasses().find(x => String(x.name || '').trim().toLowerCase() === wanted);
+  return c ? c.id : '';
+}
+function studentTransferValue(st, key) {
+  if (key === 'className') return studentClassName(st);
+  if (key === 'gender') return st.gender === 'M' ? 'Male' : (st.gender === 'F' ? 'Female' : st.gender || '');
+  return st[key] || '';
+}
+
+function exportStudentsWorkbook(templateOnly) {
+  if (typeof XLSX === 'undefined') { alert('Spreadsheet tools are still loading. Please reconnect and try again.'); return; }
+  const rows = [STUDENT_TRANSFER_FIELDS.map(f => f.label)];
+  if (!templateOnly) {
+    getAccessibleStudents().forEach(st => rows.push(STUDENT_TRANSFER_FIELDS.map(f => String(studentTransferValue(st, f.key)))));
+  }
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  Object.keys(sheet).filter(k => k[0] !== '!').forEach(k => { sheet[k].t = 's'; sheet[k].z = '@'; delete sheet[k].f; });
+  sheet['!cols'] = STUDENT_TRANSFER_FIELDS.map(f => ({wch: Math.max(16, f.label.length + 4)}));
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, 'Students');
+  const help = XLSX.utils.aoa_to_sheet([
+    ['Student import instructions'],
+    ['Full Name, Student ID, Sex, Date of Birth and Class are required.'],
+    ['Student ID is the matching key. Existing IDs update; new IDs add students.'],
+    ['Class must exactly match an existing SchoolHub class name.'],
+    ['Sex accepts Male/Female or M/F. Disability accepts Yes/No.'],
+    ['Blank optional cells preserve existing details when updating.'],
+    ['No student is deleted by an import. Preview changes before saving.']
+  ]);
+  help['!cols'] = [{wch:105}];
+  XLSX.utils.book_append_sheet(book, help, 'Instructions');
+  XLSX.writeFile(book, templateOnly ? 'SchoolHub_students_template.xlsx' : 'SchoolHub_students_' + new Date().toISOString().slice(0,10) + '.xlsx');
+}
+
+function readStudentWorkbook(book) {
+  const sheet = book.Sheets[book.SheetNames.includes('Students') ? 'Students' : book.SheetNames[0]];
+  if (!sheet || !sheet['!ref']) throw new Error('The Students sheet is empty.');
+  const range = XLSX.utils.decode_range(sheet['!ref']);
+  if (range.e.r - range.s.r > 5000 || range.e.c - range.s.c > 100) throw new Error('Import at most 5,000 students and 100 columns at a time.');
+  const matrix = [];
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const row = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({r,c})];
+      if (cell?.f) throw new Error('The Students sheet contains formulas. Paste their values before importing.');
+      if (cell?.t === 'e') throw new Error('The Students sheet contains an Excel error. Correct it before importing.');
+      if (cell?.t === 'd') {
+        const date = cell.v instanceof Date ? cell.v : new Date(cell.v);
+        if (!Number.isFinite(date.getTime())) throw new Error('The Students sheet contains an invalid date.');
+        row.push(`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`);
+      } else row.push(cell == null ? '' : String(cell.w ?? cell.v ?? '').trim());
+    }
+    matrix.push(row);
+  }
+  const headers=(matrix.shift()||[]).map(x=>String(x).trim().toLowerCase()), index={}, headerErrors=[];
+  STUDENT_TRANSFER_FIELDS.forEach(f => {
+    const matches=headers.map((h,i)=>h===f.label.toLowerCase()||h===f.key.toLowerCase()?i:-1).filter(i=>i>=0);
+    if(matches.length>1) headerErrors.push(`Duplicate column: ${f.label}.`);
+    index[f.key]=matches.length?matches[0]:-1;
+  });
+  ['name','admissionId','gender','dob','className'].forEach(key=>{if(index[key]<0) headerErrors.push(`${STUDENT_TRANSFER_FIELDS.find(f=>f.key===key).label} column is required.`);});
+  if(headerErrors.length) throw new Error(headerErrors.join(' '));
+  return matrix.filter(r=>r.some(v=>String(v).trim())).map((r,rowIndex)=>{
+    const values={}; STUDENT_TRANSFER_FIELDS.forEach(f=>values[f.key]=index[f.key]>=0?String(r[index[f.key]]??'').trim():'');
+    return {row:rowIndex+2,values};
+  });
+}
+
+function planStudentImport(rows) {
+  const existing = DB.get(KEYS.students, []);
+  const admissionGroups = new Map();
+  existing.forEach(st => {
+    const key = String(st.admissionId || '').trim().toLowerCase();
+    if (!key) return;
+    if (!admissionGroups.has(key)) admissionGroups.set(key, []);
+    admissionGroups.get(key).push(st);
+  });
+  const byAdmission = new Map(Array.from(admissionGroups.entries()).filter(([,items]) => items.length === 1).map(([key,items]) => [key,items[0]]));
+  const seen = new Set(), errors = [], changes = [];
+  rows.forEach(item => {
+    const v = item.values;
+    const sid = String(v.admissionId || '').trim();
+    const key = sid.toLowerCase();
+    if (!v.name || !sid || !v.gender || !v.dob || !v.className) { errors.push(`Row ${item.row}: Full Name, Student ID, Sex, Date of Birth and Class are required.`); return; }
+    if (seen.has(key)) { errors.push(`Row ${item.row}: duplicate Student ID ${sid}.`); return; }
+    seen.add(key);
+    const classId = studentClassIdByName(v.className);
+    if (!classId) { errors.push(`Row ${item.row}: class "${v.className}" does not exist in SchoolHub.`); return; }
+    const g = v.gender.toLowerCase();
+    const gender = g === 'male' || g === 'm' ? 'M' : (g === 'female' || g === 'f' ? 'F' : '');
+    if (!gender) { errors.push(`Row ${item.row}: Sex must be Male/Female or M/F.`); return; }
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.dob);
+    const parsedDob = dateMatch ? new Date(`${v.dob}T00:00:00Z`) : null;
+    if (!parsedDob || !Number.isFinite(parsedDob.getTime()) || parsedDob.toISOString().slice(0,10) !== v.dob) { errors.push(`Row ${item.row}: Date of Birth must be a valid YYYY-MM-DD date.`); return; }
+    if (Object.values(v).some(value => String(value || '').length > 500)) { errors.push(`Row ${item.row}: one or more fields are too long.`); return; }
+    let disability = v.disability;
+    if (disability) {
+      const d = disability.toLowerCase();
+      disability = d === 'yes' || d === 'y' ? 'Yes' : (d === 'no' || d === 'n' ? 'No' : '');
+      if (!disability) { errors.push(`Row ${item.row}: Disability must be Yes or No.`); return; }
+    }
+    const duplicates = admissionGroups.get(key) || [];
+    if (duplicates.length > 1) { errors.push(`Row ${item.row}: Student ID ${sid} matches multiple existing students. Correct those records first.`); return; }
+    const current = byAdmission.get(key);
+    const merged = current ? Object.assign({}, current) : {id:uid()};
+    merged.name = v.name; merged.admissionId = sid; merged.gender = gender; merged.dob = v.dob; merged.classId = classId;
+    ['guardianName','parentPhone','houseGps'].forEach(k => { if (v[k]) merged[k] = v[k]; });
+    if (disability) merged.disability = disability;
+    changes.push({mode:current ? 'Update' : 'Add', record:merged});
+  });
+  return {errors, changes};
+}
+
+function showStudentImportPreview(rows) {
+  const host = document.getElementById('studentImportPreview');
+  const plan = planStudentImport(rows);
+  if (plan.errors.length) {
+    host.classList.remove('hidden');
+    host.innerHTML = '<h3>Student import needs attention</h3><ul>' + plan.errors.slice(0,30).map(e => '<li>' + escapeHtml(e) + '</li>').join('') + '</ul>';
+    return;
+  }
+  pendingStudentImport = {rows, snapshot:JSON.stringify(DB.get(KEYS.students, [])), token:sessionGeneration, uid:currentUid, schoolId:currentSchoolId};
+  const added = plan.changes.filter(x => x.mode === 'Add').length;
+  host.classList.remove('hidden');
+  host.innerHTML = `<h3>Students import preview</h3><p>${added} to add · ${plan.changes.length-added} to update · ${plan.changes.length} total</p>
+    <div class="table-scroll"><table class="grades-table"><thead><tr><th>Action</th><th>Student ID</th><th>Name</th><th>Class</th></tr></thead><tbody>` +
+    plan.changes.map(x => `<tr><td>${x.mode}</td><td>${escapeHtml(x.record.admissionId)}</td><td>${escapeHtml(x.record.name)}</td><td>${escapeHtml(studentClassName(x.record))}</td></tr>`).join('') +
+    `</tbody></table></div><div class="staff-data-actions"><button type="button" id="applyStudentImport" class="btn-primary">Save imported students</button><button type="button" id="cancelStudentImport">Cancel</button></div>`;
+  document.getElementById('cancelStudentImport').onclick = clearStudentImport;
+  document.getElementById('applyStudentImport').onclick = saveStudentImport;
+  host.scrollIntoView({block:'start',behavior:'smooth'});
+}
+
+function clearStudentImport() {
+  pendingStudentImport = null;
+  const host = document.getElementById('studentImportPreview');
+  if (host) { host.innerHTML=''; host.classList.add('hidden'); }
+}
+
+async function saveStudentImport() {
+  const p = pendingStudentImport;
+  if (!p || !isCurrentSession(p.token,p.uid,p.schoolId)) { clearStudentImport(); return; }
+  const latest = DB.get(KEYS.students, []);
+  if (JSON.stringify(latest) !== p.snapshot) { alert('Student details changed while this preview was open. Review the import again.'); showStudentImportPreview(p.rows); return; }
+  const plan = planStudentImport(p.rows);
+  if (plan.errors.length) { showStudentImportPreview(p.rows); return; }
+  const map = new Map(latest.map(st => [String(st.id), st]));
+  plan.changes.forEach(x => map.set(String(x.record.id), x.record));
+  const merged = Array.from(map.values());
+  const btn = document.getElementById('applyStudentImport');
+  if (btn) { btn.disabled=true; btn.textContent='Saving to SchoolHub…'; }
+  try {
+    if (FIREBASE_ENABLED && currentSchoolId) {
+      if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+      const ref = schoolRef().collection('students');
+      const ops = plan.changes.map(x => batch => batch.set(ref.doc(String(x.record.id)), stripImagesForCloud('students', x.record), {merge:true}));
+      await commitChunks(ops);
+      if (!isCurrentSession(p.token,p.uid,p.schoolId)) return;
+      setLastSyncedNow();
+    }
+    DB.set(KEYS.students, merged, {skipCloudSync:true});
+    auditAction('import','students','',`Imported ${plan.changes.length} student records.`);
+    clearStudentImport(); editingStudentId=null; renderStudents(); renderClasses();
+    alert(`Students import saved to SchoolHub. ${plan.changes.filter(x=>x.mode==='Add').length} added; ${plan.changes.filter(x=>x.mode==='Update').length} updated.`);
+  } catch (e) {
+    if (btn) { btn.disabled=false; btn.textContent='Save imported students'; }
+    alert('Students import was NOT saved to SchoolHub. Your existing student list has been left unchanged.\n\n' + (e.message || e));
+  }
+}
+
+function handleStudentImportFile(e) {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (file.size > 5*1024*1024) { alert('Import file is too large. Maximum size is 5 MB.'); return; }
+  if (typeof XLSX === 'undefined') { alert('Spreadsheet tools are still loading.'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const book = XLSX.read(reader.result, {type:'array', cellDates:true});
+      showStudentImportPreview(readStudentWorkbook(book));
+    } catch (err) { alert('Could not read the student spreadsheet: ' + (err.message || err)); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function currentStudentTableRows() {
+  const query = String(document.getElementById('studentSearchInput')?.value || '').trim().toLowerCase();
+  const selectedClass = document.getElementById('studentClassSelect')?.value || '';
+  return getAccessibleStudents().filter(st => {
+    if (!query && selectedClass && st.classId !== selectedClass) return false;
+    if (!query) return true;
+    return [st.name,st.admissionId,st.guardianName,st.parentPhone,st.houseGps,st.disability,studentClassName(st)].join(' ').toLowerCase().includes(query);
+  });
+}
+
+function renderStudentDetailsTable() {
+  installStudentTabUpgrade();
+  const list = document.getElementById('studentList');
+  if (!list || !list.parentNode) return;
+  let panel = document.getElementById('studentDetailsTablePanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'studentDetailsTablePanel';
+    panel.className = 'student-details-table-panel';
+    list.parentNode.insertBefore(panel, list.nextSibling);
+  }
+  const rows = currentStudentTableRows();
+  panel.innerHTML = `<div class="staff-data-actions"><button type="button" id="toggleStudentTableBtn">${studentTableVisible?'Hide table':'Show table'}</button></div>
+    <div id="studentDetailsTableWrap" ${studentTableVisible?'':'hidden'}>
+      <p class="hint">Scroll sideways to see all student details.</p>
+      <div class="table-scroll" tabindex="0"><table class="grades-table student-details-table"><thead><tr>
+      <th>Full Name</th><th>Student ID</th><th>Sex</th><th>DOB</th><th>Age</th><th>Disability</th><th>Guardian Name</th><th>Phone</th><th>House No. / GhanaPost GPS</th><th>Class</th><th>Actions</th>
+      </tr></thead><tbody>` +
+      (rows.length ? rows.map(st => `<tr><td>${escapeHtml(st.name||'—')}</td><td>${escapeHtml(st.admissionId||'—')}</td><td>${escapeHtml(st.gender==='M'?'Male':st.gender==='F'?'Female':'—')}</td><td>${escapeHtml(st.dob||'—')}</td><td>${escapeHtml(calculateStudentAge(st.dob)||'—')}</td><td>${escapeHtml(st.disability||'—')}</td><td>${escapeHtml(st.guardianName||'—')}</td><td>${escapeHtml(st.parentPhone||'—')}</td><td>${escapeHtml(st.houseGps||'—')}</td><td>${escapeHtml(studentClassName(st)||'—')}</td><td><button type="button" class="table-view-student" data-id="${st.id}">View</button> <button type="button" class="table-edit-student" data-id="${st.id}">Edit</button></td></tr>`).join('') : '<tr><td colspan="11" class="empty">No students to display.</td></tr>') +
+      '</tbody></table></div></div>';
+  document.getElementById('toggleStudentTableBtn').onclick = () => { studentTableVisible=!studentTableVisible; renderStudentDetailsTable(); };
+  panel.querySelectorAll('.table-view-student').forEach(b => b.onclick=()=>showStudentDetails(b.dataset.id));
+  panel.querySelectorAll('.table-edit-student').forEach(b => b.onclick=()=>{editingStudentId=b.dataset.id; renderStudents(); document.getElementById('studentList')?.scrollIntoView({behavior:'smooth'});});
+}
+
+function printDetailsTable(title, columns, records, valueFn) {
+  if (!records.length) { alert('No records to print.'); return; }
+  const frame = document.createElement('iframe');
+  frame.style.cssText='position:fixed;left:-10000px;top:0;width:1200px;height:800px;border:0';
+  const school = DB.get(KEYS.settings,{}).schoolName || 'School';
+  const table = '<table><thead><tr>' + columns.map(c=>'<th>'+escapeHtml(c.label)+'</th>').join('') + '</tr></thead><tbody>' +
+    records.map(r=>'<tr>'+columns.map(c=>'<td>'+escapeHtml(String(valueFn(r,c.key)||'—'))+'</td>').join('')+'</tr>').join('') + '</tbody></table>';
+  frame.onload=()=>{frame.contentWindow.addEventListener('afterprint',()=>frame.remove(),{once:true});try{frame.contentWindow.focus();frame.contentWindow.print();}catch(e){frame.remove();alert('Unable to open printing.');}};
+  frame.srcdoc='<!doctype html><html><head><meta charset="utf-8"><title>'+escapeHtml(title)+'</title><style>@page{size:A4 landscape;margin:10mm}body{font:10px Arial;color:#111}h1{font-size:18px;margin:0 0 4px}h2{font-size:14px;margin:0 0 10px}p{margin:0 0 10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:5px;text-align:left;vertical-align:top;overflow-wrap:anywhere}th{background:#eee}thead{display:table-header-group}tr{break-inside:avoid}</style></head><body><h1>'+escapeHtml(school)+'</h1><h2>'+escapeHtml(title)+'</h2><p>'+records.length+' record(s) · '+escapeHtml(new Date().toLocaleDateString())+'</p>'+table+'</body></html>';
+  document.body.appendChild(frame);
+}
+
+function printStudentsDetailsTable() {
+  const cols = STUDENT_TRANSFER_FIELDS.slice(0,-1).concat([{key:'age',label:'Age'},STUDENT_TRANSFER_FIELDS.slice(-1)[0]]);
+  printDetailsTable('Students Details', cols, currentStudentTableRows(), (st,key)=>key==='age'?calculateStudentAge(st.dob):studentTransferValue(st,key));
+}
+
+/* Replace Staff screen-print behavior with a clean Staff Details table printout. */
+function printStaffDetailsTableOnly() {
+  if (!canManageStaffWorkspace()) return;
+  const columns = StaffTransfer.columns(STAFF_FIELDS);
+  const search = String(document.getElementById('staffSearch')?.value || '').trim().toLowerCase();
+  const records = DB.get(KEYS.staff,[]).filter(st => !search || columns.some(f=>String(st[f.key]||'').toLowerCase().includes(search)));
+  printDetailsTable('Staff Details', columns, records, (st,key)=>st[key] || (key==='notionalDate'?st.dateOfAppointment||'':''));
+}
+
+/* Keep the student table synchronized whenever the normal student renderer runs. */
+const _schoolHubRenderStudents = renderStudents;
+renderStudents = function() {
+  const result = _schoolHubRenderStudents.apply(this, arguments);
+  setTimeout(renderStudentDetailsTable, 0);
+  return result;
+};
+
+setTimeout(() => {
+  installStudentTabUpgrade();
+  renderStudentDetailsTable();
+  const staffPrint = document.getElementById('printStaffBtn');
+  if (staffPrint) {
+    const replacement = staffPrint.cloneNode(true);
+    staffPrint.parentNode.replaceChild(replacement, staffPrint);
+    replacement.addEventListener('click', printStaffDetailsTableOnly);
+  }
+}, 0);
+
 
 /* ---------- Staff ---------- */
 let editingStaffId = null;
@@ -2567,20 +2883,32 @@ function showStaffImportPreview(rows) {
     const added = result.changes.filter(c => !c.existingId).length;
     pendingStaffImport = { rows, snapshot: JSON.stringify(existing), token: sessionGeneration, schoolId: currentSchoolId, uid: currentUid };
     host.innerHTML = '<h3>Review staff import</h3><p>' + added + ' new staff; ' + (result.changes.length-added) + ' existing staff to update. Blank cells preserve existing details.</p><div class="table-scroll"><table class="grades-table"><thead><tr><th>Action</th><th>Staff ID</th><th>Full name</th></tr></thead><tbody>' + result.changes.map(c => '<tr><td>' + (c.existingId ? 'Update' : 'Add') + '</td><td>' + escapeHtml(c.values.staffId) + '</td><td>' + escapeHtml(c.values.name) + '</td></tr>').join('') + '</tbody></table></div><div class="staff-data-actions"><button type="button" id="applyStaffImport" class="btn-primary">Save imported staff</button><button type="button" id="cancelStaffImport">Cancel</button></div>';
-    document.getElementById('applyStaffImport').addEventListener('click', () => {
+    document.getElementById('applyStaffImport').addEventListener('click', async () => {
       const pending = pendingStaffImport;
       if (!pending || !canManageStaffWorkspace() || !isCurrentSession(pending.token, pending.uid, pending.schoolId)) { clearStaffImport(); return; }
       const latest = DB.get(KEYS.staff, []);
       if (JSON.stringify(latest) !== pending.snapshot) { showStaffImportPreview(pending.rows); alert('Staff details changed while this preview was open. Review the refreshed preview before saving.'); return; }
       const checked = StaffTransfer.plan(pending.rows, latest, STAFF_FIELDS);
       if (checked.errors.length) { showStaffImportPreview(pending.rows); return; }
+      const mergedStaff = StaffTransfer.merge(latest, checked.changes, uid);
+      const saveButton = document.getElementById('applyStaffImport');
+      if (saveButton) { saveButton.disabled = true; saveButton.textContent = 'Saving to SchoolHub…'; }
       try {
-        DB.set(KEYS.staff, StaffTransfer.merge(latest, checked.changes, uid));
+        if (FIREBASE_ENABLED && currentSchoolId) {
+          if (!isHeadTeacher() || currentStatus !== 'active' || cloudHydrationInProgress || !sessionDataReady) throw new Error('The school workspace is not ready for a cloud staff import. Please wait for synchronization to finish and try again.');
+          await syncCollectionArray(schoolRef().collection('staff'), mergedStaff, staff => stripImagesForCloud('staff', staff), { preserveMissing: true });
+          if (!isCurrentSession(pending.token, pending.uid, pending.schoolId)) return;
+          setLastSyncedNow();
+        }
+        DB.set(KEYS.staff, mergedStaff, {skipCloudSync:true});
         auditAction('import', 'staff', '', 'Imported ' + checked.changes.length + ' staff records.');
         clearStaffImport(); editingStaffId = null;
         renderStaff(); renderClasses(); refreshHeadTeacherSelect();
-        alert('Staff import saved. ' + added + ' added; ' + (checked.changes.length-added) + ' updated.');
-      } catch (error) { alert('Could not save the import: ' + error.message); }
+        alert('Staff import saved to SchoolHub. ' + added + ' added; ' + (checked.changes.length-added) + ' updated.');
+      } catch (error) {
+        if (saveButton) { saveButton.disabled = false; saveButton.textContent = 'Save imported staff'; }
+        alert('Staff import was NOT saved to SchoolHub. Your existing staff list has been left unchanged.\n\n' + (error.message || error));
+      }
     });
   }
   document.getElementById('cancelStaffImport').addEventListener('click', clearStaffImport);
@@ -3286,6 +3614,7 @@ function downloadAttendanceReportPdf(){
 
 
 function renderAttendanceView() {
+  installAttendanceDateNavigator();
   const studentOption = document.getElementById('attendanceStudentOption');
   const teacherOption = document.getElementById('attendanceTeacherOption');
   const calendarOption = document.getElementById('attendanceCalendarOption');
@@ -3366,7 +3695,7 @@ function renderAttendanceForm() {
   const averageRatio = averageAttendanceRatio(summary, timesOpen);
 
   let html = attendanceSummaryHeader('Average Pupil Attendance Ratio', timesOpen, averageRatio);
-  html += `<div class="attendance-toolbar"><button type="button" id="attendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="attendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
+  html += `<div class="attendance-toolbar"><button type="button" id="attendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="attendanceAllAbsent" class="btn-text">Mark All Absent</button><button type="button" id="attendanceUnmarkAll" class="btn-text">Unmark All</button></div>`;
   html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Student</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Attendance Ratio</th></tr></thead><tbody>';
   students.forEach(st => {
     const status = String(entries[st.id] || '').toUpperCase();
@@ -3383,6 +3712,7 @@ function renderAttendanceForm() {
   wrap.innerHTML = html;
   document.getElementById('attendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('attendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'A'));
+  document.getElementById('attendanceUnmarkAll').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = ''));
 }
 
 function renderTeacherAttendanceForm() {
@@ -4258,6 +4588,27 @@ function refreshAttendanceAfterCalendarChange() {
   loadSettingsForm();
 }
 
+function shiftAttendanceDate(days) {
+  const input = document.getElementById('attendanceDate');
+  if (!input) return;
+  const current = parseDateOnly(input.value || attendanceDateToday()) || new Date();
+  input.value = dateOnlyString(addDaysDateOnly(current, days));
+  renderAttendanceForm();
+}
+function installAttendanceDateNavigator() {
+  const input = document.getElementById('attendanceDate');
+  if (!input || document.getElementById('attendanceDateNavigator')) return;
+  const parent = input.parentNode, nav = document.createElement('div');
+  nav.id='attendanceDateNavigator'; nav.className='attendance-date-navigator';
+  const prev=document.createElement('button'), next=document.createElement('button');
+  prev.type=next.type='button'; prev.id='attendancePrevDate'; next.id='attendanceNextDate';
+  prev.className=next.className='btn-text'; prev.textContent='<'; next.textContent='>';
+  prev.setAttribute('aria-label','Previous date'); next.setAttribute('aria-label','Next date');
+  parent.insertBefore(nav,input); nav.append(prev,input,next);
+  prev.addEventListener('click',()=>shiftAttendanceDate(-1)); next.addEventListener('click',()=>shiftAttendanceDate(1));
+}
+installAttendanceDateNavigator();
+
 document.getElementById('attendanceClassSelect').addEventListener('change', renderAttendanceForm);
 document.getElementById('attendanceDate').addEventListener('change', renderAttendanceForm);
 document.getElementById('teacherAttendanceDate').addEventListener('change', renderTeacherAttendanceForm);
@@ -4952,21 +5303,23 @@ function renderReportsClassSelect() {
 function renderReportCreditStatus() {
   const host = document.getElementById('reportCreditStatus');
   if (!host) return;
+  const canManageBilling = isHeadTeacher();
   if (!FIREBASE_ENABLED || !currentSchoolId) {
-    host.innerHTML = `<span><strong>${bwFreeRemaining()} of 10 free guest Black &amp; White reports remaining.</strong> Register your school for its term allowance and credits.</span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
+    host.innerHTML = `<span><strong>${bwFreeRemaining()} of 10 free guest Black &amp; White reports remaining.</strong> Register your school for its term allowance and credits.</span>` +
+      (canManageBilling ? `<div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>` : '');
+  } else if (!canManageBilling) {
+    host.innerHTML = `<span><strong>${bwFreeRemaining()} of 10 free Black &amp; White reports left this term.</strong> ${reportBillingMessage()}</span>`;
   } else {
     const balance = displayedBillingBalance();
-    const status = BILLING_SUSPENDED
-      ? reportBillingMessage()
-      : '10 free single Black &amp; White reports per school per term, then 1 credit each; batches require credits.';
+    const status = BILLING_SUSPENDED ? reportBillingMessage() : '10 free single Black & White reports per school per term, then 1 credit each; batches require credits.';
     host.innerHTML = `<span><strong>${balance} ${isBillingTestMode() ? 'test' : 'report'} credit${balance === 1 ? '' : 's'}</strong> available for this school · GH₵${(balance * REPORT_CREDIT_PRICE_GHS).toFixed(2)} ${isBillingTestMode() ? 'test value (no real money)' : 'value'} · <strong>${bwFreeRemaining()} of 10 free Black &amp; White reports left this term</strong> · <em>${status}</em></span><div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>`;
   }
-  document.getElementById('reportBillingLink')?.addEventListener('click', () => showView('billing'));
+  document.getElementById('reportBillingLink')?.addEventListener('click', () => { if (isHeadTeacher()) showView('billing'); });
 }
 
 function renderReportsStudentList() {
   renderReportCreditStatus();
-  refreshBillingAccount(true).then(() => renderReportCreditStatus());
+  if (isHeadTeacher()) refreshBillingAccount(true).then(() => renderReportCreditStatus());
   const classId = document.getElementById('reportsClassSelect').value;
   if (classId && !canAccessClass(classId)) { document.getElementById('reportsStudentList').innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
   const list = document.getElementById('reportsStudentList');
@@ -4977,9 +5330,10 @@ function renderReportsStudentList() {
   if (!results.length) { list.innerHTML = '<li class="empty">No students in this class.</li>'; return; }
   results.forEach(r => {
     const li = document.createElement('li');
-    li.innerHTML = `<div><strong>${escapeHtml(r.student.name)}</strong>
+    li.className = 'report-student-row';
+    li.innerHTML = `<div class="report-student-info"><strong>${escapeHtml(r.student.name)}</strong>
         <div class="meta">${r.entries.length} subject(s) · Avg ${r.avg.toFixed(1)}</div></div>
-      <div class="actions">
+      <div class="actions report-student-actions">
         <button class="gen" data-id="${r.student.id}">Generate PDF</button>
         <button class="share" data-id="${r.student.id}">Share</button>
       </div>`;
@@ -7619,17 +7973,19 @@ function mergeKeyedData(localValue, cloudValue) {
   return Object.assign({}, local, cloud);
 }
 
-function mergeCloudCollection(field, cloudItems) {
+function mergeCloudCollection(field, cloudItems, authoritative) {
   if (field === 'settings') {
     DB.set(KEYS.settings, Object.assign({}, DB.get(KEYS.settings, {}), cloudItems || {}), {skipCloudSync:true});
     return;
   }
   const arrayFields = ['classes','subjects','students','staff'];
   if (arrayFields.indexOf(field) !== -1) {
-    DB.set(KEYS[field], mergeRecordsById(DB.get(KEYS[field], []), cloudItems), {skipCloudSync:true});
+    const incoming = Array.isArray(cloudItems) ? cloudItems : [];
+    DB.set(KEYS[field], authoritative ? incoming : mergeRecordsById(DB.get(KEYS[field], []), incoming), {skipCloudSync:true});
     return;
   }
-  DB.set(KEYS[field], mergeKeyedData(DB.get(KEYS[field], {}), cloudItems), {skipCloudSync:true});
+  const incoming = cloudItems && typeof cloudItems === 'object' && !Array.isArray(cloudItems) ? cloudItems : {};
+  DB.set(KEYS[field], authoritative ? incoming : mergeKeyedData(DB.get(KEYS[field], {}), incoming), {skipCloudSync:true});
 }
 
 function pullCloudData(sessionToken) {
@@ -7697,7 +8053,7 @@ function pullCloudData(sessionToken) {
 
       const classes = [];
       classSnap.forEach(d => classes.push(d.data()));
-      mergeCloudCollection('classes', classes);
+      mergeCloudCollection('classes', classes, all);
 
       // Firestore collection reads have no guaranteed display order. Use the
       // persisted order field, falling back to the existing local order for
@@ -7711,18 +8067,18 @@ function pullCloudData(sessionToken) {
         subjects.push(subject);
       });
       ensureSubjectOrder(subjects);
-      mergeCloudCollection('subjects', sortSubjectsByOrder(subjects));
+      mergeCloudCollection('subjects', sortSubjectsByOrder(subjects), all);
 
       const students = [];
       studentSnap.forEach(d => {
         const s = d.data();
         if (all || classIds.has(s.classId)) students.push(mergeLocalImage('students', s, d.id));
       });
-      mergeCloudCollection('students', students);
+      mergeCloudCollection('students', students, all);
 
       const staff = [];
       staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
-      mergeCloudCollection('staff', staff);
+      mergeCloudCollection('staff', staff, true);
 
       // The Head Teacher is also teaching staff. Ensure the account has a
       // corresponding Staff record so teacher attendance includes the Head
@@ -7744,11 +8100,10 @@ function pullCloudData(sessionToken) {
         const classId = key.split('__')[0];
         if (all || classIds.has(classId)) grades[key] = (d.data() || {}).entries || {};
       });
-      mergeCloudCollection('grades', grades);
+      mergeCloudCollection('grades', grades, all);
       // Only a Head Teacher receives the complete subject and grade set. Run
       // the repair after cloud records and the local recovery cache have been
       // merged, so stale empty records cannot remain visible to that account.
-      mergeCloudCollection('grades', grades);
       const mergedSubjects = DB.get(KEYS.subjects, []);
       const mergedGrades = DB.get(KEYS.grades, {});
       const cloudSubjectIds = new Set(subjects.map(subject => subject.id));
@@ -7775,7 +8130,7 @@ function pullCloudData(sessionToken) {
         const classId = data.classId || key.split('__')[0];
         if (all || classIds.has(classId)) attendance[key] = Object.assign({}, data, { entries: data.entries || {} });
       });
-      mergeCloudCollection('attendance', attendance);
+      mergeCloudCollection('attendance', attendance, all);
 
       const teacherAttendance = {};
       teacherAttendanceSnap.forEach(d => {
@@ -7783,14 +8138,14 @@ function pullCloudData(sessionToken) {
         const data = d.data() || {};
         teacherAttendance[key] = Object.assign({}, data, { entries: data.entries || {} });
       });
-      if (all) mergeCloudCollection('teacherAttendance', teacherAttendance);
+      if (all) mergeCloudCollection('teacherAttendance', teacherAttendance, true);
 
       const schoolCalendar = {};
       schoolCalendarSnap.forEach(d => {
         const key = localKeyFromCloudId(d.id);
         schoolCalendar[key] = Object.assign({}, d.data(), { date: (d.data() || {}).date || key.split('__').slice(-1)[0] });
       });
-      mergeCloudCollection('schoolCalendar', schoolCalendar);
+      mergeCloudCollection('schoolCalendar', schoolCalendar, true);
 
       const remarks = {};
       remarkSnap.forEach(d => {
@@ -7798,7 +8153,7 @@ function pullCloudData(sessionToken) {
         const classId = key.split('__')[0];
         if (all || classIds.has(classId)) remarks[key] = (d.data() || {}).entries || {};
       });
-      mergeCloudCollection('remarks', remarks);
+      mergeCloudCollection('remarks', remarks, all);
       if (!valid()) return;
       setLastSyncedNow();
     });
@@ -7826,7 +8181,10 @@ function scheduleCloudPush(rawKey) {
   const match = syncableFields().find(f => f.key === rawKey);
   if (!match) return;
   clearTimeout(pushTimers[rawKey]);
+  const token = sessionGeneration, uidAtSchedule = currentUid, schoolAtSchedule = currentSchoolId;
   pushTimers[rawKey] = setTimeout(() => {
+    delete pushTimers[rawKey];
+    if (!isCurrentSession(token, uidAtSchedule, schoolAtSchedule) || cloudHydrationInProgress || !sessionDataReady) return;
     pushFieldToCloud(match).catch(err => console.error('Cloud sync failed for', match.field, err));
   }, 800);
 }
@@ -7836,9 +8194,8 @@ function syncCollectionArray(ref, items, cleanFn, options) {
   const safeItems = Array.isArray(items) ? items : [];
   const currentIds = new Set(safeItems.map(item => item && item.id).filter(Boolean).map(String));
   return ref.get().then(snapshot => {
-    const cloudCount = snapshot && typeof snapshot.size === 'number' ? snapshot.size : 0;
-    // v40: empty local data is not proof that cloud data should be deleted.
-    const allowDeletes = !(options && options.preserveMissing) && (safeItems.length > 0 || cloudCount === 0);
+    // After hydration, an empty collection may be an intentional delete-all.
+    const allowDeletes = !(options && options.preserveMissing) && sessionDataReady && !cloudHydrationInProgress;
     const ops = [];
     safeItems.forEach(item => {
       if (!item || !item.id) return;
@@ -7878,8 +8235,8 @@ function syncKeyedCollection(ref, entries, makeData, allowedClassIds) {
       const docId = cloudKey(key);
       ops.push(batch => batch.set(ref.doc(docId), makeData(key, entries[key])));
     });
-    // v40: never convert an empty keyed cache into mass cloud deletion.
-    if (Object.keys(entries || {}).length > 0) {
+    // After hydration, empty keyed data may be an intentional clear-all.
+    if (sessionDataReady && !cloudHydrationInProgress) {
       snapshot.forEach(doc => {
         if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(doc.ref));
       });
@@ -7940,7 +8297,7 @@ function pushFieldToCloud(match) {
       const currentIds = new Set(filtered.map(s => s.id));
       const ops = [];
       filtered.forEach(s => ops.push(batch => batch.set(ref.doc(s.id), stripImagesForCloud('students', s))));
-      if (filtered.length > 0) snapshot.forEach(doc => { if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id))); });
+      if (sessionDataReady && !cloudHydrationInProgress) snapshot.forEach(doc => { if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id))); });
       return commitChunks(ops);
     }).then(() => setLastSyncedNow());
   }
@@ -9122,3 +9479,69 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   });
 }
+
+setTimeout(() => { try { renderFloatingPill(); } catch (e) { console.warn('Floating pill navigation:', e); } }, 0);
+
+/* ---------- v40 Bulk Selection & Safe Delete ---------- */
+const bulkSelectionsV40={students:new Set(),staff:new Set(),classes:new Set(),subjects:new Set()};
+function bulkVisibleRecordsV40(kind){
+  if(kind==='students'){
+    const q=(document.getElementById('studentSearchInput')?.value||'').trim().toLowerCase();
+    let rows=getAccessibleStudents();
+    if(q) return rows.filter(s=>[s.name,s.admissionId,s.guardianName,s.parentPhone,s.houseGps,s.disability].join(' ').toLowerCase().includes(q));
+    const cid=document.getElementById('studentClassSelect')?.value||''; return rows.filter(s=>s.classId===cid);
+  }
+  if(kind==='classes') return isTeacher()?[]:getAccessibleClasses();
+  if(kind==='subjects') return subjectArrangeMode?[]:sortSubjectsByOrder(DB.get(KEYS.subjects,[]));
+  if(kind==='staff') return canManageStaffWorkspace()?DB.get(KEYS.staff,[]):[];
+  return [];
+}
+function bulkRefreshToolbarV40(kind){
+  const host=document.querySelector(`.bulk-selection-toolbar[data-kind="${kind}"]`); if(!host)return;
+  const set=bulkSelectionsV40[kind], ids=bulkVisibleRecordsV40(kind).map(x=>String(x.id));
+  host.querySelector('.bulk-count').textContent=`${set.size} selected`;
+  const del=host.querySelector('.bulk-delete-btn');del.textContent=`Delete Selected (${set.size})`;del.disabled=!set.size;
+  host.querySelector('.bulk-select-all').checked=!!ids.length&&ids.every(id=>set.has(id));
+  host.querySelector('.bulk-unselect-all').checked=!!ids.length&&ids.every(id=>!set.has(id));
+}
+function installBulkUiV40(kind,listId,rowSelector){
+  const list=document.getElementById(listId);if(!list)return;
+  document.querySelectorAll(`.bulk-selection-toolbar[data-kind="${kind}"]`).forEach(x=>x.remove());
+  const rows=bulkVisibleRecordsV40(kind);if(!rows.length)return;
+  const ids=rows.map(x=>String(x.id)), set=bulkSelectionsV40[kind];
+  Array.from(set).forEach(id=>{if(!ids.includes(id))set.delete(id);});
+  const bar=document.createElement('div');bar.className='bulk-selection-toolbar';bar.dataset.kind=kind;
+  bar.innerHTML=`<label><input type="checkbox" class="bulk-select-all"> Select All</label><label><input type="checkbox" class="bulk-unselect-all"> Unselect All</label><span class="bulk-count"></span><button type="button" class="bulk-delete-btn">Delete Selected</button>`;
+  list.parentNode.insertBefore(bar,list);
+  bar.querySelector('.bulk-select-all').addEventListener('change',e=>{if(e.target.checked)ids.forEach(id=>set.add(id));else ids.forEach(id=>set.delete(id));installBulkUiV40(kind,listId,rowSelector);});
+  bar.querySelector('.bulk-unselect-all').addEventListener('change',e=>{if(e.target.checked)ids.forEach(id=>set.delete(id));installBulkUiV40(kind,listId,rowSelector);});
+  bar.querySelector('.bulk-delete-btn').addEventListener('click',()=>bulkDeleteV40(kind));
+  const candidates=Array.from(list.querySelectorAll(rowSelector)).filter(el=>!el.querySelector('.edit-row'));
+  rows.forEach((record,i)=>{const row=candidates[i];if(!row)return;const wrap=document.createElement('span');wrap.className='bulk-record-select';wrap.innerHTML=`<input type="checkbox" class="bulk-record-check" aria-label="Select ${escapeHtml(record.name||'record')}">`;const cb=wrap.firstChild;cb.checked=set.has(String(record.id));cb.addEventListener('change',()=>{cb.checked?set.add(String(record.id)):set.delete(String(record.id));bulkRefreshToolbarV40(kind);});row.insertBefore(wrap,row.firstChild);});
+  bulkRefreshToolbarV40(kind);
+}
+function classDepsV40(id){const st=DB.get(KEYS.students,[]).filter(x=>x.classId===id).length,g=Object.keys(DB.get(KEYS.grades,{})).filter(k=>k.startsWith(id+'__')).length,a=Object.keys(DB.get(KEYS.attendance,{})).filter(k=>k.startsWith(id+'__')).length,r=Object.keys(DB.get(KEYS.remarks,{})).filter(k=>k.startsWith(id+'__')).length;return{st,g,a,r,total:st+g+a+r};}
+function subjectDepsV40(id){let g=0;Object.values(DB.get(KEYS.grades,{})).forEach(v=>{try{if(v&&JSON.stringify(v).includes('"'+id+'"'))g++;}catch(e){}});return{g,total:g};}
+async function bulkDeleteV40(kind){
+  const ids=Array.from(bulkSelectionsV40[kind]);if(!ids.length)return;
+  if(kind!=='students'&&!isHeadTeacher()){alert('Only the Headteacher can bulk delete these records.');return;}
+  if(kind==='students'){const chosen=DB.get(KEYS.students,[]).filter(x=>ids.includes(String(x.id)));if(chosen.some(x=>!requireClassAccess(x.classId)))return;}
+  if(kind==='classes'){const blocked=ids.map(id=>({id,d:classDepsV40(id),x:DB.get(KEYS.classes,[]).find(c=>String(c.id)===id)})).filter(x=>x.d.total);if(blocked.length){alert('Safe Delete blocked because selected classes still contain academic records.\n\n'+blocked.slice(0,8).map(x=>`${x.x?.name||x.id}: ${x.d.st} student(s), ${x.d.g} grade record(s), ${x.d.a} attendance record(s), ${x.d.r} remark record(s)`).join('\n'));return;}}
+  if(kind==='subjects'){const blocked=ids.map(id=>({id,d:subjectDepsV40(id),x:DB.get(KEYS.subjects,[]).find(c=>String(c.id)===id)})).filter(x=>x.d.total);if(blocked.length){alert('Safe Delete blocked because selected subjects still have grade references.\n\n'+blocked.slice(0,8).map(x=>`${x.x?.name||x.id}: ${x.d.g} grade reference(s)`).join('\n'));return;}}
+  if(!confirm(`Delete ${ids.length} selected ${kind}?\n\nThis action cannot be undone.`))return;
+  const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
+  try{
+    if(FIREBASE_ENABLED&&currentSchoolId){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');await commitChunks(ids.map(id=>batch=>batch.delete(schoolRef().collection(kind).doc(String(id)))));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
+    if(kind==='students')DB.set(KEYS.students,DB.get(KEYS.students,[]).filter(x=>!ids.includes(String(x.id))),{skipCloudSync:true});
+    if(kind==='staff'){DB.set(KEYS.staff,DB.get(KEYS.staff,[]).filter(x=>!ids.includes(String(x.id))),{skipCloudSync:true});const cs=DB.get(KEYS.classes,[]);cs.forEach(c=>{if(ids.includes(String(c.classTeacherId)))c.classTeacherId='';});DB.set(KEYS.classes,cs);const st=DB.get(KEYS.settings,{});if(ids.includes(String(st.headTeacherId))){st.headTeacherId='';DB.set(KEYS.settings,st);}}
+    if(kind==='classes')DB.set(KEYS.classes,DB.get(KEYS.classes,[]).filter(x=>!ids.includes(String(x.id))),{skipCloudSync:true});
+    if(kind==='subjects'){const a=DB.get(KEYS.subjects,[]).filter(x=>!ids.includes(String(x.id)));a.forEach((x,i)=>x.order=i);DB.set(KEYS.subjects,a,{skipCloudSync:true});}
+    auditAction('delete',kind,'bulk',`Bulk deleted ${ids.length} ${kind} record(s)`);bulkSelectionsV40[kind].clear();
+    if(kind==='students'){renderStudents();renderClasses();}else if(kind==='staff'){renderStaff();renderClasses();}else if(kind==='classes'){renderClasses();renderStudentClassSelect();}else renderSubjects();
+  }catch(error){alert(`Could not delete the selected ${kind}. Nothing was removed locally.\n\n${error.message||error}`);}
+}
+const _renderClassesBulkV40=renderClasses;renderClasses=function(){_renderClassesBulkV40();setTimeout(()=>installBulkUiV40('classes','classList','li'),0);};
+const _renderStudentsBulkV40=renderStudents;renderStudents=function(){_renderStudentsBulkV40();setTimeout(()=>installBulkUiV40('students','studentList','li'),0);};
+const _renderSubjectsBulkV40=renderSubjects;renderSubjects=function(){_renderSubjectsBulkV40();setTimeout(()=>installBulkUiV40('subjects','subjectList','li.subject-sort-item'),0);};
+const _renderStaffBulkV40=renderStaff;renderStaff=function(){_renderStaffBulkV40();setTimeout(()=>installBulkUiV40('staff','staffList','.staff-editor-list > li'),0);};
+setTimeout(()=>{try{renderClasses();renderStudents();renderSubjects();renderStaff();}catch(e){console.warn('Bulk selection initial render:',e);}},0);
