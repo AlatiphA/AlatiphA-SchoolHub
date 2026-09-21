@@ -158,3 +158,22 @@
     max-width:100%;
   }
 }
+
+
+/* v40 Attendance mobile spacing fix
+   ui-polish.css is loaded after style-3.css. Its generic mobile .row>label
+   flex-basis (150px) was becoming vertical height after the attendance rows
+   were switched to flex-direction: column, creating large blank spaces. */
+@media(max-width:600px){
+  #app #studentAttendancePanel .attendance-student-controls>label,
+  #app #teacherAttendancePanel .attendance-teacher-controls>label{
+    flex:0 0 auto;
+    min-height:0;
+    margin-bottom:0;
+  }
+  #app #studentAttendancePanel .attendance-student-controls,
+  #app #teacherAttendancePanel .attendance-teacher-controls{
+    gap:12px;
+    margin-bottom:14px;
+  }
+}
