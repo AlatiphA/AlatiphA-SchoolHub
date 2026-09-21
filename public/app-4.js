@@ -2239,7 +2239,9 @@ function installStudentTabUpgrade() {
       <div id="studentImportPreview" class="hidden" style="width:100%"></div>
       <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
       <div id="studentRecoveryPreview" class="staff-import-preview hidden" style="width:100%" aria-live="polite"></div>`;
-    search.parentNode.insertBefore(toolbar, search.nextSibling);
+    const classSelect = document.getElementById('studentClassSelect');
+    const toolbarAnchor = (classSelect && classSelect.parentNode) ? classSelect.parentNode : search.parentNode;
+    toolbarAnchor.parentNode.insertBefore(toolbar, toolbarAnchor.nextSibling);
     document.getElementById('exportStudentsBtn').addEventListener('click', () => exportStudentsWorkbook(false));
     document.getElementById('studentTemplateBtn').addEventListener('click', () => exportStudentsWorkbook(true));
     document.getElementById('importStudentsBtn').addEventListener('click', () => document.getElementById('studentImportInput').click());

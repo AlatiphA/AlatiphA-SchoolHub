@@ -184,3 +184,108 @@
 #app #studentRecoveryPreview .student-recovery-item{display:block;padding:8px 0;border-bottom:1px solid var(--border,#ddd)}
 #app #studentRecoveryPreview .student-recovery-item input{width:auto;margin-right:8px}
 #app #checkStudentRecoveryBtn{width:190px;max-width:100%}
+
+
+/* v40 Students desktop responsiveness
+   Students-only. Keep Staff and Attendance untouched. */
+#app #view-students > #studentDataToolbar,
+#app #view-students > #studentDetailsTablePanel{
+  grid-column:1 / -1;
+  width:100%;
+  max-width:none;
+  min-width:0;
+  box-sizing:border-box;
+}
+
+#app #view-students > #studentDataToolbar{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+  align-items:stretch;
+  justify-content:stretch;
+  margin:14px 0 18px;
+}
+
+#app #view-students > #studentDataToolbar > button{
+  width:100%;
+  max-width:none;
+  min-width:0;
+  min-height:44px;
+}
+
+#app #view-students > #studentDataToolbar > #checkStudentRecoveryBtn{
+  grid-column:1 / -1;
+  justify-self:start;
+  width:auto;
+  min-width:190px;
+}
+
+#app #view-students > #studentDataToolbar > #studentImportPreview,
+#app #view-students > #studentDataToolbar > #studentRecoveryPreview{
+  grid-column:1 / -1;
+  width:100%;
+  min-width:0;
+}
+
+#app #view-students #studentDetailsTableWrap,
+#app #view-students #studentDetailsTableWrap .table-scroll{
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+
+#app #view-students #studentDetailsTableWrap .table-scroll{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+#app #view-students .student-details-table{
+  width:100%;
+  min-width:1100px;
+  table-layout:auto;
+}
+
+#app #view-students .student-details-table th,
+#app #view-students .student-details-table td{
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
+@media(max-width:900px){
+  #app #view-students > #studentDataToolbar{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media(max-width:600px){
+  #app #view-students:not(.hidden){
+    display:block;
+  }
+
+  #app #view-students > #studentDataToolbar{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:8px;
+    width:100%;
+  }
+
+  #app #view-students > #studentDataToolbar > button,
+  #app #view-students > #studentDataToolbar > #checkStudentRecoveryBtn{
+    width:190px;
+    max-width:100%;
+    min-width:0;
+  }
+
+  #app #view-students > #studentDataToolbar > #studentImportPreview,
+  #app #view-students > #studentDataToolbar > #studentRecoveryPreview{
+    width:100%;
+    align-self:stretch;
+  }
+
+  #app #view-students .student-details-table{
+    width:100%;
+    min-width:900px;
+  }
+}
