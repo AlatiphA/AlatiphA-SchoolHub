@@ -4602,6 +4602,15 @@ function shiftAttendanceDate(days) {
   input.value = dateOnlyString(addDaysDateOnly(current, days));
   renderAttendanceForm();
 }
+
+function shiftTeacherAttendanceDate(days) {
+  const input = document.getElementById('teacherAttendanceDate');
+  if (!input) return;
+  const current = parseDateOnly(input.value || attendanceDateToday()) || new Date();
+  input.value = dateOnlyString(addDaysDateOnly(current, days));
+  renderTeacherAttendanceForm();
+}
+
 function installAttendanceDateNavigator() {
   const input = document.getElementById('attendanceDate');
   if (!input || document.getElementById('attendanceDateNavigator')) return;
@@ -4614,7 +4623,23 @@ function installAttendanceDateNavigator() {
   parent.insertBefore(nav,input); nav.append(prev,input,next);
   prev.addEventListener('click',()=>shiftAttendanceDate(-1)); next.addEventListener('click',()=>shiftAttendanceDate(1));
 }
+
+function installTeacherAttendanceDateNavigator() {
+  const input = document.getElementById('teacherAttendanceDate');
+  if (!input || document.getElementById('teacherAttendanceDateNavigator')) return;
+  const parent = input.parentNode, nav = document.createElement('div');
+  nav.id='teacherAttendanceDateNavigator'; nav.className='attendance-date-navigator teacher-attendance-date-navigator';
+  const prev=document.createElement('button'), next=document.createElement('button');
+  prev.type=next.type='button'; prev.id='teacherAttendancePrevDate'; next.id='teacherAttendanceNextDate';
+  prev.className=next.className='btn-text'; prev.textContent='<'; next.textContent='>';
+  prev.setAttribute('aria-label','Previous date'); next.setAttribute('aria-label','Next date');
+  parent.insertBefore(nav,input); nav.append(prev,input,next);
+  prev.addEventListener('click',()=>shiftTeacherAttendanceDate(-1));
+  next.addEventListener('click',()=>shiftTeacherAttendanceDate(1));
+}
+
 installAttendanceDateNavigator();
+installTeacherAttendanceDateNavigator();
 
 document.getElementById('attendanceClassSelect').addEventListener('change', renderAttendanceForm);
 document.getElementById('attendanceDate').addEventListener('change', renderAttendanceForm);

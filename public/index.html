@@ -12,8 +12,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-idempotent-bulk-pill-1">
-<link rel="stylesheet" href="ui-polish.css">
+<link rel="stylesheet" href="style-3.css?v=v40-attendance-date-layout-1">
+<link rel="stylesheet" href="ui-polish.css?v=v40-students-toolbar-clean-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
 <script>
@@ -525,7 +525,7 @@
     </div>
 
     <div id="studentAttendancePanel">
-      <div class="row">
+      <div class="row attendance-student-controls">
         <label>Class
           <select id="attendanceClassSelect"></select>
         </label>
@@ -539,7 +539,7 @@
     </div>
 
     <div id="teacherAttendancePanel" class="hidden">
-      <div class="row">
+      <div class="row attendance-teacher-controls">
         <label>Date
           <input type="date" id="teacherAttendanceDate">
         </label>

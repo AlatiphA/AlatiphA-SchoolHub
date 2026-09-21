@@ -123,3 +123,38 @@
   }
   @media(prefers-reduced-motion:reduce){#app .qa-card{transition:none;}}
 }
+
+
+/* v40 Students toolbar cleanup
+   Match the Staff tab's clean action layout and keep the import file picker hidden. */
+#app #studentImportInput[hidden]{
+  display:none!important;
+}
+#app .student-data-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:center;
+  margin:14px auto 18px;
+  width:100%;
+}
+#app .student-data-actions button{
+  width:190px;
+  max-width:100%;
+  min-height:44px;
+  text-align:center;
+}
+#app .student-data-actions #studentImportPreview{
+  flex:1 1 100%;
+}
+@media(max-width:600px){
+  #app .student-data-actions{
+    flex-direction:column;
+    align-items:center;
+  }
+  #app .student-data-actions button{
+    width:190px;
+    max-width:100%;
+  }
+}

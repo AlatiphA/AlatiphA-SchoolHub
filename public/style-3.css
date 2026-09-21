@@ -1178,8 +1178,8 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
 
 /* v40 quick attendance date navigation */
 .attendance-date-navigator{display:flex;align-items:center;gap:8px;width:100%}
-.attendance-date-navigator #attendanceDate{flex:1 1 auto;min-width:0}
-.attendance-date-navigator #attendancePrevDate,.attendance-date-navigator #attendanceNextDate{flex:0 0 42px;min-width:42px;min-height:42px;padding:6px 10px;font-size:18px;line-height:1}
+.attendance-date-navigator #attendanceDate,.attendance-date-navigator #teacherAttendanceDate{flex:1 1 auto;min-width:0}
+.attendance-date-navigator #attendancePrevDate,.attendance-date-navigator #attendanceNextDate,.attendance-date-navigator #teacherAttendancePrevDate,.attendance-date-navigator #teacherAttendanceNextDate{flex:0 0 42px;min-width:42px;min-height:42px;padding:6px 10px;font-size:18px;line-height:1}
 
 /* v40 floating quick-access pill */
 #schoolHubFloatingPill{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));z-index:9000;transform:translate(-50%,0);display:flex;align-items:center;gap:2px;max-width:calc(100vw - 20px);padding:4px;border:1px solid rgba(128,128,128,.22);border-radius:999px;background:var(--card,#fff);box-shadow:0 8px 24px rgba(0,0,0,.14);transition:transform .22s ease,opacity .22s ease;opacity:1}
@@ -1231,4 +1231,74 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
   #reportsStudentList .report-student-row{column-gap:7px;}
   #reportsStudentList .report-student-actions{gap:4px;}
   #reportsStudentList .report-student-actions button{padding:0 7px;font-size:12px;}
+}
+/* v40 Attendance date navigator layout fix
+   Student attendance only: on narrow screens keep Class and Date on separate
+   full-width rows so the date input remains readable beside its arrow buttons. */
+@media(max-width:600px){
+  #studentAttendancePanel .attendance-student-controls{
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+  }
+  #studentAttendancePanel .attendance-student-controls>label{
+    width:100%;
+    flex:0 0 auto;
+  }
+  #studentAttendancePanel .attendance-date-navigator{
+    width:100%;
+    gap:8px;
+  }
+  #studentAttendancePanel .attendance-date-navigator #attendanceDate{
+    flex:1 1 auto;
+    width:100%;
+    min-width:0;
+  }
+  #studentAttendancePanel .attendance-date-navigator #attendancePrevDate,
+  #studentAttendancePanel .attendance-date-navigator #attendanceNextDate{
+    flex:0 0 40px;
+    min-width:40px;
+    width:40px;
+  }
+}
+
+
+
+/* v40 Teacher attendance date navigation parity
+   Give Teacher Attendance the same previous/date/next UI as Student Attendance. */
+#teacherAttendancePanel .attendance-teacher-controls{
+  align-items:stretch;
+}
+#teacherAttendancePanel .attendance-teacher-controls>label{
+  width:100%;
+  flex:1 1 100%;
+}
+#teacherAttendancePanel .teacher-attendance-date-navigator{
+  width:100%;
+}
+@media(max-width:600px){
+  #teacherAttendancePanel .attendance-teacher-controls{
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+  }
+  #teacherAttendancePanel .attendance-teacher-controls>label{
+    width:100%;
+    flex:0 0 auto;
+  }
+  #teacherAttendancePanel .teacher-attendance-date-navigator{
+    width:100%;
+    gap:8px;
+  }
+  #teacherAttendancePanel .teacher-attendance-date-navigator #teacherAttendanceDate{
+    flex:1 1 auto;
+    width:100%;
+    min-width:0;
+  }
+  #teacherAttendancePanel .teacher-attendance-date-navigator #teacherAttendancePrevDate,
+  #teacherAttendancePanel .teacher-attendance-date-navigator #teacherAttendanceNextDate{
+    flex:0 0 40px;
+    min-width:40px;
+    width:40px;
+  }
 }
