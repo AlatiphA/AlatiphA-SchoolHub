@@ -177,3 +177,10 @@
     margin-bottom:14px;
   }
 }
+
+
+/* v40 Student recovery protection */
+#app #studentRecoveryPreview{width:100%;margin-top:10px}
+#app #studentRecoveryPreview .student-recovery-item{display:block;padding:8px 0;border-bottom:1px solid var(--border,#ddd)}
+#app #studentRecoveryPreview .student-recovery-item input{width:auto;margin-right:8px}
+#app #checkStudentRecoveryBtn{width:190px;max-width:100%}

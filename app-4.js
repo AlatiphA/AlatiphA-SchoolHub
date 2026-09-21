@@ -1554,13 +1554,20 @@ function renderStudentClassSelect() {
   renderStudents();
 }
 
+function studentClassSelectionKey() {
+  return `arc_student_class_selection__${String(currentSchoolId || currentUid || 'local')}`;
+}
+
 function fillClassSelect(sel) {
   const classes = getAccessibleClasses();
   const prev = sel.value;
+  let saved = '';
+  try { saved = localStorage.getItem(studentClassSelectionKey()) || ''; } catch (e) {}
   sel.innerHTML = classes.length
     ? classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
     : '<option value="">No assigned classes</option>';
-  if (classes.some(c => c.id === prev)) sel.value = prev;
+  const wanted = classes.some(c => c.id === prev) ? prev : (classes.some(c => c.id === saved) ? saved : '');
+  if (wanted) sel.value = wanted;
 }
 
 let editingStudentId = null;
@@ -1836,7 +1843,10 @@ function renderStudents() {
   });
 }
 
-document.getElementById('studentClassSelect').addEventListener('change', renderStudents);
+document.getElementById('studentClassSelect').addEventListener('change', e => {
+  try { localStorage.setItem(studentClassSelectionKey(), e.target.value || ''); } catch (err) {}
+  renderStudents();
+});
 document.getElementById('studentSearchInput').addEventListener('input', renderStudents);
 
 const toggleAddStudentBtn = document.getElementById('toggleAddStudentBtn');
@@ -2226,13 +2236,16 @@ function installStudentTabUpgrade() {
       <button type="button" id="importStudentsBtn">Import Students</button>
       <button type="button" id="printStudentsBtn">Print / Save as PDF</button>
       <input type="file" id="studentImportInput" accept=".xlsx,.xls,.csv" hidden>
-      <div id="studentImportPreview" class="hidden" style="width:100%"></div>`;
+      <div id="studentImportPreview" class="hidden" style="width:100%"></div>
+      <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
+      <div id="studentRecoveryPreview" class="staff-import-preview hidden" style="width:100%" aria-live="polite"></div>`;
     search.parentNode.insertBefore(toolbar, search.nextSibling);
     document.getElementById('exportStudentsBtn').addEventListener('click', () => exportStudentsWorkbook(false));
     document.getElementById('studentTemplateBtn').addEventListener('click', () => exportStudentsWorkbook(true));
     document.getElementById('importStudentsBtn').addEventListener('click', () => document.getElementById('studentImportInput').click());
     document.getElementById('studentImportInput').addEventListener('change', handleStudentImportFile);
     document.getElementById('printStudentsBtn').addEventListener('click', printStudentsDetailsTable);
+    document.getElementById('checkStudentRecoveryBtn').addEventListener('click', checkStudentRecovery);
   }
 }
 
@@ -2249,6 +2262,135 @@ function studentTransferValue(st, key) {
   if (key === 'className') return studentClassName(st);
   if (key === 'gender') return st.gender === 'M' ? 'Male' : (st.gender === 'F' ? 'Female' : st.gender || '');
   return st[key] || '';
+}
+
+function normalizeRecoveryClassName(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function currentClassIdForRecoveredStudent(record, backupClasses) {
+  const classes = getAccessibleClasses();
+  const direct = classes.find(c => String(c.id) === String(record.classId || ''));
+  if (direct) return direct.id;
+  const oldClass = (backupClasses || []).find(c => String(c.id) === String(record.classId || ''));
+  if (!oldClass) return '';
+  const wanted = normalizeRecoveryClassName(oldClass.name);
+  const match = classes.find(c => normalizeRecoveryClassName(c.name) === wanted);
+  return match ? match.id : '';
+}
+
+function studentRecoverySnapshots(schoolId) {
+  const out = [];
+  try {
+    const prefix = recoveryKey(schoolId);
+    const keys = [prefix, prefix + '__staff_repair_original'];
+    keys.forEach(key => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const backup = JSON.parse(raw);
+      if (String(backup.schoolId || '') !== String(schoolId || '')) return;
+      const students = Array.isArray(backup.data?.students) ? backup.data.students : [];
+      const classes = Array.isArray(backup.data?.classes) ? backup.data.classes : [];
+      if (students.length) out.push({ key, students, classes, createdAt: backup.createdAt || '' });
+    });
+  } catch (e) { console.warn('Could not read student recovery snapshots:', e); }
+  return out;
+}
+
+function collectMissingStudentCandidates(schoolId) {
+  const existing = DB.get(KEYS.students, []);
+  const byId = new Set(existing.map(s => String(s.id || '')).filter(Boolean));
+  const byAdmission = new Set(existing.map(s => String(s.admissionId || '').trim().toLowerCase()).filter(Boolean));
+  const seen = new Set();
+  const missing = [];
+  const unresolved = [];
+  studentRecoverySnapshots(schoolId).forEach(snapshot => {
+    snapshot.students.forEach(source => {
+      if (!source || !source.id || !source.name) return;
+      const id = String(source.id);
+      const admission = String(source.admissionId || '').trim().toLowerCase();
+      if (byId.has(id) || (admission && byAdmission.has(admission))) return;
+      const dedupe = admission ? `a:${admission}` : `i:${id}`;
+      if (seen.has(dedupe)) return;
+      seen.add(dedupe);
+      const classId = currentClassIdForRecoveredStudent(source, snapshot.classes);
+      const oldClass = snapshot.classes.find(c => String(c.id) === String(source.classId || ''));
+      const record = Object.assign({}, source, classId ? { classId } : {});
+      const item = { record, className: oldClass?.name || studentClassName(record) || 'Unknown class', sourceDate: snapshot.createdAt || '' };
+      if (classId) missing.push(item); else unresolved.push(item);
+    });
+  });
+  return { missing, unresolved };
+}
+
+async function restoreRecoveredStudents(items, token, userId, schoolId) {
+  if (!items.length || !isCurrentSession(token, userId, schoolId)) return;
+  const existing = DB.get(KEYS.students, []);
+  const byId = new Set(existing.map(s => String(s.id || '')).filter(Boolean));
+  const byAdmission = new Set(existing.map(s => String(s.admissionId || '').trim().toLowerCase()).filter(Boolean));
+  const additions = items.map(x => x.record).filter(record => {
+    const id = String(record.id || '');
+    const admission = String(record.admissionId || '').trim().toLowerCase();
+    if (!id || !record.name || !record.classId || byId.has(id) || (admission && byAdmission.has(admission))) return false;
+    byId.add(id); if (admission) byAdmission.add(admission);
+    return true;
+  });
+  if (!additions.length) return;
+  if (FIREBASE_ENABLED && currentSchoolId) {
+    if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+    const ref = schoolRef().collection('students');
+    await commitChunks(additions.map(record => batch => batch.set(ref.doc(String(record.id)), stripImagesForCloud('students', record), { merge:true })));
+    if (!isCurrentSession(token, userId, schoolId)) return;
+    setLastSyncedNow();
+  }
+  DB.set(KEYS.students, existing.concat(additions), { skipCloudSync:true });
+  auditAction('recover', 'students', '', `Restored ${additions.length} missing student record(s) from a saved SchoolHub copy.`);
+  renderStudents(); renderClasses();
+}
+
+async function checkStudentRecovery() {
+  if (!isHeadTeacher() && !isActiveGuest()) { alert('Only the Head Teacher can restore missing school-wide student records.'); return; }
+  const host = document.getElementById('studentRecoveryPreview');
+  if (!host) return;
+  const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
+  host.classList.remove('hidden');
+  host.textContent = 'Checking saved student copies…';
+  try {
+    const found = collectMissingStudentCandidates(schoolId);
+    if (!isCurrentSession(token, userId, schoolId)) return;
+    host.innerHTML = `<h3>Student recovery check</h3><p>${found.missing.length ? `Found ${found.missing.length} student record(s) in saved copies that are missing from the current Students list. Select only the records you want restored.` : 'No additional student records were found in this browser’s saved recovery copies.'}</p>`;
+    if (found.unresolved.length) {
+      const note = document.createElement('p');
+      note.className = 'hint';
+      note.textContent = `${found.unresolved.length} older record(s) could not be matched safely to a current class and were not offered for restoration.`;
+      host.appendChild(note);
+    }
+    found.missing.forEach((item, index) => {
+      const label = document.createElement('label');
+      label.className = 'student-recovery-item';
+      label.innerHTML = `<input type="checkbox" data-student-recovery-index="${index}"> <strong>${escapeHtml(item.record.name)}</strong> · ${escapeHtml(item.record.admissionId || 'No ID')} · ${escapeHtml(item.className)}`;
+      host.appendChild(label);
+    });
+    if (!found.missing.length) return;
+    const restore = document.createElement('button');
+    restore.type = 'button'; restore.className = 'btn-primary'; restore.textContent = 'Restore selected students';
+    host.appendChild(restore);
+    restore.addEventListener('click', async () => {
+      if (!isCurrentSession(token, userId, schoolId)) return;
+      const selected = Array.from(host.querySelectorAll('input[data-student-recovery-index]:checked')).map(el => found.missing[Number(el.dataset.studentRecoveryIndex)]).filter(Boolean);
+      if (!selected.length) { alert('Select at least one student to restore.'); return; }
+      restore.disabled = true; restore.textContent = 'Restoring…';
+      try {
+        await restoreRecoveredStudents(selected, token, userId, schoolId);
+        host.innerHTML = `<h3>Student recovery complete</h3><p>Restored ${selected.length} selected student record(s) to their classes and saved them to SchoolHub.</p>`;
+      } catch (e) {
+        restore.disabled = false; restore.textContent = 'Restore selected students';
+        alert('Student recovery was NOT saved. Existing student data was left unchanged.\n\n' + (e.message || e));
+      }
+    });
+  } catch (e) {
+    host.textContent = 'Could not check student recovery copies: ' + (e.message || e);
+  }
 }
 
 function exportStudentsWorkbook(templateOnly) {
@@ -8164,7 +8306,28 @@ function pullCloudData(sessionToken) {
         const s = d.data();
         if (all || classIds.has(s.classId)) students.push(mergeLocalImage('students', s, d.id));
       });
-      mergeCloudCollection('students', students, all);
+      if (all) {
+        const localBeforeStudentPull = DB.get(KEYS.students, []);
+        const localByClass = new Map();
+        const cloudByClass = new Map();
+        localBeforeStudentPull.forEach(s => localByClass.set(String(s.classId || ''), (localByClass.get(String(s.classId || '')) || 0) + 1));
+        students.forEach(s => cloudByClass.set(String(s.classId || ''), (cloudByClass.get(String(s.classId || '')) || 0) + 1));
+        const missingWholeClasses = Array.from(localByClass.entries()).filter(([classId, count]) => classId && count > 0 && !cloudByClass.has(classId));
+        const suspiciousStudentPull = students.length < localBeforeStudentPull.length && missingWholeClasses.length > 0;
+        // Fail closed on a suspiciously incomplete school-wide Students pull.
+        // Keep the browser's pre-pull records visible, overlay the cloud copies,
+        // and require explicit recovery before writing any missing records back.
+        mergeCloudCollection('students', students, !suspiciousStudentPull);
+        if (suspiciousStudentPull) {
+          console.warn('Student cloud pull looked incomplete; preserved local student records for recovery.', {
+            localCount: localBeforeStudentPull.length,
+            cloudCount: students.length,
+            missingClassIds: missingWholeClasses.map(([classId]) => classId)
+          });
+        }
+      } else {
+        mergeCloudCollection('students', students, false);
+      }
 
       const staff = [];
       staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
