@@ -4840,6 +4840,8 @@ function renderTeacherAttendanceForm() {
   document.getElementById('teacherAttendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'A'));
 }
 
+let editingSchoolCalendarDate = null;
+
 function renderSchoolCalendar() {
   const wrap = document.getElementById('schoolCalendarWrap');
   if (!wrap) return;
@@ -4869,10 +4871,14 @@ function renderSchoolCalendar() {
   const canEdit = isHeadTeacher();
   ['calendarDate','calendarType','calendarNote','saveCalendarDay','clearCalendarDay'].forEach(id => { const el=document.getElementById(id); if(el) el.disabled=!canEdit; });
   document.querySelectorAll('.calendar-edit').forEach(btn => btn.addEventListener('click', () => {
-    const rec = calendarRecord(term, year, btn.dataset.date) || {};
-    document.getElementById('calendarDate').value = btn.dataset.date;
+    const originalDate = btn.dataset.date;
+    const rec = calendarRecord(term, year, originalDate) || {};
+    editingSchoolCalendarDate = originalDate;
+    document.getElementById('calendarDate').value = originalDate;
     document.getElementById('calendarType').value = rec.type || 'holiday';
     document.getElementById('calendarNote').value = rec.note || '';
+    const saveBtn = document.getElementById('saveCalendarDay');
+    if (saveBtn) saveBtn.textContent = 'Update Calendar Day';
   }));
   document.querySelectorAll('.calendar-delete').forEach(btn => btn.addEventListener('click', async () => {
     if (!requireHeadTeacher('change the school calendar')) return;
@@ -4903,20 +4909,36 @@ function renderSchoolCalendar() {
     if (!isWeekdayDate(parseDateOnly(date))) { alert('This school calendar is for weekdays. Weekends are automatically excluded from Times Open.'); return; }
     const all = DB.get(KEYS.schoolCalendar, {});
     const key = calendarKey(term, year, date);
+    const originalDate = editingSchoolCalendarDate;
+    const originalKey = originalDate ? calendarKey(term, year, originalDate) : '';
+    const dateChanged = !!originalKey && originalKey !== key;
     try {
       if (FIREBASE_ENABLED && currentSchoolId) {
         if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
-        if (type === 'open') {
+        if (dateChanged) {
+          const batch = firebase.firestore().batch();
+          if (type !== 'open') {
+            batch.set(schoolCalendarRef(key), { term, year, date, type, note, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+          }
+          batch.delete(schoolCalendarRef(originalKey));
+          await batch.commit();
+        } else if (type === 'open') {
           await schoolCalendarRef(key).delete();
         } else {
           await schoolCalendarRef(key).set({ term, year, date, type, note, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
         }
         setLastSyncedNow();
       }
+      if (dateChanged) delete all[originalKey];
       if (type === 'open') delete all[key];
       else all[key] = { term, year, date, type, note, updatedAt: new Date().toISOString() };
       DB.set(KEYS.schoolCalendar, all, {skipCloudSync:true});
-      auditAction(type === 'open' ? 'delete' : 'update', 'schoolCalendar', key, `Set ${date} as ${calendarLabel(type)}${note ? ` · ${note}` : ''}`);
+      const action = originalDate ? 'update' : (type === 'open' ? 'delete' : 'create');
+      const summary = originalDate && originalDate !== date
+        ? `Moved calendar exception ${originalDate} → ${date} · ${calendarLabel(type)}${note ? ` · ${note}` : ''}`
+        : `Set ${date} as ${calendarLabel(type)}${note ? ` · ${note}` : ''}`;
+      auditAction(action, 'schoolCalendar', key, summary);
+      editingSchoolCalendarDate = null;
       refreshAttendanceAfterCalendarChange();
       alert(`School calendar updated: ${date} · ${calendarLabel(type)}.`);
     } catch (error) {
