@@ -827,7 +827,7 @@ function floatingPillIcon(name) {
 }
 function currentVisibleViewName(){return views.find(v=>{const el=document.getElementById('view-'+v);return el&&!el.classList.contains('hidden')})||'home'}
 function floatingPillItems(){const x=[{view:'home',label:'Home',icon:'home'},{view:'attendance',label:'Attendance',icon:'attendance'},{view:'reports',label:'Reports',icon:'reports'}];if(isHeadTeacher())x.push({view:'billing',label:'Billing & Credits',icon:'billing'});return x}
-function renderFloatingPill(){if(!sessionReady&&FIREBASE_ENABLED)return;let p=document.getElementById('schoolHubFloatingPill');if(!p){p=document.createElement('nav');p.id='schoolHubFloatingPill';p.setAttribute('aria-label','Quick navigation');document.body.appendChild(p)}const active=currentVisibleViewName();p.innerHTML=floatingPillItems().map(i=>`<button type="button" data-view="${i.view}" class="${active===i.view?'active':''}">${floatingPillIcon(i.icon)}<span class="pill-label">${escapeHtml(i.label)}</span></button>`).join('');p.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{p.classList.remove('pill-hidden');showView(b.dataset.view);renderFloatingPill()}))}
+function renderFloatingPill(){let p=document.getElementById('schoolHubFloatingPill');if(!sessionReady&&FIREBASE_ENABLED){if(p)p.remove();return;}if(!p){p=document.createElement('nav');p.id='schoolHubFloatingPill';p.setAttribute('aria-label','Quick navigation');document.body.appendChild(p)}const active=currentVisibleViewName();p.innerHTML=floatingPillItems().map(i=>`<button type="button" data-view="${i.view}" class="${active===i.view?'active':''}">${floatingPillIcon(i.icon)}<span class="pill-label">${escapeHtml(i.label)}</span></button>`).join('');p.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{p.classList.remove('pill-hidden');showView(b.dataset.view);renderFloatingPill()}))}
 function showFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.remove('pill-hidden')}
 function hideFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.add('pill-hidden')}
 window.addEventListener('scroll',()=>{if(floatingPillTicking)return;floatingPillTicking=true;requestAnimationFrame(()=>{const y=Math.max(0,window.scrollY||document.documentElement.scrollTop||0),d=y-floatingPillLastY;if(y<80)showFloatingPill();else if(d>10)hideFloatingPill();else if(d<-10)showFloatingPill();floatingPillLastY=y;floatingPillTicking=false})},{passive:true});
@@ -9796,7 +9796,7 @@ function showSessionRestoring() {
   if (msg) { msg.textContent = 'Please wait while SchoolHub restores your session.'; msg.classList.remove('hidden'); }
 }
 function hideSessionRestoring() { document.documentElement.classList.remove('sessionRestoring'); }
-function showAuthGate() { document.documentElement.classList.add('authing'); document.documentElement.classList.remove('sessionRestoring'); }
+function showAuthGate() { document.documentElement.classList.add('authing'); document.documentElement.classList.remove('sessionRestoring'); document.getElementById('schoolHubFloatingPill')?.remove(); }
 function hideAuthGate() { document.documentElement.classList.remove('authing'); }
 function showSchoolChoiceGate() { document.documentElement.classList.add('schoolChoice'); }
 function hideSchoolChoiceGate() { document.documentElement.classList.remove('schoolChoice'); }

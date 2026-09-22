@@ -1687,3 +1687,34 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
   }
   .inline-doc-footer .btn-text{width:100%;}
 }
+
+
+/* v40 logout/login help hardening */
+html.locked #schoolHubFloatingPill,
+html.authing #schoolHubFloatingPill,
+html.sessionRestoring #schoolHubFloatingPill,
+html.schoolChoice #schoolHubFloatingPill,
+html.pendingApproval #schoolHubFloatingPill,
+html.disabledAccess #schoolHubFloatingPill{
+  display:none!important;
+}
+
+/* Help/Privacy/Terms must be usable before sign-in, so this overlay sits above
+   authentication, school-choice and approval gates. It still inherits the
+   current SchoolHub theme variables. */
+#inlineDocDialog{z-index:13000;}
+
+#authGate .auth-footer nav{
+  align-items:center;
+}
+#authGate .auth-footer .auth-footer-link{
+  display:inline;
+  width:auto;
+  min-height:0;
+  margin:0;
+  color:inherit;
+  white-space:nowrap;
+}
+#authGate .auth-footer .auth-footer-link:hover{
+  color:var(--gold);
+}
