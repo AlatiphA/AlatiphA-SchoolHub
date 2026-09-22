@@ -3914,6 +3914,60 @@ document.getElementById('addStaffBtn').addEventListener('click', async () => {
 });
 
 
+
+/* ---------- Inline Help / FAQ / Privacy / Terms ---------- */
+const INLINE_DOCS = {
+  faq: { title: 'Help & FAQ', templateId: 'inlineDocTemplateFaq' },
+  privacy: { title: 'Privacy Notice', templateId: 'inlineDocTemplatePrivacy' },
+  terms: { title: 'Terms of Use', templateId: 'inlineDocTemplateTerms' }
+};
+
+function openInlineDoc(name) {
+  const config = INLINE_DOCS[name];
+  const dialog = document.getElementById('inlineDocDialog');
+  const title = document.getElementById('inlineDocTitle');
+  const body = document.getElementById('inlineDocBody');
+  const template = config ? document.getElementById(config.templateId) : null;
+  if (!config || !dialog || !title || !body || !template) return;
+
+  title.textContent = config.title;
+  body.innerHTML = '';
+  body.appendChild(template.content.cloneNode(true));
+  body.scrollTop = 0;
+  dialog.classList.remove('hidden');
+
+  const profileDropdown = document.getElementById('profileDropdown');
+  if (profileDropdown) profileDropdown.classList.add('hidden');
+}
+
+function closeInlineDoc() {
+  const dialog = document.getElementById('inlineDocDialog');
+  if (dialog) dialog.classList.add('hidden');
+}
+
+document.addEventListener('click', event => {
+  const opener = event.target.closest('[data-inline-doc]');
+  if (opener) {
+    event.preventDefault();
+    openInlineDoc(opener.dataset.inlineDoc);
+    return;
+  }
+  if (event.target.id === 'inlineDocCloseBtn' || event.target.id === 'inlineDocBottomCloseBtn') {
+    closeInlineDoc();
+  }
+});
+
+const inlineDocDialog = document.getElementById('inlineDocDialog');
+if (inlineDocDialog) {
+  inlineDocDialog.addEventListener('click', event => {
+    if (event.target === inlineDocDialog) closeInlineDoc();
+  });
+}
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && inlineDocDialog && !inlineDocDialog.classList.contains('hidden')) closeInlineDoc();
+});
+
+
 /* ---------- Staff spreadsheet controls ---------- */
 function exportStaffWorkbook(templateOnly = false) {
   if (!canManageStaffWorkspace()) return;

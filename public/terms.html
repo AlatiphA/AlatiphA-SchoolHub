@@ -1,27 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#16241C">
-<title>Terms of Use · AlatiphA SchoolHub</title><link rel="icon" href="icon.svg" type="image/svg+xml">
-<script>try{var t=localStorage.getItem('arc_theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#16241C">
+<title>Terms of Use · AlatiphA SchoolHub</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style-3.css?v=v40-inline-help-legal-1">
+<script>
+try {
+  var t=localStorage.getItem('arc_theme');
+  if(t==='light'||t==='dark') document.documentElement.setAttribute('data-theme',t);
+} catch(e) {}
+</script>
 <style>
-    :root{--ink:#16241c;--paper:#f7f4ea;--surface:#fffdf7;--surface-alt:#f0ebdc;--text:#16241c;--muted:#627168;--rule:#ddd3bd;--gold:#a67d12;}
-    html[data-theme="dark"]{--ink:#111b16;--paper:#18221c;--surface:#202d25;--surface-alt:#27362d;--text:#f7f4ea;--muted:#b7c3ba;--rule:#405044;--gold:#e2ba4e;}
-    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--text);font-family:"IBM Plex Sans",Arial,sans-serif;line-height:1.68}
-    .topbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;padding:12px max(18px,calc((100vw - 960px)/2));background:var(--surface-alt);border-bottom:1px solid var(--rule)}
-    .back{color:var(--text);font-weight:700;text-decoration:none}.back:hover{color:var(--gold)}.brand{display:flex;align-items:center;gap:9px;font-family:Georgia,serif;font-size:18px;font-weight:700;flex:1}.brand img{width:32px;height:32px}.theme{width:38px;height:38px;border-radius:50%;border:0;background:var(--gold);color:var(--ink);cursor:pointer}
-    main{width:min(900px,calc(100% - 32px));margin:34px auto 56px;background:var(--surface);border:1px solid var(--rule);border-radius:16px;padding:clamp(22px,4vw,42px)}
-    h1{margin:0 0 4px;font:700 clamp(28px,4vw,40px)/1.2 Georgia,serif}h2{margin-top:30px;font:700 20px Georgia,serif;color:var(--gold)}h3{margin:20px 0 6px;font-size:16px}
-    .effective{color:var(--muted);margin-top:0}.notice{background:var(--surface-alt);border-left:4px solid var(--gold);padding:14px 16px;border-radius:8px}.muted{color:var(--muted)}
-    a{color:var(--gold)}ul{padding-left:22px}footer{text-align:center;color:var(--muted);font-size:12px;padding:0 16px 32px}footer a{color:inherit}
-    @media(max-width:600px){main{margin-top:18px;padding:20px}.topbar{padding:12px 16px}}
+body{padding:0;background:var(--ink);color:var(--paper)}
+.standalone-doc{width:min(960px,calc(100% - 24px));margin:18px auto 40px;background:var(--surface);border:1px solid var(--rule);border-radius:16px;overflow:hidden}
+.standalone-doc-head{position:sticky;top:0;display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--surface-alt);border-bottom:1px solid var(--rule);z-index:2}
+.standalone-doc-head a{color:var(--paper);text-decoration:none;font-weight:700}
+.standalone-doc-head h1{margin:0;font-size:1.2rem}
+.standalone-doc-body{padding:20px;line-height:1.6}
+.standalone-doc-body h2{color:var(--gold);margin-top:26px}
+.standalone-doc-body details{border:1px solid var(--rule);border-radius:10px;margin:8px 0;background:var(--surface-alt);overflow:hidden}
+.standalone-doc-body summary{cursor:pointer;padding:13px 14px;font-weight:700}
+.standalone-doc-body .inline-doc-answer{padding:12px 14px;color:var(--muted)}
+.standalone-doc-foot{padding:14px 16px;background:var(--surface-alt);border-top:1px solid var(--rule);font-size:.8rem;color:var(--muted)}
+.standalone-doc-foot a{color:var(--gold)}
+.inline-faq-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.inline-doc-section h2{border-bottom:2px solid var(--gold);padding-bottom:8px}
+.inline-doc-support{grid-column:1/-1;padding:16px;border:1px solid var(--rule);border-radius:12px;background:var(--surface-alt)}
+.inline-doc-support-links{display:flex;gap:10px;flex-wrap:wrap}
+.inline-doc-text-link{display:none}
+@media(max-width:760px){.inline-faq-grid{grid-template-columns:1fr}.inline-doc-support{grid-column:auto}}
 </style>
 </head>
 <body>
-<header class="topbar"><a class="back" href="index.html">← SchoolHub</a><div class="brand"><img src="icon.svg" alt="">Terms of Use</div><button class="theme" id="themeToggle" type="button" aria-label="Toggle colour theme">◐</button></header>
-<main>
-<h1>Terms of Use</h1>
-<p class="effective">Effective: 22 September 2026</p>
+<main class="standalone-doc">
+  <header class="standalone-doc-head"><a href="index.html">← SchoolHub</a><h1>Terms of Use</h1></header>
+  <div class="standalone-doc-body"><p class="effective">Effective: 22 September 2026</p>
 <p class="notice">By using AlatiphA SchoolHub, you agree to use the service only for lawful school administration and only with information and access you are authorized to manage.</p>
 
 <h2>1. The service</h2>
@@ -64,11 +80,11 @@
 <p>You may stop using SchoolHub at any time. Before clearing local data or abandoning a workspace, export any backup you are authorized to retain. School access may also be restricted when an account is disabled, removed from a school, or otherwise no longer authorized.</p>
 
 <h2>14. Privacy</h2>
-<p>Use of SchoolHub is also subject to the <a href="privacy.html">Privacy Notice</a>, which explains the types of information handled, offline storage, cloud services, backups and role-based access.</p>
+<p>Use of SchoolHub is also subject to the <button type="button" class="inline-doc-text-link" data-inline-doc="privacy">Privacy Notice</button>, which explains the types of information handled, offline storage, cloud services, backups and role-based access.</p>
 
 <h2>15. Contact and updates to these terms</h2>
-<p>For support or questions, contact AlatiphA Multimedia at <a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a> or <a href="tel:0243443688">0243443688</a>. These terms may be updated as SchoolHub changes. The effective date above identifies the current version.</p>
+<p>For support or questions, contact AlatiphA Multimedia at <a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a> or <a href="tel:0243443688">0243443688</a>. These terms may be updated as SchoolHub changes. The effective date above identifies the current version.</p></div>
+  <footer class="standalone-doc-foot">© All Rights Reserved · AlatiphA Multimedia · <a href="faq.html">Help & FAQ</a> · <a href="privacy.html">Privacy</a></footer>
 </main>
-<footer>© 2026 AlatiphA Multimedia · <a href="faq.html">Help &amp; FAQ</a> · <a href="privacy.html">Privacy</a></footer>
-<script>document.getElementById('themeToggle').addEventListener('click',function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('arc_theme',n)}catch(e){}});</script>
-</body></html>
+</body>
+</html>

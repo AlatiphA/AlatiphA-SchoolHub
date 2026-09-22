@@ -1505,3 +1505,185 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
 .offline-mode-detail{font-size:.72rem;color:var(--muted);line-height:1.35}
 @keyframes offlinePulse{50%{opacity:.3;transform:scale(.75)}}
 @media(max-width:520px){.offline-mode-banner{top:max(6px,env(safe-area-inset-top));width:calc(100vw - 14px);padding:9px 11px;border-radius:12px}.offline-mode-detail{font-size:.68rem}}
+
+
+/* v40 inline Help / FAQ / Privacy / Terms */
+.auth-footer .auth-footer-link{
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:inherit;
+  font:inherit;
+  padding:0;
+  cursor:pointer;
+  text-decoration:underline;
+  text-underline-offset:2px;
+}
+.auth-footer .auth-footer-link:hover{color:var(--gold);}
+
+.inline-doc-box{
+  width:min(980px,calc(100vw - 28px));
+  max-width:980px;
+  height:min(88vh,900px);
+  padding:0;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  background:var(--surface);
+  color:var(--paper);
+}
+.inline-doc-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  padding:18px 20px 14px;
+  border-bottom:1px solid var(--rule);
+  background:var(--surface-alt);
+}
+.inline-doc-header h2{margin:1px 0 0;font-size:1.35rem;}
+.inline-doc-kicker{
+  margin:0;
+  color:var(--muted);
+  font-size:.72rem;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+.inline-doc-close{
+  flex:0 0 auto;
+  width:38px;
+  height:38px;
+  border:1px solid var(--rule);
+  border-radius:50%;
+  background:var(--surface);
+  color:var(--paper);
+  font-size:24px;
+  line-height:1;
+  cursor:pointer;
+}
+.inline-doc-close:hover{border-color:var(--gold);color:var(--gold);}
+.inline-doc-body{
+  flex:1 1 auto;
+  overflow:auto;
+  overscroll-behavior:contain;
+  padding:20px;
+  line-height:1.6;
+  scrollbar-gutter:stable;
+}
+.inline-doc-body h2{
+  margin:26px 0 8px;
+  color:var(--gold);
+  font-size:1.1rem;
+}
+.inline-doc-body h3{margin:18px 0 6px;}
+.inline-doc-body p{margin:8px 0;}
+.inline-doc-body ul{padding-left:22px;}
+.inline-doc-body .effective{color:var(--muted);margin-top:0;}
+.inline-doc-body .notice{
+  margin:0 0 20px;
+  padding:13px 15px;
+  border:1px solid var(--rule);
+  border-left:4px solid var(--gold);
+  border-radius:10px;
+  background:var(--surface-alt);
+}
+.inline-faq-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:20px;
+}
+.inline-doc-section h2{
+  margin:0 0 10px;
+  padding-bottom:8px;
+  border-bottom:2px solid var(--gold);
+}
+.inline-doc-body details{
+  margin:8px 0;
+  border:1px solid var(--rule);
+  border-radius:10px;
+  overflow:hidden;
+  background:var(--surface-alt);
+}
+.inline-doc-body summary{
+  cursor:pointer;
+  list-style:none;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:13px 14px;
+  font-weight:700;
+}
+.inline-doc-body summary::-webkit-details-marker{display:none;}
+.inline-doc-body summary::after{
+  content:'+';
+  margin-left:auto;
+  color:var(--gold);
+  font-size:20px;
+  font-weight:400;
+}
+.inline-doc-body details[open] summary{
+  border-bottom:1px solid var(--rule);
+}
+.inline-doc-body details[open] summary::after{content:'–';}
+.inline-doc-answer{
+  padding:12px 14px 14px;
+  color:var(--muted);
+  font-size:.88rem;
+}
+.inline-doc-answer strong{color:var(--paper);}
+.inline-doc-support{
+  grid-column:1/-1;
+  padding:16px;
+  border:1px solid var(--rule);
+  border-radius:12px;
+  background:var(--surface-alt);
+  text-align:center;
+}
+.inline-doc-support h2{margin:0 0 5px;border:0;padding:0;}
+.inline-doc-support-links{
+  display:flex;
+  justify-content:center;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:12px;
+}
+.inline-doc-support-links a,
+.inline-doc-text-link{
+  color:var(--gold);
+}
+.inline-doc-text-link{
+  border:0;
+  background:none;
+  padding:0;
+  font:inherit;
+  text-decoration:underline;
+  cursor:pointer;
+}
+.inline-doc-footer{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 18px;
+  border-top:1px solid var(--rule);
+  background:var(--surface-alt);
+  color:var(--muted);
+  font-size:.75rem;
+}
+@media(max-width:760px){
+  .inline-doc-box{
+    width:calc(100vw - 14px);
+    height:92vh;
+    border-radius:14px;
+  }
+  .inline-doc-header{padding:15px 15px 12px;}
+  .inline-doc-body{padding:15px;}
+  .inline-faq-grid{grid-template-columns:1fr;}
+  .inline-doc-support{grid-column:auto;}
+  .inline-doc-footer{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .inline-doc-footer .btn-text{width:100%;}
+}

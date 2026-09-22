@@ -12,7 +12,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-grade-input-desktop-1">
+<link rel="stylesheet" href="style-3.css?v=v40-inline-help-legal-1">
 <link rel="stylesheet" href="ui-polish.css?v=v40-sync-engine-safety-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
@@ -87,8 +87,8 @@
   </div>
   <footer class="auth-footer" aria-label="SchoolHub information">
     <div class="auth-footer-brand"><strong>AlatiphA SchoolHub</strong><p>More time for teaching. One place for your school.</p></div>
-    <nav aria-label="Help, legal and contact"><a href="faq.html">Help &amp; FAQ</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms of Use</a><a href="tel:0243443688">0243443688</a><a href="mailto:alatipha@ymail.com">Email support</a></nav>
-    <span>© 2026 AlatiphA Multimedia</span>
+    <nav aria-label="Help, legal and contact"><button type="button" class="auth-footer-link" data-inline-doc="faq">Help &amp; FAQ</button><button type="button" class="auth-footer-link" data-inline-doc="privacy">Privacy</button><button type="button" class="auth-footer-link" data-inline-doc="terms">Terms of Use</button><a href="tel:0243443688">0243443688</a><a href="mailto:alatipha@ymail.com">Email support</a></nav>
+    <span>© All Rights Reserved · AlatiphA Multimedia</span>
   </footer>
 </div>
 
@@ -170,9 +170,9 @@
         <div id="profileAccountLine" class="profile-account-line">—</div>
         <button type="button" id="profileSetupLink" class="profile-link">Go to Setup</button>
         <button type="button" id="profileTourBtn" class="profile-link">Show Guided Tour</button>
-        <a href="faq.html" class="profile-link">Help &amp; FAQ</a>
-        <a href="privacy.html" class="profile-link">Privacy</a>
-        <a href="terms.html" class="profile-link">Terms of Use</a>
+        <button type="button" class="profile-link" data-inline-doc="faq">Help &amp; FAQ</button>
+        <button type="button" class="profile-link" data-inline-doc="privacy">Privacy</button>
+        <button type="button" class="profile-link" data-inline-doc="terms">Terms of Use</button>
         <button type="button" id="profileInstallBtn" class="profile-link">Install SchoolHub</button>
         <button type="button" id="profileAboutBtn" class="profile-link">About SchoolHub</button>
         <button type="button" id="profileSyncCenterBtn" class="profile-link">Sync Center</button>
@@ -790,6 +790,208 @@
   </div>
 </div>
 
+
+<!-- INLINE HELP / LEGAL -->
+<div id="inlineDocDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="inlineDocTitle">
+  <div class="about-box inline-doc-box">
+    <div class="inline-doc-header">
+      <div>
+        <p class="inline-doc-kicker">AlatiphA SchoolHub</p>
+        <h2 id="inlineDocTitle">Help &amp; FAQ</h2>
+      </div>
+      <button type="button" id="inlineDocCloseBtn" class="inline-doc-close" aria-label="Close">×</button>
+    </div>
+    <div id="inlineDocBody" class="inline-doc-body"></div>
+    <div class="inline-doc-footer">
+      <span>© All Rights Reserved · AlatiphA Multimedia</span>
+      <button type="button" id="inlineDocBottomCloseBtn" class="btn-text">Close</button>
+    </div>
+  </div>
+</div>
+
+<template id="inlineDocTemplateFaq">
+<div class="inline-faq-grid">
+      <section class="inline-doc-section">
+        <h2>Getting started & accounts</h2>
+        <details><summary>What is AlatiphA SchoolHub?</summary><div class="inline-doc-answer"><p>SchoolHub is a school-management PWA for school setup, staff, classes, subjects, students, attendance, grades, remarks, reports, backups and year-end rollover.</p></div></details>
+        <details><summary>How do I create or join a school?</summary><div class="inline-doc-answer"><p>Sign in first. A Head Teacher can register a school and receives a join code. A Teacher joins with that code, then waits for the Head Teacher to approve the request and assign classes/subjects.</p></div></details>
+        <details><summary>What can a Teacher access?</summary><div class="inline-doc-answer"><p>A Teacher is limited to approved assignments. Head Teacher-only areas such as school setup, staff management, classes, subjects, teacher management and billing are restricted.</p></div></details>
+        <details><summary>Can I use SchoolHub without an account?</summary><div class="inline-doc-answer"><p>Yes, through the 7-day guest trial. Guest data stays on the current device and is not a shared cloud school. Export a backup before clearing browser/app data.</p></div></details>
+        <details><summary>Can I sign in with Google?</summary><div class="inline-doc-answer"><p>Yes. Use <strong>Continue with Google</strong> or email/password. Use the same account each time so you return to the correct SchoolHub identity.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
+        <h2>Save, Update & deleting</h2>
+        <details><summary>What is the difference between Save and Update?</summary><div class="inline-doc-answer"><p><strong>Save</strong> is used for a new entry. <strong>Update</strong> is used when editing an existing record such as Staff, Student, Class, Subject, Teacher assignment or Calendar event.</p></div></details>
+        <details><summary>Why are some deletes blocked when offline?</summary><div class="inline-doc-answer"><p>Important destructive operations are designed to fail closed. Where SchoolHub needs cloud confirmation before deleting or restructuring records, reconnect first so local and cloud data cannot silently diverge.</p></div></details>
+        <details><summary>How does Calendar editing work?</summary><div class="inline-doc-answer"><p>Edit loads the original calendar event. Updating the type/note changes that event. Changing its date moves it to the new date and removes the original entry rather than leaving a duplicate.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
+        <h2>Staff, students & school records</h2>
+        <details><summary>How do I add staff, students, classes and subjects?</summary><div class="inline-doc-answer"><p>Use their pages from the dashboard. Add new records with Save. Use Edit, then Update, for existing records. Students and staff also support recovery checks from saved copies where available.</p></div></details>
+        <details><summary>Where are staff signatures and student photos stored?</summary><div class="inline-doc-answer"><p>SchoolHub keeps image data out of normal Firestore record fields. Cloud image files are handled through Firebase Storage while Firestore keeps lightweight references/metadata. This avoids oversized Firestore document fields.</p></div></details>
+        <details><summary>Can I import or export data with Excel?</summary><div class="inline-doc-answer"><p>Supported staff/grade workflows provide spreadsheet transfer options. Review imports carefully because an import can update multiple records at once. Keep a backup before major imports.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
+        <h2>Attendance & Calendar</h2>
+        <details><summary>How do I record pupil attendance?</summary><div class="inline-doc-answer"><p>Open <strong>Attendance</strong>, choose the class and date, mark pupils and save. Date arrows let you move between days. <strong>Unmark All</strong> clears the current marks before saving.</p></div></details>
+        <details><summary>What can the Head Teacher record?</summary><div class="inline-doc-answer"><p>Head Teachers can record pupil attendance, teacher attendance, and Calendar exceptions such as holidays and midterms.</p></div></details>
+        <details><summary>Do Print and Download Report use the same attendance design?</summary><div class="inline-doc-answer"><p>Yes. The attendance summary/report download uses the same modern report layout used for printing.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
+        <h2>Grades, remarks & reports</h2>
+        <details><summary>How do I enter grades?</summary><div class="inline-doc-answer"><p>Open <strong>Grades</strong>, choose a class, enter the required scores and save the grade sheet. On desktop, the grade table scrolls horizontally when many subjects are present and score inputs show full three-digit values.</p></div></details>
+        <details><summary>How do reports work?</summary><div class="inline-doc-answer"><p>Add grades and remarks, then open <strong>Reports</strong>. Select the class/student and generate the available report. Report themes can be previewed where enabled.</p></div></details>
+        <details><summary>Why is Billing & Credits sometimes unavailable?</summary><div class="inline-doc-answer"><p>Billing controls are Head Teacher-only. The current build can suspend live billing while updates are in progress, in which case SchoolHub shows that no payment or credit is required for report generation during the suspension.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
+        <h2>Offline mode & cloud sync</h2>
+        <details><summary>Can SchoolHub work offline?</summary><div class="inline-doc-answer"><p>Yes, for a previously verified signed-in account on the same device. SchoolHub can reopen the locally saved workspace when Firebase is temporarily unreachable. A first login or a new device still needs internet.</p></div></details>
+        <details><summary>What does Sync Pending mean?</summary><div class="inline-doc-answer"><p>It means one or more supported local edits are waiting in the persistent sync outbox. When internet returns, SchoolHub revalidates the account, sends pending edits first, then pulls fresh cloud data.</p></div></details>
+        <details><summary>What should I do if Sync Pending does not clear?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → Sync Center</strong> and use Sync Now while connected. If an error message appears, note the exact field/record named in the message before retrying.</p></div></details>
+        <details><summary>What do Offline Mode and Reconnecting mean?</summary><div class="inline-doc-answer"><p><strong>Offline Mode</strong> means the verified local workspace is being used. <strong>Reconnecting…</strong> means SchoolHub is checking the account and preparing to send queued changes before refreshing cloud data.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
+        <h2>Backup, recovery & rollover</h2>
+        <details><summary>How do I create a backup?</summary><div class="inline-doc-answer"><p>Go to <strong>Setup → Backup &amp; Restore → Export Backup (.json)</strong>. Store the downloaded JSON file somewhere safe.</p></div></details>
+        <details><summary>Can SchoolHub recover missing students or staff?</summary><div class="inline-doc-answer"><p>Recovery tools can compare the current list with available browser snapshots/saved copies and cloud records. Recovery only works when the missing record exists in one of those sources.</p></div></details>
+        <details><summary>How do I start a new term?</summary><div class="inline-doc-answer"><p>Use <strong>Term History</strong> to start the next term/year while preserving the school structure and historical records.</p></div></details>
+        <details><summary>What is Academic Year Rollover?</summary><div class="inline-doc-answer"><p>At year end, the Head Teacher reviews each student as <strong>Promote</strong>, <strong>Repeat</strong>, <strong>Graduate/Complete</strong>, or <strong>Transfer/Leave</strong>. The rollover creates a year-end backup/archive and starts the new academic year at Term 1.</p></div></details>
+        <details><summary>What is Restore Year-End Backup?</summary><div class="inline-doc-answer"><p>It is an emergency reversal tool for a SchoolHub academic-year rollover JSON. SchoolHub validates the backup and restores the backed-up roster/settings without unnecessarily deleting later grades, attendance, remarks, staff, classes, subjects or calendar data.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
+        <h2>Install, security & troubleshooting</h2>
+        <details><summary>Can I install SchoolHub like an app?</summary><div class="inline-doc-answer"><p>Yes. Use <strong>Profile → Install SchoolHub</strong> when installation is supported by your browser/device. The PWA caches the application shell for reliable reopening.</p></div></details>
+        <details><summary>What is the PIN Lock?</summary><div class="inline-doc-answer"><p>The optional PIN Lock is a local privacy screen for a shared device. It does not replace your Firebase account password or the Head Teacher/Teacher permission system.</p></div></details>
+        <details><summary>Where can I check the app status?</summary><div class="inline-doc-answer"><p>Use <strong>Profile → System Health</strong> for service/data checks and <strong>Profile → Sync Center</strong> for cloud synchronization.</p></div></details>
+        <details><summary>The app looks outdated. What should I do?</summary><div class="inline-doc-answer"><p>Close and reopen SchoolHub, then check <strong>Profile → About SchoolHub</strong> for the update option. A new service-worker cache is used when SchoolHub releases updated application files.</p></div></details>
+      </section>
+
+      <section class="inline-doc-support">
+        <h2>Need more help?</h2>
+        <p>Contact AlatiphA Multimedia for SchoolHub support.</p>
+        <div class="inline-doc-support-links">
+          <a href="tel:0243443688">Call 0243443688</a>
+          <a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a>
+          <button type="button" class="inline-doc-text-link" data-inline-doc="privacy">Privacy</button>
+          <button type="button" class="inline-doc-text-link" data-inline-doc="terms">Terms of Use</button>
+        </div>
+      </section>
+    </div>
+</template>
+
+<template id="inlineDocTemplatePrivacy">
+<p class="effective">Effective: 22 September 2026</p>
+<p class="notice">This notice explains how AlatiphA SchoolHub handles information used to run a school workspace. Schools and authorized users are responsible for entering information they are permitted to manage.</p>
+
+<h2>1. Information SchoolHub can handle</h2>
+<ul>
+<li><strong>Account information:</strong> Firebase account identifiers, email address, display name, role, approval status and school membership.</li>
+<li><strong>School information:</strong> school name, address/email where entered, academic year, term, report settings, calendar and related configuration.</li>
+<li><strong>Student records:</strong> names, class placement, identifiers and other student details entered by the school, plus attendance, grades and remarks.</li>
+<li><strong>Staff records:</strong> names, staff identifiers and administrative details entered by the school, which may include date of birth, registration/licence numbers, SSNIT number, Ghana Card ID, bank/account details, phone, email and role.</li>
+<li><strong>Images/files:</strong> school logo, student photos and staff signatures where uploaded.</li>
+<li><strong>Operational records:</strong> activity/audit records, teacher assignments, synchronization state, backup/rollover metadata and report-related information.</li>
+<li><strong>Billing information when enabled:</strong> school credit balance, payment references/status and transaction records. Card/payment credentials are handled by the payment provider rather than stored as ordinary SchoolHub record fields.</li>
+</ul>
+
+<h2>2. Where information is stored</h2>
+<p>Signed-in school workspaces use Firebase services such as Authentication, Firestore, Storage and, where required, Cloud Functions. Images such as student photos and staff signatures are stored as files in Firebase Storage with lightweight references in Firestore.</p>
+<p>SchoolHub also stores information on the device for offline use and app preferences. This can include cached school data, a verified-session marker, pending synchronization entries, theme preference, PIN-lock data, guest-trial state and recovery snapshots.</p>
+
+<h2>3. Guest trial</h2>
+<p>The 7-day guest trial does not create a shared cloud school. Guest records are stored on the current device. Clearing browser/app storage, uninstalling without preserving data, or losing the device can remove those records. Use the JSON backup feature before doing so.</p>
+
+<h2>4. Why information is used</h2>
+<p>SchoolHub uses the information above to provide school administration functions, control role/class access, generate reports, support attendance and grading, synchronize authorized devices, restore/recover data, maintain year/term history, provide offline-first access, diagnose synchronization problems, and support billing if that feature is active.</p>
+
+<h2>5. Role-based access</h2>
+<p>Head Teachers manage the school workspace and teacher approvals/assignments. Approved Teachers are restricted to the classes/subjects assigned to them. SchoolHub's role controls are designed to reduce unnecessary access, but each school remains responsible for assigning access appropriately.</p>
+
+<h2>6. Offline mode and synchronization</h2>
+<p>A previously verified signed-in user may reopen locally cached school data when internet access is unavailable. Supported offline edits can remain in a persistent sync queue until the account is revalidated online. Some destructive or sensitive operations may require a live cloud connection before they are completed.</p>
+
+<h2>7. Backups and recovery</h2>
+<p>SchoolHub can create downloadable JSON backups and year-end rollover backups. These files may contain school, student or staff information. Anyone who downloads a backup is responsible for storing it securely and sharing it only with authorized persons.</p>
+
+<h2>8. Third-party services</h2>
+<p>SchoolHub may rely on Google/Firebase for authentication and cloud services. Where billing is enabled, checkout may use Paystack. Those providers process information under their own terms and privacy practices.</p>
+
+<h2>9. Data retention and deletion</h2>
+<p>Cloud records generally remain until they are changed or deleted by an authorized school user or the service is otherwise removed. Local data remains until SchoolHub/browser storage is cleared, replaced by authorized restore/sync actions, or removed by the user/device. Downloaded backups remain wherever the user stores them.</p>
+
+<h2>10. Student and staff privacy responsibilities</h2>
+<p>Schools should enter only information they are authorized to collect and use, limit access to staff who need it, protect exported files, and follow applicable education and data-protection requirements. SchoolHub is an administrative tool and does not replace the school's own legal/privacy obligations.</p>
+
+<h2>11. Security</h2>
+<p>SchoolHub uses account authentication, role-based controls, Firestore/Storage rules, local PIN-lock options and fail-closed handling for selected sensitive operations. No online or local system can guarantee absolute security, so strong passwords, trusted devices and secure backup handling remain important.</p>
+
+<h2>12. Your choices</h2>
+<p>Authorized users can review and update many records within SchoolHub. A Head Teacher can manage teacher access. Users can sign out, export backups, and clear local application/browser data when appropriate. Requests concerning school-held records should normally be directed to the school that entered them.</p>
+
+<h2>13. Contact</h2>
+<p>For SchoolHub privacy or support questions, contact AlatiphA Multimedia at <a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a> or <a href="tel:0243443688">0243443688</a>.</p>
+
+<p class="muted">This notice may be updated when SchoolHub features, storage practices or service providers change. The effective date above identifies this version.</p>
+</template>
+
+<template id="inlineDocTemplateTerms">
+<p class="effective">Effective: 22 September 2026</p>
+<p class="notice">By using AlatiphA SchoolHub, you agree to use the service only for lawful school administration and only with information and access you are authorized to manage.</p>
+
+<h2>1. The service</h2>
+<p>SchoolHub provides tools for school setup, staff/classes/subjects/students, attendance, grades, remarks, report generation, backups, recovery, offline-first synchronization, teacher assignments, term history and academic-year rollover. Features may change as the application is improved.</p>
+
+<h2>2. Accounts and roles</h2>
+<p>You are responsible for your account credentials and activity. Head Teachers control school registration, teacher approval and teacher assignments. Teachers must not attempt to access classes, subjects or administration areas outside their approved role.</p>
+
+<h2>3. School authority and records</h2>
+<p>You must have appropriate authority to enter, view, edit, export or delete school, student and staff information. The school is responsible for the accuracy and lawful use of the records it enters, including sensitive identifiers, contact information, grades, attendance, photos and signatures.</p>
+
+<h2>4. Save, Update and synchronization</h2>
+<p>SchoolHub distinguishes new entries from edits: Save is for creating new records and Update is for changing existing records. Cloud synchronization can be delayed by connectivity. A Sync Pending indicator means supported local changes are waiting to be sent. Do not assume a pending change has reached the cloud until synchronization succeeds.</p>
+
+<h2>5. Offline use</h2>
+<p>Offline-first access is intended for previously verified signed-in users on a device that already holds the school workspace. First-time sign-in and some sensitive/destructive operations require internet access. Local offline data can be affected by browser/device storage changes.</p>
+
+<h2>6. Backups and year-end actions</h2>
+<p>You should create backups before major imports, deletes, restores or year-end rollover. Academic Year Rollover can change student class/enrolment status. Review all Promote, Repeat, Graduate/Complete and Transfer/Leave decisions before applying them. Emergency Restore is intended for a valid SchoolHub rollover backup and should be used carefully.</p>
+
+<h2>7. Reports and educational decisions</h2>
+<p>SchoolHub calculates and formats information from the data entered by authorized users. Schools should review grades, remarks, attendance summaries and generated reports before relying on or distributing them. SchoolHub does not replace professional or administrative review.</p>
+
+<h2>8. Billing and payments</h2>
+<p>Billing/credit features may be enabled, suspended or placed in test mode depending on the current SchoolHub release. When billing is suspended, the app will state that no payment or credit is required. When a real checkout is enabled, the amount and payment flow should be shown before payment. Payment processing may be provided by Paystack or another configured provider.</p>
+
+<h2>9. Acceptable use</h2>
+<p>You must not misuse SchoolHub, bypass access controls, interfere with synchronization/security, upload unlawful content, impersonate another user, use another school's join code without authorization, or attempt to access data that does not belong to your authorized school workspace.</p>
+
+<h2>10. Third-party services</h2>
+<p>SchoolHub depends on services such as Firebase/Google and may use Paystack when billing is active. Availability of those services can affect sign-in, cloud synchronization, storage, functions or payment processing.</p>
+
+<h2>11. Availability and changes</h2>
+<p>The service is provided on an as-available basis. Updates may change screens, workflows, limits or features. Reasonable steps are taken to protect existing data during updates, but users should maintain their own backups for important school records.</p>
+
+<h2>12. Limitation and user responsibility</h2>
+<p>To the extent permitted by applicable law, AlatiphA Multimedia is not responsible for loss caused by unauthorized account/device access, deletion by an authorized user, failure to keep backups, third-party service outages, unsupported browser/device changes, or data entered incorrectly. Nothing in these terms excludes rights that cannot lawfully be excluded.</p>
+
+<h2>13. Ending use</h2>
+<p>You may stop using SchoolHub at any time. Before clearing local data or abandoning a workspace, export any backup you are authorized to retain. School access may also be restricted when an account is disabled, removed from a school, or otherwise no longer authorized.</p>
+
+<h2>14. Privacy</h2>
+<p>Use of SchoolHub is also subject to the <button type="button" class="inline-doc-text-link" data-inline-doc="privacy">Privacy Notice</button>, which explains the types of information handled, offline storage, cloud services, backups and role-based access.</p>
+
+<h2>15. Contact and updates to these terms</h2>
+<p>For support or questions, contact AlatiphA Multimedia at <a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a> or <a href="tel:0243443688">0243443688</a>. These terms may be updated as SchoolHub changes. The effective date above identifies the current version.</p>
+</template>
+
+
 <!-- ABOUT -->
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box">
@@ -811,7 +1013,7 @@
       <button type="button" id="aboutCheckUpdateBtn" class="btn-primary">Check for Updates</button>
       <button type="button" id="aboutCloseBtn" class="btn-text">Close</button>
     </div>
-    <p class="about-copyright">© 2026 AlatiphA Multimedia</p>
+    <p class="about-copyright">© All Rights Reserved · AlatiphA Multimedia</p>
   </div>
 </div>
 
@@ -824,7 +1026,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
-<script src="app-4.js?v=v40-help-legal-1"></script>
+<script src="app-4.js?v=v40-inline-help-legal-1"></script>
 <script src="install.js"></script>
 </body>
 </html>
