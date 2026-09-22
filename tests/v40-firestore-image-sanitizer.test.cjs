@@ -1,0 +1,10 @@
+const fs=require('fs');
+const assert=require('assert');
+const js=fs.readFileSync('app-4.js','utf8');
+assert(js.includes("return Array.isArray(value) ? value.map(cleanStaff) : cleanStaff(value);"));
+assert(js.includes("return Array.isArray(value) ? value.map(cleanStudent) : cleanStudent(value);"));
+assert(js.includes("delete c.signature;"));
+assert(js.includes("delete c.photo;"));
+assert(js.includes("if (isDataImage(c.signatureUrl)) c.signatureUrl = '';"));
+assert(js.includes("if (isDataImage(c.photoUrl)) c.photoUrl = '';"));
+console.log('firestore image sanitizer regression: PASS');
