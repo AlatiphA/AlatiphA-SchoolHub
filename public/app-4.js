@@ -8928,25 +8928,36 @@ function commitChunks(ops) {
 }
 
 function stripImagesForCloud(field, value) {
-  if (field === 'students' && Array.isArray(value)) {
-    return value.map(s => {
-      const c = Object.assign({}, s);
-      if (!c.photoUrl && c.photo) c.photoUrl = c.photo;
-      delete c.photo;
-      return c;
-    });
+  // Firebase Storage owns binary/image data. Firestore records must contain
+  // only lightweight metadata/URLs. This sanitizer accepts either a whole
+  // collection array or a single record because syncCollectionArray invokes
+  // it one record at a time.
+  const cleanStudent = student => {
+    const c = Object.assign({}, student || {});
+    delete c.photo;
+    // Older builds could accidentally copy a data URL into photoUrl. Never
+    // send that inline image back to Firestore.
+    if (isDataImage(c.photoUrl)) c.photoUrl = '';
+    return c;
+  };
+  const cleanStaff = staff => {
+    const c = Object.assign({}, staff || {});
+    delete c.signature;
+    // Older builds could accidentally copy a data URL into signatureUrl.
+    if (isDataImage(c.signatureUrl)) c.signatureUrl = '';
+    return c;
+  };
+
+  if (field === 'students') {
+    return Array.isArray(value) ? value.map(cleanStudent) : cleanStudent(value);
   }
-  if (field === 'staff' && Array.isArray(value)) {
-    return value.map(s => {
-      const c = Object.assign({}, s);
-      if (!c.signatureUrl && c.signature) c.signatureUrl = c.signature;
-      delete c.signature;
-      return c;
-    });
+  if (field === 'staff') {
+    return Array.isArray(value) ? value.map(cleanStaff) : cleanStaff(value);
   }
   if (field === 'settings' && value && typeof value === 'object') {
     const c = Object.assign({}, value);
     delete c.logo;
+    if (isDataImage(c.logoUrl)) c.logoUrl = '';
     return c;
   }
   return value;
