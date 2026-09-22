@@ -1,8 +1,50 @@
 // AlatiphA SchoolHub — app-4.js
-// v40 sync-stability patch: authoritative full hydration, intentional empty deletes, cloud-confirmed critical writes.
+// v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
 const APP_VERSION = 'v40';
 
 /* ---------- storage helpers ---------- */
+const syncDirtyKeys = new Map();
+
+function stableSyncJson(value) {
+  try { return JSON.stringify(value); } catch (e) { return String(value); }
+}
+
+function markSyncDirty(rawKey, oldValue, newValue) {
+  // Automatic synchronization is UPSERT-ONLY. A missing local record is never
+  // interpreted as a cloud delete. Explicit Delete/Clear handlers are the only
+  // code paths allowed to delete Firestore documents.
+  const dirty = syncDirtyKeys.get(rawKey) || new Set();
+
+  if (Array.isArray(newValue)) {
+    const oldById = new Map((Array.isArray(oldValue) ? oldValue : [])
+      .filter(item => item && item.id != null)
+      .map(item => [String(item.id), item]));
+    newValue.forEach(item => {
+      if (!item || item.id == null) return;
+      const id = String(item.id);
+      if (!oldById.has(id) || stableSyncJson(oldById.get(id)) !== stableSyncJson(item)) dirty.add(id);
+    });
+  } else if (newValue && typeof newValue === 'object') {
+    const oldObj = oldValue && typeof oldValue === 'object' && !Array.isArray(oldValue) ? oldValue : {};
+    Object.keys(newValue).forEach(key => {
+      if (!(key in oldObj) || stableSyncJson(oldObj[key]) !== stableSyncJson(newValue[key])) dirty.add(String(key));
+    });
+    // Deliberately do not mark keys that disappeared locally. Deletion must be
+    // explicit and cloud-confirmed, never inferred from an incomplete cache.
+  } else if (stableSyncJson(oldValue) !== stableSyncJson(newValue)) {
+    dirty.add('__value__');
+  }
+
+  if (dirty.size) syncDirtyKeys.set(rawKey, dirty);
+}
+
+function clearSyncDirty(rawKey, ids) {
+  const dirty = syncDirtyKeys.get(rawKey);
+  if (!dirty) return;
+  (ids || []).forEach(id => dirty.delete(String(id)));
+  if (!dirty.size) syncDirtyKeys.delete(rawKey);
+}
+
 const DB = {
   get(key, fallback) {
     try {
@@ -14,6 +56,11 @@ const DB = {
   },
   set(key, val, options) {
     const clean = stripImagesForLocalStorage(key, val);
+    let oldClean = null;
+    try {
+      const previousRaw = localStorage.getItem(key);
+      oldClean = previousRaw === null ? null : JSON.parse(previousRaw);
+    } catch (e) {}
     const payload = JSON.stringify(clean);
     try {
       localStorage.setItem(key, payload);
@@ -26,9 +73,11 @@ const DB = {
         throw retryError;
       }
     }
-    // v40: cloud hydration writes must never schedule a cloud push.
-    if (!(options && options.skipCloudSync) && typeof scheduleCloudPush === 'function') {
-      scheduleCloudPush(key);
+    // Cloud hydration/recovery writes never become outbound edits. Normal
+    // local edits record only the records that actually changed.
+    if (!(options && options.skipCloudSync)) {
+      markSyncDirty(key, oldClean, clean);
+      if (typeof scheduleCloudPush === 'function') scheduleCloudPush(key);
     }
   }
 };
@@ -1494,22 +1543,41 @@ function renderClasses() {
     });
   });
   list.querySelectorAll('.del-class').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       if (!confirm('Delete this class and its students/grades?')) return;
       const id = btn.dataset.id;
-      DB.set(KEYS.classes, DB.get(KEYS.classes, []).filter(c => c.id !== id));
-      auditAction('delete', 'class', id, 'Deleted class and its academic records');
-      DB.set(KEYS.students, DB.get(KEYS.students, []).filter(s => s.classId !== id));
-      const grades = DB.get(KEYS.grades, {});
-      Object.keys(grades).forEach(k => { if (k.startsWith(id + '__')) delete grades[k]; });
-      DB.set(KEYS.grades, grades);
-      const attendance = DB.get(KEYS.attendance, {});
-      Object.keys(attendance).forEach(k => { if (k.startsWith(id + '__')) delete attendance[k]; });
-      DB.set(KEYS.attendance, attendance);
-      const remarks = DB.get(KEYS.remarks, {});
-      Object.keys(remarks).forEach(k => { if (k.startsWith(id + '__')) delete remarks[k]; });
-      DB.set(KEYS.remarks, remarks);
-      renderClasses();
+      try {
+        if (FIREBASE_ENABLED && currentSchoolId) {
+          if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+          const refs = [
+            schoolRef().collection('students').where('classId', '==', id).get(),
+            schoolRef().collection('grades').where('classId', '==', id).get(),
+            schoolRef().collection('attendance').where('classId', '==', id).get(),
+            schoolRef().collection('remarks').where('classId', '==', id).get()
+          ];
+          const snaps = await Promise.all(refs);
+          const ops = [batch => batch.delete(schoolRef().collection('classes').doc(String(id)))];
+          snaps.forEach(snap => snap.forEach(doc => ops.push(batch => batch.delete(doc.ref))));
+          await commitChunks(ops);
+          setLastSyncedNow();
+        }
+
+        DB.set(KEYS.classes, DB.get(KEYS.classes, []).filter(c => c.id !== id), {skipCloudSync:true});
+        DB.set(KEYS.students, DB.get(KEYS.students, []).filter(s => s.classId !== id), {skipCloudSync:true});
+        const grades = DB.get(KEYS.grades, {});
+        Object.keys(grades).forEach(k => { if (k.startsWith(id + '__')) delete grades[k]; });
+        DB.set(KEYS.grades, grades, {skipCloudSync:true});
+        const attendance = DB.get(KEYS.attendance, {});
+        Object.keys(attendance).forEach(k => { if (k.startsWith(id + '__')) delete attendance[k]; });
+        DB.set(KEYS.attendance, attendance, {skipCloudSync:true});
+        const remarks = DB.get(KEYS.remarks, {});
+        Object.keys(remarks).forEach(k => { if (k.startsWith(id + '__')) delete remarks[k]; });
+        DB.set(KEYS.remarks, remarks, {skipCloudSync:true});
+        auditAction('delete', 'class', id, 'Deleted class and its academic records');
+        renderClasses();
+      } catch (error) {
+        alert('The class was NOT deleted. Existing data has been left unchanged.\n\n' + (error.message || error));
+      }
     });
   });
 }
@@ -2136,13 +2204,23 @@ function renderSubjects() {
     });
   });
   list.querySelectorAll('.del-subject').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       if (!confirm('Delete this subject from all classes?')) return;
       const id = btn.dataset.id;
-      const subjects = DB.get(KEYS.subjects, []).filter(s => s.id !== id);
-      subjects.forEach((sub, i) => { sub.order = i; });
-      DB.set(KEYS.subjects, subjects);
-      renderSubjects();
+      try {
+        if (FIREBASE_ENABLED && currentSchoolId) {
+          if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+          await schoolRef().collection('subjects').doc(String(id)).delete();
+          setLastSyncedNow();
+        }
+        const subjects = DB.get(KEYS.subjects, []).filter(s => s.id !== id);
+        subjects.forEach((sub, i) => { sub.order = i; });
+        DB.set(KEYS.subjects, subjects, {skipCloudSync:true});
+        auditAction('delete', 'subject', id, 'Deleted subject');
+        renderSubjects();
+      } catch (error) {
+        alert('The subject was NOT deleted. Existing data has been left unchanged.\n\n' + (error.message || error));
+      }
     });
   });
 
@@ -2285,8 +2363,10 @@ function studentRecoverySnapshots(schoolId) {
   const out = [];
   try {
     const prefix = recoveryKey(schoolId);
-    const keys = [prefix, prefix + '__staff_repair_original'];
-    keys.forEach(key => {
+    let history = [];
+    try { history = JSON.parse(localStorage.getItem(prefix + '__history_index') || '[]'); } catch (e) {}
+    const keys = [prefix, prefix + '__staff_repair_original'].concat(Array.isArray(history) ? history : []);
+    Array.from(new Set(keys)).forEach(key => {
       const raw = localStorage.getItem(key);
       if (!raw) return;
       const backup = JSON.parse(raw);
@@ -2861,7 +2941,7 @@ function renderStaff() {
         catch (error) { alert('Could not delete this staff member. Please reconnect and try again.'); return; }
         if (!isCurrentSession(token, userId, schoolId)) return;
       }
-      DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== id));
+      DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== id), {skipCloudSync:true});
       auditAction('delete', 'staff', id, 'Deleted staff record');
       const classes = DB.get(KEYS.classes, []); classes.forEach(c => { if (c.classTeacherId === id) c.classTeacherId = ''; }); DB.set(KEYS.classes, classes);
       const settings = DB.get(KEYS.settings, {}); if (settings.headTeacherId === id) { settings.headTeacherId = ''; DB.set(KEYS.settings, settings); }
@@ -3947,15 +4027,25 @@ function renderSchoolCalendar() {
     document.getElementById('calendarType').value = rec.type || 'holiday';
     document.getElementById('calendarNote').value = rec.note || '';
   }));
-  document.querySelectorAll('.calendar-delete').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.calendar-delete').forEach(btn => btn.addEventListener('click', async () => {
     if (!requireHeadTeacher('change the school calendar')) return;
-    const all = DB.get(KEYS.schoolCalendar, {});
     const key = calendarKey(term, year, btn.dataset.date);
-    delete all[key]; DB.set(KEYS.schoolCalendar, all);
-    auditAction('delete', 'schoolCalendar', key, `Removed calendar exception for ${btn.dataset.date}`);
-    refreshAttendanceAfterCalendarChange();
+    try {
+      if (FIREBASE_ENABLED && currentSchoolId) {
+        if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+        await schoolCalendarRef(key).delete();
+        setLastSyncedNow();
+      }
+      const all = DB.get(KEYS.schoolCalendar, {});
+      delete all[key];
+      DB.set(KEYS.schoolCalendar, all, {skipCloudSync:true});
+      auditAction('delete', 'schoolCalendar', key, `Removed calendar exception for ${btn.dataset.date}`);
+      refreshAttendanceAfterCalendarChange();
+    } catch (error) {
+      alert('The calendar day was NOT removed. Existing data has been left unchanged.\n\n' + (error.message || error));
+    }
   }));
-  document.getElementById('saveCalendarDay').addEventListener('click', () => {
+  document.getElementById('saveCalendarDay').addEventListener('click', async () => {
     if (!requireHeadTeacher('change the school calendar')) return;
     const date = document.getElementById('calendarDate').value;
     const type = document.getElementById('calendarType').value;
@@ -3966,20 +4056,45 @@ function renderSchoolCalendar() {
     if (!isWeekdayDate(parseDateOnly(date))) { alert('This school calendar is for weekdays. Weekends are automatically excluded from Times Open.'); return; }
     const all = DB.get(KEYS.schoolCalendar, {});
     const key = calendarKey(term, year, date);
-    if (type === 'open') delete all[key];
-    else all[key] = { term, year, date, type, note, updatedAt: new Date().toISOString() };
-    DB.set(KEYS.schoolCalendar, all);
-    auditAction('update', 'schoolCalendar', key, `Set ${date} as ${calendarLabel(type)}${note ? ` · ${note}` : ''}`);
-    refreshAttendanceAfterCalendarChange();
-    alert(`School calendar updated: ${date} · ${calendarLabel(type)}.`);
+    try {
+      if (FIREBASE_ENABLED && currentSchoolId) {
+        if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+        if (type === 'open') {
+          await schoolCalendarRef(key).delete();
+        } else {
+          await schoolCalendarRef(key).set({ term, year, date, type, note, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+        }
+        setLastSyncedNow();
+      }
+      if (type === 'open') delete all[key];
+      else all[key] = { term, year, date, type, note, updatedAt: new Date().toISOString() };
+      DB.set(KEYS.schoolCalendar, all, {skipCloudSync:true});
+      auditAction(type === 'open' ? 'delete' : 'update', 'schoolCalendar', key, `Set ${date} as ${calendarLabel(type)}${note ? ` · ${note}` : ''}`);
+      refreshAttendanceAfterCalendarChange();
+      alert(`School calendar updated: ${date} · ${calendarLabel(type)}.`);
+    } catch (error) {
+      alert('The school calendar was NOT changed. Existing data has been left unchanged.\n\n' + (error.message || error));
+    }
   });
-  document.getElementById('clearCalendarDay').addEventListener('click', () => {
+  document.getElementById('clearCalendarDay').addEventListener('click', async () => {
     if (!requireHeadTeacher('change the school calendar')) return;
     const date = document.getElementById('calendarDate').value;
     if (!date) { alert('Select a calendar date.'); return; }
-    const all = DB.get(KEYS.schoolCalendar, {}); delete all[calendarKey(term, year, date)]; DB.set(KEYS.schoolCalendar, all);
-    auditAction('delete', 'schoolCalendar', calendarKey(term, year, date), `Set ${date} as School Open`);
-    refreshAttendanceAfterCalendarChange();
+    const key = calendarKey(term, year, date);
+    try {
+      if (FIREBASE_ENABLED && currentSchoolId) {
+        if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+        await schoolCalendarRef(key).delete();
+        setLastSyncedNow();
+      }
+      const all = DB.get(KEYS.schoolCalendar, {});
+      delete all[key];
+      DB.set(KEYS.schoolCalendar, all, {skipCloudSync:true});
+      auditAction('delete', 'schoolCalendar', key, `Set ${date} as School Open`);
+      refreshAttendanceAfterCalendarChange();
+    } catch (error) {
+      alert('The calendar day was NOT cleared. Existing data has been left unchanged.\n\n' + (error.message || error));
+    }
   });
 }
 
@@ -8176,6 +8291,21 @@ function backupLocalSchoolData(reason) {
       if (raw !== null) snapshot.data[field] = JSON.parse(raw);
     });
     localStorage.setItem(recoveryKey(currentSchoolId), JSON.stringify(snapshot));
+
+    // Keep a rolling history of the last five pre-hydration snapshots. One
+    // overwritten recovery slot is not enough when data loss is noticed days
+    // later after several launches.
+    const historyIndexKey = recoveryKey(currentSchoolId) + '__history_index';
+    let history = [];
+    try { history = JSON.parse(localStorage.getItem(historyIndexKey) || '[]'); } catch (e) {}
+    const historyKey = recoveryKey(currentSchoolId) + '__history__' + Date.now();
+    localStorage.setItem(historyKey, JSON.stringify(snapshot));
+    history.push(historyKey);
+    while (history.length > 5) {
+      const oldKey = history.shift();
+      try { localStorage.removeItem(oldKey); } catch (e) {}
+    }
+    localStorage.setItem(historyIndexKey, JSON.stringify(history));
     return true;
   } catch (e) {
     console.warn('v40 recovery backup could not be saved:', e);
@@ -8208,6 +8338,10 @@ function mergeKeyedData(localValue, cloudValue) {
 }
 
 function mergeCloudCollection(field, cloudItems, authoritative) {
+  // v40 systemic data-loss guard:
+  // Firestore absence is NOT proof of intentional deletion. Every hydration is
+  // therefore a merge. Incoming cloud copies win for matching IDs/keys, while
+  // local-only records remain available for recovery instead of disappearing.
   if (field === 'settings') {
     DB.set(KEYS.settings, Object.assign({}, DB.get(KEYS.settings, {}), cloudItems || {}), {skipCloudSync:true});
     return;
@@ -8215,11 +8349,11 @@ function mergeCloudCollection(field, cloudItems, authoritative) {
   const arrayFields = ['classes','subjects','students','staff'];
   if (arrayFields.indexOf(field) !== -1) {
     const incoming = Array.isArray(cloudItems) ? cloudItems : [];
-    DB.set(KEYS[field], authoritative ? incoming : mergeRecordsById(DB.get(KEYS[field], []), incoming), {skipCloudSync:true});
+    DB.set(KEYS[field], mergeRecordsById(DB.get(KEYS[field], []), incoming), {skipCloudSync:true});
     return;
   }
   const incoming = cloudItems && typeof cloudItems === 'object' && !Array.isArray(cloudItems) ? cloudItems : {};
-  DB.set(KEYS[field], authoritative ? incoming : mergeKeyedData(DB.get(KEYS[field], {}), incoming), {skipCloudSync:true});
+  DB.set(KEYS[field], mergeKeyedData(DB.get(KEYS[field], {}), incoming), {skipCloudSync:true});
 }
 
 function pullCloudData(sessionToken) {
@@ -8362,9 +8496,10 @@ function pullCloudData(sessionToken) {
       const mergedSubjects = DB.get(KEYS.subjects, []);
       const mergedGrades = DB.get(KEYS.grades, {});
       const cloudSubjectIds = new Set(subjects.map(subject => subject.id));
-      const staleSubjectRepair = all
-        ? removeUnscoredSubjectsAbsentFromCloud(mergedSubjects, mergedGrades, cloudSubjectIds)
-        : { subjects: mergedSubjects, changed: false, removed: 0 };
+      // Never remove a local subject merely because it is absent from a cloud
+      // snapshot. Absence may be an incomplete/older sync, not an intentional
+      // deletion. Explicit subject deletion handles genuine removals.
+      const staleSubjectRepair = { subjects: mergedSubjects, changed: false, removed: 0 };
       const nameRepair = all
         ? repairDuplicateSubjects(staleSubjectRepair.subjects, mergedGrades)
         : { subjects: sortSubjectsByOrder(mergedSubjects), grades: mergedGrades, changed: false };
@@ -8446,170 +8581,133 @@ function scheduleCloudPush(rawKey) {
 
 
 function syncCollectionArray(ref, items, cleanFn, options) {
+  // Legacy compatibility helper. It is intentionally UPSERT-ONLY.
+  // Missing local IDs never delete Firestore documents.
   const safeItems = Array.isArray(items) ? items : [];
-  const currentIds = new Set(safeItems.map(item => item && item.id).filter(Boolean).map(String));
-  return ref.get().then(snapshot => {
-    // After hydration, an empty collection may be an intentional delete-all.
-    const allowDeletes = !(options && options.preserveMissing) && sessionDataReady && !cloudHydrationInProgress;
-    const ops = [];
-    safeItems.forEach(item => {
-      if (!item || !item.id) return;
-      ops.push(batch => batch.set(ref.doc(String(item.id)), cleanFn(item)));
-    });
-    if (allowDeletes) {
-      snapshot.forEach(doc => {
-        if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(doc.ref));
-      });
-    }
-    return commitChunks(ops);
-  });
+  return commitChunks(safeItems
+    .filter(item => item && item.id)
+    .map(item => batch => batch.set(ref.doc(String(item.id)), cleanFn(item), { merge: true })));
 }
 
 function syncKeyedCollection(ref, entries, makeData, allowedClassIds) {
-  // Compare encoded Firestore IDs, not the raw local keys.
-  // This prevents valid documents such as 2025/2026 from being deleted
-  // during synchronization after their keys are encoded for Firestore.
-  const currentIds = new Set(Object.keys(entries).map(cloudKey));
-  let existingPromise;
-  if (allowedClassIds === null) {
-    existingPromise = ref.get();
-  } else {
-    const ids = Array.from(allowedClassIds || []);
-    existingPromise = Promise.all(ids.map(classId => ref.where('classId', '==', classId).get()))
-      .then(snaps => {
-        const docs = [];
-        snaps.forEach(snap => snap.forEach(d => docs.push(d)));
-        return { forEach: fn => docs.forEach(fn) };
-      });
-  }
-  return existingPromise.then(snapshot => {
-    const ops = [];
-    Object.keys(entries).forEach(key => {
-      // Local grade/remark keys can contain '/', e.g. 2025/2026.
-      // Encode the same ID used for comparison and reads before writing.
-      const docId = cloudKey(key);
-      ops.push(batch => batch.set(ref.doc(docId), makeData(key, entries[key])));
-    });
-    // After hydration, empty keyed data may be an intentional clear-all.
-    if (sessionDataReady && !cloudHydrationInProgress) {
-      snapshot.forEach(doc => {
-        if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(doc.ref));
-      });
-    }
-    return commitChunks(ops);
-  });
+  // Legacy compatibility helper. It is intentionally UPSERT-ONLY.
+  // Explicit Delete/Clear handlers own all cloud deletions.
+  const safe = entries && typeof entries === 'object' && !Array.isArray(entries) ? entries : {};
+  return commitChunks(Object.keys(safe).map(key => {
+    const docId = cloudKey(key);
+    return batch => batch.set(ref.doc(docId), makeData(key, safe[key]), { merge: true });
+  }));
 }
 
+function dirtyIdsFor(rawKey) {
+  return Array.from(syncDirtyKeys.get(rawKey) || []);
+}
+
+function dirtyArrayRecords(rawKey, value, allowedIds) {
+  const wanted = new Set(dirtyIdsFor(rawKey));
+  return (Array.isArray(value) ? value : []).filter(item =>
+    item && item.id != null &&
+    wanted.has(String(item.id)) &&
+    (!allowedIds || allowedIds.has(item.classId))
+  );
+}
+
+function dirtyKeyedRecords(rawKey, value, allowedClassIds) {
+  const wanted = new Set(dirtyIdsFor(rawKey));
+  const out = {};
+  Object.keys(value || {}).forEach(key => {
+    if (!wanted.has(String(key))) return;
+    if (allowedClassIds) {
+      const classId = (value[key] && value[key].classId) || String(key).split('__')[0];
+      if (!allowedClassIds.has(classId)) return;
+    }
+    out[key] = value[key];
+  });
+  return out;
+}
+
+
 function pushFieldToCloud(match) {
-  // Direct calls must be just as safe as delayed DB.set synchronization.
+  // Direct calls are safe and non-destructive. Automatic synchronization only
+  // upserts records that DB.set marked dirty. It never compares whole local
+  // collections with Firestore and never infers deletes from missing cache data.
   if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active' || cloudHydrationInProgress || !sessionDataReady) return Promise.resolve();
+
   const field = match.field;
   const value = DB.get(match.key, fieldDefault(field));
+  const dirtyIds = dirtyIdsFor(match.key);
+  if (!dirtyIds.length) return Promise.resolve();
+
+  let promise = Promise.resolve();
 
   if (field === 'settings') {
     if (!isHeadTeacher()) return Promise.resolve();
-    return schoolRef().set({ profile: stripImagesForCloud('settings', value), schemaVersion: CLOUD_SCHEMA_VERSION, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
-      .then(() => setLastSyncedNow());
-  }
-
-  if (field === 'classes') {
+    promise = schoolRef().set({
+      profile: stripImagesForCloud('settings', value),
+      schemaVersion: CLOUD_SCHEMA_VERSION,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+  } else if (field === 'classes') {
     if (!isHeadTeacher()) return Promise.resolve();
-    return syncCollectionArray(schoolRef().collection('classes'), value,
-      c => Object.assign({}, c, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))
-      .then(() => setLastSyncedNow());
-  }
-
-  if (field === 'subjects') {
+    const items = dirtyArrayRecords(match.key, value);
+    promise = syncCollectionArray(schoolRef().collection('classes'), items,
+      c => Object.assign({}, c, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }));
+  } else if (field === 'subjects') {
     if (!isHeadTeacher()) return Promise.resolve();
-    return syncCollectionArray(schoolRef().collection('subjects'), value,
-      s => Object.assign({}, s, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))
-      .then(() => setLastSyncedNow());
-  }
-
-  if (field === 'staff') {
+    const items = dirtyArrayRecords(match.key, value);
+    promise = syncCollectionArray(schoolRef().collection('subjects'), items,
+      s => Object.assign({}, s, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }));
+  } else if (field === 'staff') {
     if (!isHeadTeacher()) return Promise.resolve();
-    return syncCollectionArray(schoolRef().collection('staff'), value,
-      s => stripImagesForCloud('staff', s), { preserveMissing: true })
-      .then(() => setLastSyncedNow());
-  }
-
-  if (field === 'students') {
-    // Student synchronization can delete missing cloud documents. Never allow
-    // that destructive comparison until the session's cloud data is ready.
-    if (cloudHydrationInProgress || !sessionDataReady) return Promise.resolve();
+    const items = dirtyArrayRecords(match.key, value);
+    promise = syncCollectionArray(schoolRef().collection('staff'), items,
+      s => stripImagesForCloud('staff', s), { preserveMissing: true });
+  } else if (field === 'students') {
     const allowed = classIdsForCloudSync();
-    const filtered = value.filter(s => allowed.has(s.classId));
-    const ref = schoolRef().collection('students');
-    const existingPromise = isHeadTeacher()
-      ? ref.get()
-      : Promise.all(Array.from(allowed).map(classId => ref.where('classId', '==', classId).get()))
-          .then(snaps => {
-            const docs = [];
-            snaps.forEach(snap => snap.forEach(d => docs.push(d)));
-            return { forEach: fn => docs.forEach(fn) };
-          });
-    return existingPromise.then(snapshot => {
-      const currentIds = new Set(filtered.map(s => s.id));
-      const ops = [];
-      filtered.forEach(s => ops.push(batch => batch.set(ref.doc(s.id), stripImagesForCloud('students', s))));
-      if (sessionDataReady && !cloudHydrationInProgress) snapshot.forEach(doc => { if (!currentIds.has(doc.id)) ops.push(batch => batch.delete(ref.doc(doc.id))); });
-      return commitChunks(ops);
-    }).then(() => setLastSyncedNow());
-  }
-
-  if (field === 'grades') {
+    const items = dirtyArrayRecords(match.key, value, allowed);
+    promise = syncCollectionArray(schoolRef().collection('students'), items,
+      s => stripImagesForCloud('students', s));
+  } else if (field === 'grades') {
     const allowed = classIdsForCloudSync();
-    const filtered = {};
-    Object.keys(value).forEach(key => {
-      const classId = key.split('__')[0];
-      if (allowed.has(classId)) filtered[key] = value[key];
-    });
-    return syncKeyedCollection(schoolRef().collection('grades'), filtered,
-      (key, entries) => ({ classId: key.split('__')[0], entries, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
-      isHeadTeacher() ? null : allowed)
-      .then(() => setLastSyncedNow());
-  }
-
-  if (field === 'attendance') {
+    const entries = dirtyKeyedRecords(match.key, value, allowed);
+    promise = syncKeyedCollection(schoolRef().collection('grades'), entries,
+      (key, record) => ({ classId: key.split('__')[0], entries: record || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
+      isHeadTeacher() ? null : allowed);
+  } else if (field === 'attendance') {
     const allowed = classIdsForCloudSync();
-    const filtered = {};
-    Object.keys(value).forEach(key => {
-      const classId = (value[key] && value[key].classId) || key.split('__')[0];
-      if (allowed.has(classId)) filtered[key] = value[key];
-    });
-    return syncKeyedCollection(schoolRef().collection('attendance'), filtered,
-      (key, record) => Object.assign({}, record, { classId: record.classId || key.split('__')[0], entries: record.entries || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
-      isHeadTeacher() ? null : allowed)
-      .then(() => setLastSyncedNow());
-  }
-
-  if (field === 'teacherAttendance') {
+    const entries = dirtyKeyedRecords(match.key, value, allowed);
+    promise = syncKeyedCollection(schoolRef().collection('attendance'), entries,
+      (key, record) => Object.assign({}, record, {
+        classId: (record && record.classId) || key.split('__')[0],
+        entries: (record && record.entries) || {},
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }), isHeadTeacher() ? null : allowed);
+  } else if (field === 'teacherAttendance') {
     if (!isHeadTeacher()) return Promise.resolve();
-    return syncKeyedCollection(schoolRef().collection('teacherAttendance'), value,
-      (key, record) => Object.assign({}, record, { entries: record.entries || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
-      null).then(() => setLastSyncedNow());
-  }
-
-  if (field === 'schoolCalendar') {
+    const entries = dirtyKeyedRecords(match.key, value, null);
+    promise = syncKeyedCollection(schoolRef().collection('teacherAttendance'), entries,
+      (key, record) => Object.assign({}, record, { entries: (record && record.entries) || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }), null);
+  } else if (field === 'schoolCalendar') {
     if (!isHeadTeacher()) return Promise.resolve();
-    return syncKeyedCollection(schoolRef().collection('schoolCalendar'), value,
-      (key, record) => Object.assign({}, record, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
-      null).then(() => setLastSyncedNow());
+    const entries = dirtyKeyedRecords(match.key, value, null);
+    promise = syncKeyedCollection(schoolRef().collection('schoolCalendar'), entries,
+      (key, record) => Object.assign({}, record, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }), null);
+  } else if (field === 'remarks') {
+    const allowed = classIdsForCloudSync();
+    const entries = dirtyKeyedRecords(match.key, value, allowed);
+    promise = syncKeyedCollection(schoolRef().collection('remarks'), entries,
+      (key, record) => ({ classId: key.split('__')[0], entries: record || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
+      isHeadTeacher() ? null : allowed);
   }
 
-  if (field === 'remarks') {
-    const allowed = classIdsForCloudSync();
-    const filtered = {};
-    Object.keys(value).forEach(key => {
-      const classId = key.split('__')[0];
-      if (allowed.has(classId)) filtered[key] = value[key];
-    });
-    return syncKeyedCollection(schoolRef().collection('remarks'), filtered,
-      (key, entries) => ({ classId: key.split('__')[0], entries, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
-      isHeadTeacher() ? null : allowed)
-      .then(() => setLastSyncedNow());
-  }
-  return Promise.resolve();
+  const pushedIds = dirtyIds.slice();
+  return promise.then(() => {
+    clearSyncDirty(match.key, pushedIds);
+    setLastSyncedNow();
+    // If the same record changed again while this request was in flight,
+    // DB.set has re-added it to the dirty set. Queue the latest value.
+    if (dirtyIdsFor(match.key).length) scheduleCloudPush(match.key);
+  });
 }
 
 function syncableFields() {
