@@ -1483,3 +1483,15 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
   .rollover-restore-head{flex-direction:column}
   .rollover-restore-actions button{width:100%}
 }
+
+
+/* v40 true offline-first authenticated mode */
+.offline-mode-banner{position:fixed;top:max(8px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:12000;width:min(680px,calc(100vw - 24px));display:flex;align-items:flex-start;gap:10px;padding:10px 13px;border:1px solid var(--rule);border-radius:14px;background:var(--surface);color:var(--paper);box-shadow:0 8px 28px rgba(0,0,0,.14)}
+.offline-mode-banner.hidden{display:none!important}
+.offline-mode-dot{width:9px;height:9px;border-radius:50%;background:#b7791f;flex:0 0 auto;margin-top:5px}
+.offline-mode-banner.is-reconnecting .offline-mode-dot{animation:offlinePulse 1s ease-in-out infinite}
+.offline-mode-banner>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.offline-mode-title{font-size:.82rem}
+.offline-mode-detail{font-size:.72rem;color:var(--muted);line-height:1.35}
+@keyframes offlinePulse{50%{opacity:.3;transform:scale(.75)}}
+@media(max-width:520px){.offline-mode-banner{top:max(6px,env(safe-area-inset-top));width:calc(100vw - 14px);padding:9px 11px;border-radius:12px}.offline-mode-detail{font-size:.68rem}}

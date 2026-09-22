@@ -3,7 +3,40 @@
 const APP_VERSION = 'v40';
 
 /* ---------- storage helpers ---------- */
+const SYNC_OUTBOX_KEY = 'arc_sync_outbox_v1';
+const VERIFIED_SESSION_PREFIX = 'arc_verified_session_v1__';
 const syncDirtyKeys = new Map();
+let offlineAuthenticatedMode = false;
+let offlineReconnectInProgress = false;
+
+function loadPersistentSyncOutbox() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SYNC_OUTBOX_KEY) || '{}');
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+    Object.keys(parsed).forEach(rawKey => {
+      const ids = Array.isArray(parsed[rawKey]) ? parsed[rawKey].map(String).filter(Boolean) : [];
+      if (ids.length) syncDirtyKeys.set(rawKey, new Set(ids));
+    });
+  } catch (e) {
+    console.warn('Could not restore pending sync queue:', e);
+  }
+}
+
+function persistSyncOutbox() {
+  try {
+    const out = {};
+    syncDirtyKeys.forEach((ids, rawKey) => {
+      const values = Array.from(ids || []).map(String).filter(Boolean);
+      if (values.length) out[rawKey] = values;
+    });
+    if (Object.keys(out).length) localStorage.setItem(SYNC_OUTBOX_KEY, JSON.stringify(out));
+    else localStorage.removeItem(SYNC_OUTBOX_KEY);
+  } catch (e) {
+    console.warn('Could not save pending sync queue:', e);
+  }
+}
+
+loadPersistentSyncOutbox();
 
 function stableSyncJson(value) {
   try { return JSON.stringify(value); } catch (e) { return String(value); }
@@ -36,6 +69,7 @@ function markSyncDirty(rawKey, oldValue, newValue) {
   }
 
   if (dirty.size) syncDirtyKeys.set(rawKey, dirty);
+  persistSyncOutbox();
 }
 
 function clearSyncDirty(rawKey, ids) {
@@ -43,6 +77,8 @@ function clearSyncDirty(rawKey, ids) {
   if (!dirty) return;
   (ids || []).forEach(id => dirty.delete(String(id)));
   if (!dirty.size) syncDirtyKeys.delete(rawKey);
+  persistSyncOutbox();
+  updateOfflineModeBanner();
 }
 
 const DB = {
@@ -78,6 +114,7 @@ const DB = {
     if (!(options && options.skipCloudSync)) {
       markSyncDirty(key, oldClean, clean);
       if (typeof scheduleCloudPush === 'function') scheduleCloudPush(key);
+      updateOfflineModeBanner();
     }
   }
 };
@@ -113,6 +150,112 @@ function isCurrentSession(token, uid, schoolId) {
   return token === sessionGeneration
     && currentUid === uid
     && (schoolId == null || currentSchoolId === schoolId);
+}
+
+function verifiedSessionKey(uidValue) {
+  return VERIFIED_SESSION_PREFIX + String(uidValue || '');
+}
+
+function saveVerifiedLocalSession(user, data) {
+  if (!user || !user.uid || !data || data.status !== 'active' || !data.schoolId) return;
+  const safe = {
+    uid: String(user.uid),
+    schoolId: String(data.schoolId),
+    role: String(data.role || ''),
+    status: 'active',
+    assignedClassIds: Array.isArray(data.assignedClassIds) ? data.assignedClassIds.map(String) : [],
+    assignedSubjectIds: Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds.map(String) : [],
+    email: String(data.email || user.email || ''),
+    displayName: String(data.displayName || user.displayName || ''),
+    verifiedAt: Date.now()
+  };
+  try { localStorage.setItem(verifiedSessionKey(user.uid), JSON.stringify(safe)); }
+  catch (e) { console.warn('Could not cache verified session:', e); }
+}
+
+function loadVerifiedLocalSession(user) {
+  if (!user || !user.uid) return null;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(verifiedSessionKey(user.uid)) || 'null');
+    if (!parsed || parsed.uid !== String(user.uid) || parsed.status !== 'active' ||
+        !parsed.schoolId || !['headteacher','teacher'].includes(parsed.role)) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearVerifiedLocalSession(uidValue) {
+  if (!uidValue) return;
+  try { localStorage.removeItem(verifiedSessionKey(uidValue)); } catch (e) {}
+}
+
+function isLikelyOfflineError(error) {
+  const code = String(error && error.code || '').toLowerCase();
+  const message = String(error && error.message || error || '').toLowerCase();
+  return navigator.onLine === false ||
+    code.includes('unavailable') ||
+    code.includes('network-request-failed') ||
+    code.includes('deadline-exceeded') ||
+    message.includes('failed to get document because the client is offline') ||
+    message.includes('network') ||
+    message.includes('offline');
+}
+
+function pendingSyncCountForCurrentSchool() {
+  if (!currentSchoolId) return 0;
+  let count = 0;
+  try {
+    syncableFields().forEach(field => { count += dirtyIdsFor(field.key).length; });
+  } catch (e) {}
+  return count;
+}
+
+function updateOfflineModeBanner(message) {
+  const banner = document.getElementById('offlineModeBanner');
+  if (!banner) return;
+  const offline = navigator.onLine === false || offlineAuthenticatedMode;
+  const pending = pendingSyncCountForCurrentSchool();
+  banner.classList.toggle('hidden', !offline && !pending && !offlineReconnectInProgress);
+  banner.classList.toggle('is-reconnecting', offlineReconnectInProgress);
+  const title = banner.querySelector('.offline-mode-title');
+  const detail = banner.querySelector('.offline-mode-detail');
+  if (offlineReconnectInProgress) {
+    if (title) title.textContent = 'Reconnecting…';
+    if (detail) detail.textContent = message || 'Checking your account and safely syncing pending changes.';
+  } else if (offline) {
+    if (title) title.textContent = 'Offline Mode';
+    if (detail) detail.textContent = message || (pending
+      ? `${pending} pending change${pending === 1 ? '' : 's'} saved on this device. They will sync after your account is reverified online.`
+      : 'SchoolHub is using the verified data saved on this device. Cloud features will resume when internet returns.');
+  } else {
+    if (title) title.textContent = 'Sync Pending';
+    if (detail) detail.textContent = message || `${pending} change${pending === 1 ? '' : 's'} waiting to sync.`;
+  }
+}
+
+function startCachedAuthenticatedSession(user, cached) {
+  if (!user || !cached) return false;
+  currentUid = user.uid;
+  currentSchoolId = cached.schoolId;
+  currentRole = cached.role;
+  currentStatus = 'active';
+  currentAssignedClassIds = Array.isArray(cached.assignedClassIds) ? cached.assignedClassIds.slice() : [];
+  currentAssignedSubjectIds = Array.isArray(cached.assignedSubjectIds) ? cached.assignedSubjectIds.slice() : [];
+  currentUserData = Object.assign({}, cached);
+  sessionReady = true;
+  sessionDataReady = true;
+  cloudHydrationInProgress = false;
+  offlineAuthenticatedMode = true;
+  localStorage.removeItem(GUEST_MODE_KEY);
+  hideSyncingMessage(); hideSessionRestoring(); hideAuthGate(); hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
+  initLockScreen();
+  ensureDefaults();
+  loadSettingsForm();
+  refreshProfileMenu();
+  proceedToApp();
+  updateOfflineModeBanner();
+  return true;
 }
 
 function resetWorkspaceState() {
@@ -160,6 +303,11 @@ function beginSessionTransition() {
 }
 
 async function signOutAndReset() {
+  const signingOutUid = currentUid || (firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser.uid : '');
+  clearVerifiedLocalSession(signingOutUid);
+  offlineAuthenticatedMode = false;
+  updateOfflineModeBanner();
+
   // Invalidate all old async work immediately. The login form must be released
   // locally without waiting for Firebase signOut() or onAuthStateChanged.
   // Firebase persistence/network can be slow on mobile PWAs, and waiting here
@@ -9238,7 +9386,10 @@ function scheduleCloudPush(rawKey) {
   pushTimers[rawKey] = setTimeout(() => {
     delete pushTimers[rawKey];
     if (!isCurrentSession(token, uidAtSchedule, schoolAtSchedule) || cloudHydrationInProgress || !sessionDataReady) return;
-    pushFieldToCloud(match).catch(err => console.error('Cloud sync failed for', match.field, err));
+    pushFieldToCloud(match).catch(err => {
+      console.error('Cloud sync failed for', match.field, err);
+      updateOfflineModeBanner();
+    });
   }, 800);
 }
 
@@ -9398,6 +9549,89 @@ function pushAllFieldsNow() {
   ).then(() => setLastSyncedNow());
 }
 
+async function flushPendingCloudWrites() {
+  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return;
+  for (const field of syncableFields()) {
+    if (dirtyIdsFor(field.key).length) await pushFieldToCloud(field);
+  }
+  updateOfflineModeBanner();
+}
+
+async function revalidateAndSyncAfterReconnect() {
+  if (offlineReconnectInProgress || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active') {
+    updateOfflineModeBanner();
+    return;
+  }
+  const authUser = firebase.auth().currentUser;
+  if (!authUser || authUser.uid !== currentUid) {
+    updateOfflineModeBanner();
+    return;
+  }
+
+  offlineReconnectInProgress = true;
+  updateOfflineModeBanner('Internet is back. Rechecking your account before syncing local changes.');
+
+  const token = sessionGeneration;
+  const uidBefore = currentUid;
+  const schoolBefore = currentSchoolId;
+  try {
+    const userDoc = await firebase.firestore().collection('users').doc(uidBefore).get();
+    if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
+    const data = userDoc.exists ? userDoc.data() : null;
+    if (!data || data.status !== 'active' || !data.schoolId || data.schoolId !== schoolBefore) {
+      clearVerifiedLocalSession(uidBefore);
+      offlineAuthenticatedMode = false;
+      sessionReady = false;
+      sessionDataReady = false;
+      hideSessionRestoring(); hideSyncingMessage();
+      if (data && data.status === 'pending') {
+        currentSchoolId = null; currentRole = data.role || 'teacher'; currentStatus = 'pending';
+        hideAuthGate(); hideDisabledGate(); showPendingGate();
+      } else if (data && data.status && data.status !== 'active') {
+        currentSchoolId = null; currentRole = data.role || null; currentStatus = data.status;
+        hideAuthGate(); hidePendingGate(); showDisabledGate();
+      } else {
+        resetWorkspaceState();
+        renderAuthForm(); showAuthGate();
+        setAuthError('Your school account could not be reverified. Sign in again when online.');
+      }
+      return;
+    }
+
+    currentRole = data.role;
+    currentStatus = 'active';
+    currentAssignedClassIds = Array.isArray(data.assignedClassIds) ? data.assignedClassIds : [];
+    currentAssignedSubjectIds = Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds : [];
+    currentUserData = data;
+    saveVerifiedLocalSession(authUser, data);
+    offlineAuthenticatedMode = false;
+    sessionReady = true;
+    sessionDataReady = true;
+    cloudHydrationInProgress = false;
+
+    // Local offline edits go first so a cloud pull cannot overwrite them.
+    await flushPendingCloudWrites();
+    if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
+
+    await pullCloudData(token);
+    if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
+
+    loadSettingsForm();
+    refreshProfileMenu();
+    renderHome(); renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
+    const restored = getSavedNavigation();
+    if (restored.view === 'attendance') { showView('attendance'); setAttendanceMode(restored.attendanceTab); }
+    else showView(restored.view);
+    startBackgroundImageSync(token, uidBefore, schoolBefore);
+  } catch (error) {
+    console.warn('Reconnect synchronization failed:', error);
+    if (isLikelyOfflineError(error)) offlineAuthenticatedMode = true;
+  } finally {
+    offlineReconnectInProgress = false;
+    updateOfflineModeBanner();
+  }
+}
+
 function setLastSyncedNow() {
   localStorage.setItem(LAST_SYNCED_KEY, String(Date.now()));
   const setupVisible = !document.getElementById('view-setup').classList.contains('hidden');
@@ -9423,10 +9657,12 @@ function renderCloudSyncStatus() {
   }
   const last = localStorage.getItem(LAST_SYNCED_KEY);
   const lastText = last ? new Date(Number(last)).toLocaleString() : 'never';
-  wrap.innerHTML = `<p class="hint">Signed in as ${escapeHtml(firebase.auth().currentUser.email)} (${escapeHtml(currentRole)}). Last synced: ${lastText}. Photos, signatures, and the school logo are synchronized through Firebase Storage.</p>`;
-  btn.classList.remove('hidden');
+  const email = firebase.auth().currentUser ? (firebase.auth().currentUser.email || '') : (currentUserData && currentUserData.email || '');
+  const modeText = (navigator.onLine === false || offlineAuthenticatedMode) ? 'Offline mode' : 'Cloud connected';
+  wrap.innerHTML = `<p class="hint">Signed in as ${escapeHtml(email)} (${escapeHtml(currentRole)}). ${escapeHtml(modeText)}. Last synced: ${lastText}. Photos, signatures, and the school logo synchronize through Firebase Storage when online.</p>`;
+  btn.classList.toggle('hidden', navigator.onLine === false || offlineAuthenticatedMode);
   if (joinCodeWrap) {
-    if (currentRole === 'headteacher') {
+    if (currentRole === 'headteacher' && navigator.onLine !== false && !offlineAuthenticatedMode) {
       firebase.firestore().collection('schools').doc(currentSchoolId).get().then(doc => {
         const code = doc.exists ? doc.data().joinCode : '';
         joinCodeWrap.innerHTML = code
@@ -9442,7 +9678,7 @@ function renderCloudSyncStatus() {
 
 document.getElementById('syncNowBtn').addEventListener('click', () => {
   if (!FIREBASE_ENABLED || !currentSchoolId) return;
-  pullCloudData().then(() => {
+  flushPendingCloudWrites().then(() => pullCloudData()).then(() => {
     renderCloudSyncStatus();
     renderClasses();
     renderStudents();
@@ -9582,8 +9818,11 @@ function registerSchool(schoolName, address, email) {
         currentRole = 'headteacher';
         currentStatus = 'active';
         currentUserData = Object.assign({}, userData);
+        saveVerifiedLocalSession(authUser, userData);
+        offlineAuthenticatedMode = false;
         sessionReady = true;
         sessionDataReady = true;
+        updateOfflineModeBanner();
         return joinCode;
       });
   });
@@ -10250,6 +10489,9 @@ function initAuth() {
         currentSchoolId = data.schoolId;
         currentRole = data.role;
         currentStatus = 'active';
+        saveVerifiedLocalSession(user, data);
+        offlineAuthenticatedMode = false;
+        updateOfflineModeBanner();
 
         return repairAccountProfile.then(() => {
           if (!isCurrentSession(token, user.uid, data.schoolId)) return;
@@ -10303,8 +10545,16 @@ function initAuth() {
           });
         });
       }).catch(err => {
-        if (!isCurrentSession(token, user.uid, currentSchoolId)) return;
+        if (token !== sessionGeneration || currentUid !== user.uid) return;
+        const cached = loadVerifiedLocalSession(user);
+        if (cached && isLikelyOfflineError(err)) {
+          console.warn('Account profile unavailable; opening verified offline session.', err);
+          startCachedAuthenticatedSession(user, cached);
+          appStarted = true;
+          return;
+        }
         sessionReady = false;
+        offlineAuthenticatedMode = false;
         hideSessionRestoring();
         hideSyncingMessage();
         renderAuthForm();
@@ -10312,6 +10562,8 @@ function initAuth() {
         setAuthError('Could not load your account: ' + err.message);
       });
     } else {
+      offlineAuthenticatedMode = false;
+      updateOfflineModeBanner();
       hideSessionRestoring();
       // The Firebase callback is the final authority that no account is signed
       // in. Invalidate every pending operation from the previous account.
@@ -10485,6 +10737,22 @@ function proceedToApp() {
     return;
   }
 }
+
+/* ---------- v40 true offline-first authenticated mode ---------- */
+window.addEventListener('offline', () => {
+  if (FIREBASE_ENABLED && currentUid && currentSchoolId && currentStatus === 'active') {
+    offlineAuthenticatedMode = true;
+  }
+  updateOfflineModeBanner();
+  try { renderCloudSyncStatus(); } catch (e) {}
+});
+
+window.addEventListener('online', () => {
+  updateOfflineModeBanner('Internet connection detected. Revalidating your school account…');
+  revalidateAndSyncAfterReconnect();
+});
+
+setTimeout(() => updateOfflineModeBanner(), 0);
 
 /* ---------- init ---------- */
 initTheme();

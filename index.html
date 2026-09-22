@@ -12,7 +12,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-year-rollover-emergency-restore-1">
+<link rel="stylesheet" href="style-3.css?v=v40-offline-first-auth-1">
 <link rel="stylesheet" href="ui-polish.css?v=v40-sync-engine-safety-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
@@ -30,6 +30,14 @@
 </script>
 </head>
 <body>
+
+<div id="offlineModeBanner" class="offline-mode-banner hidden" role="status" aria-live="polite">
+  <span class="offline-mode-dot" aria-hidden="true"></span>
+  <div>
+    <strong class="offline-mode-title">Offline Mode</strong>
+    <span class="offline-mode-detail">SchoolHub is using the verified data saved on this device.</span>
+  </div>
+</div>
 
 <div id="sessionRestoreGate" aria-live="polite" aria-busy="true">
   <div class="lock-box session-restore-box">
@@ -814,7 +822,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
-<script src="app-4.js?v=v40-year-rollover-emergency-restore-1"></script>
+<script src="app-4.js?v=v40-offline-first-auth-1"></script>
 <script src="install.js"></script>
 </body>
 </html>
