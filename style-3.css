@@ -1302,3 +1302,59 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
     width:40px;
   }
 }
+
+
+/* v40 Attendance PDF/Print layout parity
+   Download Report captures the same DOM as Print, with the same white,
+   modern print styling. */
+.attendance-pdf-capture-host{
+  position:fixed!important;
+  left:-100000px!important;
+  top:0!important;
+  width:1100px!important;
+  display:block!important;
+  z-index:-1!important;
+  background:#fff!important;
+  padding:20px!important;
+  box-sizing:border-box!important;
+}
+.attendance-pdf-capture-host .attendance-print-report{
+  max-width:none!important;
+  color:#111!important;
+  background:#fff!important;
+}
+.attendance-pdf-capture-host .attendance-report-heading p,
+.attendance-pdf-capture-host .attendance-report-footnote{
+  color:#555!important;
+}
+.attendance-pdf-capture-host .attendance-report-cards>div{
+  border:1px solid #999!important;
+  background:#fff!important;
+}
+.attendance-pdf-capture-host .attendance-report-cards span{color:#555!important;}
+.attendance-pdf-capture-host .attendance-report-cards strong{color:#111!important;}
+.attendance-pdf-capture-host .attendance-report-note{
+  border:1px solid #aaa!important;
+  background:#fff!important;
+  color:#333!important;
+}
+.attendance-pdf-capture-host .attendance-report-table{
+  border-collapse:collapse!important;
+  width:100%!important;
+}
+.attendance-pdf-capture-host .attendance-report-table th,
+.attendance-pdf-capture-host .attendance-report-table td{
+  border:1px solid #bbb!important;
+  color:#111!important;
+  background:#fff!important;
+}
+.attendance-pdf-capture-host .attendance-report-actions,
+.attendance-pdf-capture-host .attendance-report-controls,
+.attendance-pdf-capture-host button{
+  display:none!important;
+}
+.attendance-pdf-capture-host .table-scroll{
+  overflow:visible!important;
+  width:100%!important;
+  max-width:none!important;
+}

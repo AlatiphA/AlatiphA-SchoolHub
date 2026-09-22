@@ -3817,30 +3817,16 @@ function printAttendanceReport(){
   window.addEventListener('afterprint',cleanup,{once:true}); setTimeout(()=>{try{window.print();}catch(e){cleanup();alert('Unable to open the print dialog. Please try again.');}setTimeout(cleanup,15000);},100);
 }
 
-function downloadAttendanceReportPdf(){
-  const btn=document.getElementById('downloadAttendanceReportBtn'); if(btn){btn.disabled=true;btn.textContent='Preparing Report…';}
-  try{
-    if(!window.jspdf||!window.jspdf.jsPDF)throw new Error('PDF library is not available. Please refresh SchoolHub and try again.');
-    const sel=attendanceReportCurrentSelection(); const timesOpen=calculateTimesOpen(sel.term,sel.year); const doc=new window.jspdf.jsPDF({orientation:'portrait',unit:'mm',format:'a4'}); const W=doc.internal.pageSize.getWidth(),H=doc.internal.pageSize.getHeight(),m=10; let y=14;
-    const txt=(v,x,yy,size=9,b=false)=>{doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(size);doc.text(String(v??''),x,yy);};
-    const need=(h=8)=>{if(y+h>H-12){doc.addPage();y=14;}};
-    const section=t=>{need(10);y+=3;txt(t,m,y,11,true);y+=5;};
-    const table=(heads,rows,widths)=>{const row=(cells,b)=>{const lh=3.6,pad=1.1;const ls=cells.map((c,i)=>{doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(7);return doc.splitTextToSize(String(c??''),Math.max(5,widths[i]-pad*2));});const h=Math.max(6,Math.max(...ls.map(a=>a.length),1)*lh+2.4);need(h+1);let x=m;cells.forEach((c,i)=>{doc.rect(x,y,widths[i],h);doc.setFont('helvetica',b?'bold':'normal');doc.setFontSize(7);doc.text(ls[i],x+pad,y+3.5);x+=widths[i];});y+=h;};row(heads,true);rows.forEach(r=>row(r,false));y+=2;};
-    const settings=sel.settings; txt(settings.schoolName||'School',m,y,16,true);y+=6;txt(attendanceReportTitle(sel),m,y,12,true);y+=5;txt(`${sel.term} ${sel.year} · Times Open: ${timesOpen} days`,m,y,9);y+=7;
-    if(sel.type==='term'){
-      const s=attendanceReportOverallStudent(sel.term,sel.year,timesOpen),t=attendanceReportOverallTeacher(sel.term,sel.year,timesOpen);section('Overall Summary');table(['Metric','Value'],[['Times Open',timesOpen+' days'],['Holidays',schoolCalendarRecordsForTerm(sel.term,sel.year).filter(x=>String(x.record.type||'').toLowerCase()==='holiday').length],['Midterm',schoolCalendarRecordsForTerm(sel.term,sel.year).filter(x=>String(x.record.type||'').toLowerCase()==='midterm').length],['Pupils',s.pupils],['Average Pupil Ratio',formatAttendanceRatio(s.averageRatio)],['Teachers',t.teachers],['Average Teacher Ratio',formatAttendanceRatio(t.averageRatio)]],[80,95]);section('Class Attendance');table(['Class','Pupils','Present','Late','Total','Absent','Avg Ratio'],getAccessibleClasses().map(c=>{const x=attendanceSummaryClassStats(c.id,sel.term,sel.year,timesOpen);return[c.name,x.pupils,x.present,x.late,x.total,x.absent,formatAttendanceRatio(x.averageRatio)];}),[40,20,20,18,18,20,39]);if(isHeadTeacher()){section('Teacher Attendance');table(['Teacher','Role','Present','Late','Total','Absent','Excused','Leave','Ratio'],attendanceReportTeacherRows(sel.term,sel.year,timesOpen).map(x=>[x.staff.name,x.staff.role||'Teacher',x.stats.present,x.stats.late,x.stats.total,x.stats.absent,x.stats.excused,x.stats.leave,formatAttendanceRatio(x.stats.ratio)]),[33,26,17,13,15,17,17,17,25]);}
-    } else if(sel.type==='daily-students'||sel.type==='daily-teachers'){
-      const data=attendanceReportDaily(sel.date,sel.term,sel.year,sel.classId,sel.type==='daily-teachers'?'teachers':'students');section(`Daily Attendance · ${sel.date}`);table(['Name',sel.type==='daily-students'?'Class':'Role','Status'],data.rows.map(r=>[r.name,sel.type==='daily-students'?r.className:r.role,r.status?attendanceStatusLabel(r.status):'Not recorded']),[65,55,60]);
-    } else if(sel.type==='class'){
-      const c=DB.get(KEYS.classes,[]).find(x=>x.id===sel.classId);if(!c)throw new Error('Select a class first.');section(c.name);const rows=attendanceReportClassRows(c.id,sel.term,sel.year,timesOpen);table(['Pupil','Present','Late','Total','Absent','Ratio','Current','Longest'],rows.map(x=>[x.student.name,x.stats.present,x.stats.late,x.stats.total,x.stats.absent,formatAttendanceRatio(x.stats.ratio),x.stats.currentAbsenceStreak,x.stats.longestAbsenceStreak]),[42,17,14,15,16,23,22,22]);
-    } else if(sel.type==='pupil'){
-      const st=DB.get(KEYS.students,[]).find(x=>x.id===sel.personId);if(!st||!canAccessClass(st.classId))throw new Error('Select a pupil first.');const x=attendanceReportPupilStats(st,sel.term,sel.year,timesOpen);section(st.name);table(['Metric','Value'],[['Class',(DB.get(KEYS.classes,[]).find(c=>c.id===st.classId)||{}).name||''],['Times Open',timesOpen],['Present',x.present],['Late',x.late],['Total',x.total],['Absent',x.absent],['Attendance Ratio',formatAttendanceRatio(x.ratio)],['Current Absence Streak',x.currentAbsenceStreak],['Longest Absence Streak',x.longestAbsenceStreak]],[85,90]);section('Attendance History');table(['Date','Day','Status'],x.history.map(r=>{const d=parseDateOnly(r.date);return[r.date,d?d.toLocaleDateString(undefined,{weekday:'short'}):'',r.label];}),[40,25,110]);
-    } else if(sel.type==='teacher'){
-      const st=DB.get(KEYS.staff,[]).find(x=>x.id===sel.personId&&isTeacherStaffRecord(x));if(!st)throw new Error('Select a teacher first.');const x=attendanceReportTeacherStats(st,sel.term,sel.year,timesOpen);section(st.name);table(['Metric','Value'],[['Role',st.role||'Teacher'],['Times Open',timesOpen],['Present',x.present],['Late',x.late],['Total',x.total],['Absent',x.absent],['Excused',x.excused],['On Leave',x.leave],['Attendance Ratio',formatAttendanceRatio(x.ratio)],['Current Absence Streak',x.currentAbsenceStreak],['Longest Absence Streak',x.longestAbsenceStreak]],[85,90]);section('Attendance History');table(['Date','Day','Status'],x.history.map(r=>{const d=parseDateOnly(r.date);return[r.date,d?d.toLocaleDateString(undefined,{weekday:'short'}):'',r.label];}),[40,25,110]);
-    }
-    need(10);y+=4;txt('Attendance ratios use Times Open. Present and Late count as attendance. Holidays, Midterm and weekends are excluded from Times Open.',m,y,8,false);
-    const safe=attendanceReportTitle(sel).replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'');doc.save(`${safe}_${sel.term}_${sel.year}`.replace(/[^a-z0-9_]+/gi,'_')+'.pdf');
-  }catch(e){console.error(e);alert(e.message||'Unable to create the attendance report PDF.');}finally{if(btn){btn.disabled=false;btn.textContent='Download Report';}}
+async function downloadAttendanceReportPdf(){
+  const button = document.getElementById('downloadAttendanceReportBtn');
+  const sel = attendanceReportCurrentSelection();
+  const safeTitle = attendanceReportTitle(sel).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
+  const safePeriod = `${sel.term}_${sel.year}`.replace(/[^a-z0-9_]+/gi, '_').replace(/^_+|_+$/g, '');
+  return downloadAttendancePrintLayoutPdf({
+    button,
+    buildHost: buildAttendanceReportPrintHost,
+    filename: `${safeTitle || 'Attendance_Report'}_${safePeriod || 'Report'}.pdf`
+  });
 }
 
 
@@ -4690,6 +4676,94 @@ function buildAttendancePrintHost() {
   return host;
 }
 
+
+async function downloadAttendancePrintLayoutPdf(options) {
+  const opts = options || {};
+  const button = opts.button || null;
+  const originalText = button ? button.textContent : '';
+  let host = null;
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Preparing Report…';
+  }
+
+  try {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      throw new Error('PDF library is not available. Please refresh SchoolHub and try again.');
+    }
+    if (typeof window.html2canvas !== 'function') {
+      throw new Error('PDF rendering tools are not available. Please refresh SchoolHub and try again.');
+    }
+    if (typeof opts.buildHost !== 'function') {
+      throw new Error('Report layout is unavailable.');
+    }
+
+    // Reuse the exact DOM used by the Print command. This keeps Print and
+    // Download Report visually identical and prevents the two layouts drifting.
+    host = opts.buildHost();
+    host.classList.add('attendance-pdf-capture-host');
+
+    // Give web fonts/layout a moment to settle before capturing.
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch (e) {}
+    }
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    const canvas = await window.html2canvas(host, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      windowWidth: 1100,
+      scrollX: 0,
+      scrollY: 0
+    });
+
+    const JsPDF = window.jspdf.jsPDF;
+    const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const margin = 8;
+    const printableW = pageW - margin * 2;
+    const printableH = pageH - margin * 2;
+
+    const imgW = printableW;
+    const imgH = canvas.height * imgW / canvas.width;
+    const pageCanvasPx = Math.max(1, Math.floor(canvas.width * printableH / printableW));
+    const totalPages = Math.max(1, Math.ceil(canvas.height / pageCanvasPx));
+
+    for (let page = 0; page < totalPages; page++) {
+      const sourceY = page * pageCanvasPx;
+      const sourceH = Math.min(pageCanvasPx, canvas.height - sourceY);
+      const slice = document.createElement('canvas');
+      slice.width = canvas.width;
+      slice.height = sourceH;
+      const ctx = slice.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, slice.width, slice.height);
+      ctx.drawImage(canvas, 0, sourceY, canvas.width, sourceH, 0, 0, canvas.width, sourceH);
+
+      if (page > 0) doc.addPage();
+      const sliceH = sourceH * imgW / canvas.width;
+      doc.addImage(slice.toDataURL('image/jpeg', 0.96), 'JPEG', margin, margin, imgW, sliceH, undefined, 'FAST');
+    }
+
+    const filename = String(opts.filename || 'Attendance_Report.pdf')
+      .replace(/[\\/:*?"<>|]+/g, '_');
+    doc.save(filename);
+  } catch (e) {
+    console.error('Attendance PDF generation failed:', e);
+    alert(e && e.message ? e.message : 'Unable to create the PDF. Please try again.');
+  } finally {
+    if (host && host.parentNode) host.parentNode.removeChild(host);
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText || 'Download Report';
+    }
+  }
+}
+
 function printAttendanceSummary() {
   // Do not use window.open(). Mobile browsers may turn that into an
   // about:blank page or block the print window. Print the report in-place.
@@ -4709,140 +4783,16 @@ function printAttendanceSummary() {
 }
 
 async function downloadAttendanceSummaryPdf() {
-  const pdfBtn = document.getElementById('pdfAttendanceSummaryBtn');
-  if (pdfBtn) { pdfBtn.disabled = true; pdfBtn.textContent = 'Preparing Report…'; }
-
-  try {
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-      throw new Error('PDF library is not available. Please refresh SchoolHub and try again.');
-    }
-
-    const settings = DB.get(KEYS.settings, {});
-    const term = String(settings.currentTerm || 'Term 1');
-    const year = String(settings.currentYear || '');
-    const timesOpen = calculateTimesOpen(term, year);
-    const calendar = schoolCalendarRecordsForTerm(term, year);
-    const holidays = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'holiday').length;
-    const midterms = calendar.filter(x => String(x.record.type || '').toLowerCase() === 'midterm').length;
-    const school = String(settings.schoolName || 'School');
-    const students = attendanceReportOverallStudent(term, year, timesOpen);
-    const teachers = attendanceReportOverallTeacher(term, year, timesOpen);
-    const classes = getAccessibleClasses();
-    const staff = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
-    const teacherMap = teacherAttendanceSummary(term, year).summary;
-
-    const JsPDF = window.jspdf.jsPDF;
-    const doc = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const margin = 10;
-    const usableW = pageW - margin * 2;
-    let y = 14;
-
-    const addPageIfNeeded = (height = 8) => {
-      if (y + height > pageH - 12) { doc.addPage(); y = 14; }
-    };
-    const text = (value, x, yy, size = 9, bold = false) => {
-      doc.setFont('helvetica', bold ? 'bold' : 'normal');
-      doc.setFontSize(size);
-      doc.text(String(value ?? ''), x, yy);
-    };
-    const wrapped = (value, x, yy, width, size = 8.5, lineGap = 4.2) => {
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(size);
-      const lines = doc.splitTextToSize(String(value ?? ''), width);
-      doc.text(lines, x, yy);
-      return lines.length * lineGap;
-    };
-    const section = (title) => {
-      addPageIfNeeded(10);
-      y += 3;
-      text(title, margin, y, 11, true);
-      y += 5;
-    };
-    const row = (cells, widths, opts = {}) => {
-      const fontSize = opts.fontSize || 7.4;
-      const lineHeight = opts.lineHeight || 3.6;
-      const cellPad = 1.2;
-      const lineSets = cells.map((cell, i) => {
-        doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
-        doc.setFontSize(fontSize);
-        return doc.splitTextToSize(String(cell ?? ''), Math.max(5, widths[i] - cellPad * 2));
-      });
-      const maxLines = Math.max(...lineSets.map(a => a.length), 1);
-      const h = Math.max(6, maxLines * lineHeight + 2.5);
-      addPageIfNeeded(h + 1);
-      let x = margin;
-      for (let i = 0; i < cells.length; i++) {
-        doc.rect(x, y, widths[i], h);
-        doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
-        doc.setFontSize(fontSize);
-        doc.text(lineSets[i], x + cellPad, y + 3.5);
-        x += widths[i];
-      }
-      y += h;
-    };
-    const table = (headers, rows, widths) => {
-      row(headers, widths, { bold: true, fontSize: 7.2 });
-      rows.forEach(r => row(r, widths, { fontSize: 7.1 }));
-      y += 2;
-    };
-
-    text(school, margin, y, 16, true); y += 6;
-    text('Attendance Summary Report', margin, y, 12, true); y += 5;
-    text(`${term} ${year} · Times Open: ${timesOpen} days`, margin, y, 9); y += 7;
-
-    const cards = [
-      ['Times Open', `${timesOpen} days`],
-      ['Holidays', holidays],
-      ['Midterm', midterms],
-      ['Pupils', students.pupils],
-      ['Average Pupil Ratio', formatAttendanceRatio(students.averageRatio)],
-      ['Teachers', teachers.teachers],
-      ['Average Teacher Ratio', formatAttendanceRatio(teachers.averageRatio)]
-    ];
-    const cardW = usableW / 2;
-    for (let i = 0; i < cards.length; i += 2) {
-      addPageIfNeeded(13);
-      const pair = cards.slice(i, i + 2);
-      pair.forEach((c, j) => {
-        const x = margin + j * cardW;
-        doc.rect(x, y, cardW - 2, 11);
-        text(c[0], x + 2, y + 4, 7.2, false);
-        text(c[1], x + 2, y + 8.5, 9, true);
-      });
-      y += 13;
-    }
-
-    section('Class Attendance');
-    const classWidths = [38, 20, 20, 17, 18, 20, 41];
-    table(['Class','Pupils','Present','Late','Total','Absent','Average Ratio'],
-      classes.map(c => { const x = attendanceSummaryClassStats(c.id, term, year, timesOpen); return [c.name,x.pupils,x.present,x.late,x.total,x.absent,formatAttendanceRatio(x.averageRatio)]; }), classWidths);
-
-    if (isHeadTeacher()) {
-      section('Teacher Attendance');
-      const teacherWidths = [35, 27, 18, 14, 16, 18, 18, 18, 30];
-      table(['Teacher','Role','Present','Late','Total','Absent','Excused','Leave','Ratio'],
-        staff.map(st => { const sm=teacherMap[st.id]||{present:0,late:0,total:0,absent:0,excused:0,leave:0}; return [st.name,st.role||'Teacher',sm.present,sm.late,sm.total,sm.absent,sm.excused,sm.leave,formatAttendanceRatio(attendanceRatio(sm,timesOpen,true))]; }), teacherWidths);
-    }
-
-    section('School Calendar Exceptions');
-    const exceptions = calendar.filter(x => String(x.record.type || '').toLowerCase() !== 'open');
-    table(['Date','Day','Type','Note'],
-      exceptions.map(x => { const d=parseDateOnly(x.date); const day=d?d.toLocaleDateString(undefined,{weekday:'short'}):''; return [x.date,day,calendarLabel(String(x.record.type||'').toLowerCase()),x.record.note||'']; }), [30,18,30,104]);
-
-    addPageIfNeeded(15);
-    y += 3;
-    wrapped('Attendance ratios use Times Open. Present and Late count as attendance. Approved teacher Excused and On Leave days are excluded from the individual teacher denominator. Holidays, midterm days and weekends are excluded from Times Open.', margin, y, usableW, 8, 4);
-
-    const safe = `${term}-${year}`.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '');
-    doc.save(`Attendance_Summary_${safe || 'Report'}.pdf`);
-  } catch (e) {
-    console.error('Attendance PDF generation failed:', e);
-    alert(e && e.message ? e.message : 'Unable to create the PDF. Please try again.');
-  } finally {
-    if (pdfBtn) { pdfBtn.disabled = false; pdfBtn.textContent = 'Download Report'; }
-  }
+  const button = document.getElementById('pdfAttendanceSummaryBtn');
+  const settings = DB.get(KEYS.settings, {});
+  const term = String(settings.currentTerm || 'Term 1');
+  const year = String(settings.currentYear || '');
+  const safe = `${term}_${year}`.replace(/[^a-z0-9_]+/gi, '_').replace(/^_+|_+$/g, '');
+  return downloadAttendancePrintLayoutPdf({
+    button,
+    buildHost: buildAttendancePrintHost,
+    filename: `Attendance_Summary_${safe || 'Report'}.pdf`
+  });
 }
 
 function refreshAttendanceAfterCalendarChange() {
