@@ -1100,7 +1100,17 @@ input[type="date"]{
    remains on phones, while every desktop view—including Home—can breathe. */
 @media (min-width:900px){
   #app{max-width:1280px;}
-  #view-grades table.grades-table{min-width:1040px;}
+
+  /* Grade Entry: keep three-digit scores fully visible on desktop.
+     The ledger remains horizontally scrollable when many subjects exist. */
+  #view-grades table.grades-table{min-width:1380px;}
+  #view-grades table.grades-table input{
+    box-sizing:border-box;
+    width:66px;
+    min-width:66px;
+    padding-left:6px;
+    padding-right:6px;
+  }
 
   /* Dashboard actions read as a desktop launcher instead of one long list. */
   .quick-access-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
