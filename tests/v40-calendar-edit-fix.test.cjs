@@ -1,0 +1,10 @@
+const fs=require('fs');
+const assert=require('assert');
+const js=fs.readFileSync('app-4.js','utf8');
+assert(js.includes('let editingSchoolCalendarDate = null;'));
+assert(js.includes('editingSchoolCalendarDate = originalDate;'));
+assert(js.includes("saveBtn.textContent = 'Update Calendar Day'"));
+assert(js.includes('const dateChanged = !!originalKey && originalKey !== key;'));
+assert(js.includes('batch.delete(schoolCalendarRef(originalKey));'));
+assert(js.includes('if (dateChanged) delete all[originalKey];'));
+console.log('calendar edit move/update regression: PASS');
