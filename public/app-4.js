@@ -2357,7 +2357,7 @@ function renderClasses() {
           <select class="edit-class-teacher"></select>
         </label>
         <div class="edit-actions">
-          <button class="save-btn save-class" data-id="${c.id}">Save</button>
+          <button class="save-btn save-class" data-id="${c.id}">Update</button>
           <button class="cancel-btn cancel-class">Cancel</button>
         </div>
       </div>`;
@@ -2584,7 +2584,7 @@ function renderStudents() {
           <input type="file" class="edit-student-photo-input" accept="image/*" data-student="${st.id}">
         </label>
         <div class="edit-actions">
-          <button class="save-btn save-student" data-id="${st.id}">Save</button>
+          <button class="save-btn save-student" data-id="${st.id}">Update</button>
           <button class="cancel-btn cancel-student">Cancel</button>
         </div>
       </div>`;
@@ -3016,7 +3016,7 @@ function renderSubjects() {
       li.innerHTML = `<div class="edit-row">
         <input type="text" class="edit-subject-name" value="${escapeHtml(sub.name)}">
         <div class="edit-actions">
-          <button class="save-btn save-subject" data-id="${sub.id}">Save</button>
+          <button class="save-btn save-subject" data-id="${sub.id}">Update</button>
           <button class="cancel-btn cancel-subject">Cancel</button>
         </div>
       </div>`;
@@ -3694,7 +3694,7 @@ function renderStaff() {
         </label>
         <p class="edit-staff-validation form-validation" role="alert"></p>
         <div class="edit-actions">
-          <button class="save-btn save-staff" data-id="${st.id}">Save</button>
+          <button class="save-btn save-staff" data-id="${st.id}">Update</button>
           <button class="cancel-btn cancel-staff">Cancel</button>
         </div>
       </div>`;
@@ -10084,7 +10084,7 @@ function renderManageTeachers() {
         .concat(staff.map(s => `<option value="${escapeHtml(s.id)}" ${linkedStaff && linkedStaff.id === s.id ? 'selected' : ''}>${escapeHtml(s.name || 'Unnamed Staff')}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}${s.userUid && s.userUid !== m.uid ? ' · Linked' : ''}</option>`))
         .join('');
 
-      const actionLabel = m.status === 'pending' ? 'Approve & Save' : 'Save Teacher';
+      const actionLabel = m.status === 'pending' ? 'Approve & Save' : 'Update Teacher';
       const disableButton = m.status === 'disabled'
         ? `<button class="edit-student reactivate-teacher-btn" data-uid="${m.uid}">Reactivate</button>`
         : `<button class="del-student disable-teacher-btn" data-uid="${m.uid}">Disable</button>`;
