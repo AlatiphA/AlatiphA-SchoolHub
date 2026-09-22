@@ -15,5 +15,5 @@ assert(js.includes('persistSyncOutbox();'));
 assert(js.includes("window.addEventListener('offline'"));
 assert(js.includes("window.addEventListener('online'"));
 assert(html.includes('id="offlineModeBanner"'));
-assert(sw.includes('schoolhub-cache-v40-edit-update-labels-1'));
+assert(sw.includes('schoolhub-cache-v40-help-legal-1'));
 console.log('offline-first authenticated mode regression: PASS');

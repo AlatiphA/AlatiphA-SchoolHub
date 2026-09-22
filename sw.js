@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — service worker
-const CACHE_NAME = 'schoolhub-cache-v40-edit-update-labels-1';
-const APP_SHELL = ['./','./index.html','./faq.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./staff-transfer.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
+const CACHE_NAME = 'schoolhub-cache-v40-help-legal-1';
+const APP_SHELL = ['./','./index.html','./faq.html','./privacy.html','./terms.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./staff-transfer.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
 const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
 self.addEventListener('message',e=>{if(e.data&&e.data.type==='SKIP_WAITING')self.skipWaiting();});
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(c=>Promise.all(APP_SHELL.map(u=>fetch(u,{cache:'reload'}).then(r=>r&&r.ok?c.put(u,r.clone()):null).catch(()=>{})))).then(()=>self.skipWaiting()));});

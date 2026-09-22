@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#16241C">
+<title>Privacy · AlatiphA SchoolHub</title><link rel="icon" href="icon.svg" type="image/svg+xml">
+<script>try{var t=localStorage.getItem('arc_theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<style>
+    :root{--ink:#16241c;--paper:#f7f4ea;--surface:#fffdf7;--surface-alt:#f0ebdc;--text:#16241c;--muted:#627168;--rule:#ddd3bd;--gold:#a67d12;}
+    html[data-theme="dark"]{--ink:#111b16;--paper:#18221c;--surface:#202d25;--surface-alt:#27362d;--text:#f7f4ea;--muted:#b7c3ba;--rule:#405044;--gold:#e2ba4e;}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--text);font-family:"IBM Plex Sans",Arial,sans-serif;line-height:1.68}
+    .topbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;padding:12px max(18px,calc((100vw - 960px)/2));background:var(--surface-alt);border-bottom:1px solid var(--rule)}
+    .back{color:var(--text);font-weight:700;text-decoration:none}.back:hover{color:var(--gold)}.brand{display:flex;align-items:center;gap:9px;font-family:Georgia,serif;font-size:18px;font-weight:700;flex:1}.brand img{width:32px;height:32px}.theme{width:38px;height:38px;border-radius:50%;border:0;background:var(--gold);color:var(--ink);cursor:pointer}
+    main{width:min(900px,calc(100% - 32px));margin:34px auto 56px;background:var(--surface);border:1px solid var(--rule);border-radius:16px;padding:clamp(22px,4vw,42px)}
+    h1{margin:0 0 4px;font:700 clamp(28px,4vw,40px)/1.2 Georgia,serif}h2{margin-top:30px;font:700 20px Georgia,serif;color:var(--gold)}h3{margin:20px 0 6px;font-size:16px}
+    .effective{color:var(--muted);margin-top:0}.notice{background:var(--surface-alt);border-left:4px solid var(--gold);padding:14px 16px;border-radius:8px}.muted{color:var(--muted)}
+    a{color:var(--gold)}ul{padding-left:22px}footer{text-align:center;color:var(--muted);font-size:12px;padding:0 16px 32px}footer a{color:inherit}
+    @media(max-width:600px){main{margin-top:18px;padding:20px}.topbar{padding:12px 16px}}
+</style>
+</head>
+<body>
+<header class="topbar"><a class="back" href="index.html">← SchoolHub</a><div class="brand"><img src="icon.svg" alt="">Privacy</div><button class="theme" id="themeToggle" type="button" aria-label="Toggle colour theme">◐</button></header>
+<main>
+<h1>Privacy Notice</h1>
+<p class="effective">Effective: 22 September 2026</p>
+<p class="notice">This notice explains how AlatiphA SchoolHub handles information used to run a school workspace. Schools and authorized users are responsible for entering information they are permitted to manage.</p>
+
+<h2>1. Information SchoolHub can handle</h2>
+<ul>
+<li><strong>Account information:</strong> Firebase account identifiers, email address, display name, role, approval status and school membership.</li>
+<li><strong>School information:</strong> school name, address/email where entered, academic year, term, report settings, calendar and related configuration.</li>
+<li><strong>Student records:</strong> names, class placement, identifiers and other student details entered by the school, plus attendance, grades and remarks.</li>
+<li><strong>Staff records:</strong> names, staff identifiers and administrative details entered by the school, which may include date of birth, registration/licence numbers, SSNIT number, Ghana Card ID, bank/account details, phone, email and role.</li>
+<li><strong>Images/files:</strong> school logo, student photos and staff signatures where uploaded.</li>
+<li><strong>Operational records:</strong> activity/audit records, teacher assignments, synchronization state, backup/rollover metadata and report-related information.</li>
+<li><strong>Billing information when enabled:</strong> school credit balance, payment references/status and transaction records. Card/payment credentials are handled by the payment provider rather than stored as ordinary SchoolHub record fields.</li>
+</ul>
+
+<h2>2. Where information is stored</h2>
+<p>Signed-in school workspaces use Firebase services such as Authentication, Firestore, Storage and, where required, Cloud Functions. Images such as student photos and staff signatures are stored as files in Firebase Storage with lightweight references in Firestore.</p>
+<p>SchoolHub also stores information on the device for offline use and app preferences. This can include cached school data, a verified-session marker, pending synchronization entries, theme preference, PIN-lock data, guest-trial state and recovery snapshots.</p>
+
+<h2>3. Guest trial</h2>
+<p>The 7-day guest trial does not create a shared cloud school. Guest records are stored on the current device. Clearing browser/app storage, uninstalling without preserving data, or losing the device can remove those records. Use the JSON backup feature before doing so.</p>
+
+<h2>4. Why information is used</h2>
+<p>SchoolHub uses the information above to provide school administration functions, control role/class access, generate reports, support attendance and grading, synchronize authorized devices, restore/recover data, maintain year/term history, provide offline-first access, diagnose synchronization problems, and support billing if that feature is active.</p>
+
+<h2>5. Role-based access</h2>
+<p>Head Teachers manage the school workspace and teacher approvals/assignments. Approved Teachers are restricted to the classes/subjects assigned to them. SchoolHub's role controls are designed to reduce unnecessary access, but each school remains responsible for assigning access appropriately.</p>
+
+<h2>6. Offline mode and synchronization</h2>
+<p>A previously verified signed-in user may reopen locally cached school data when internet access is unavailable. Supported offline edits can remain in a persistent sync queue until the account is revalidated online. Some destructive or sensitive operations may require a live cloud connection before they are completed.</p>
+
+<h2>7. Backups and recovery</h2>
+<p>SchoolHub can create downloadable JSON backups and year-end rollover backups. These files may contain school, student or staff information. Anyone who downloads a backup is responsible for storing it securely and sharing it only with authorized persons.</p>
+
+<h2>8. Third-party services</h2>
+<p>SchoolHub may rely on Google/Firebase for authentication and cloud services. Where billing is enabled, checkout may use Paystack. Those providers process information under their own terms and privacy practices.</p>
+
+<h2>9. Data retention and deletion</h2>
+<p>Cloud records generally remain until they are changed or deleted by an authorized school user or the service is otherwise removed. Local data remains until SchoolHub/browser storage is cleared, replaced by authorized restore/sync actions, or removed by the user/device. Downloaded backups remain wherever the user stores them.</p>
+
+<h2>10. Student and staff privacy responsibilities</h2>
+<p>Schools should enter only information they are authorized to collect and use, limit access to staff who need it, protect exported files, and follow applicable education and data-protection requirements. SchoolHub is an administrative tool and does not replace the school's own legal/privacy obligations.</p>
+
+<h2>11. Security</h2>
+<p>SchoolHub uses account authentication, role-based controls, Firestore/Storage rules, local PIN-lock options and fail-closed handling for selected sensitive operations. No online or local system can guarantee absolute security, so strong passwords, trusted devices and secure backup handling remain important.</p>
+
+<h2>12. Your choices</h2>
+<p>Authorized users can review and update many records within SchoolHub. A Head Teacher can manage teacher access. Users can sign out, export backups, and clear local application/browser data when appropriate. Requests concerning school-held records should normally be directed to the school that entered them.</p>
+
+<h2>13. Contact</h2>
+<p>For SchoolHub privacy or support questions, contact AlatiphA Multimedia at <a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a> or <a href="tel:0243443688">0243443688</a>.</p>
+
+<p class="muted">This notice may be updated when SchoolHub features, storage practices or service providers change. The effective date above identifies this version.</p>
+</main>
+<footer>© 2026 AlatiphA Multimedia · <a href="faq.html">Help &amp; FAQ</a> · <a href="terms.html">Terms of Use</a></footer>
+<script>document.getElementById('themeToggle').addEventListener('click',function(){var n=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);try{localStorage.setItem('arc_theme',n)}catch(e){}});</script>
+</body></html>
