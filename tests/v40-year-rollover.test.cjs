@@ -17,4 +17,13 @@ assert(html.includes('id="yearRolloverSection"'));
 assert(html.includes('id="openYearRolloverBtn"'));
 assert(rules.includes('match /yearRollovers/{rolloverId}'));
 assert(rules.includes('allow update, delete: if false;'));
+
+assert(js.includes('function parseYearEndBackupFile(text)'));
+assert(js.includes('function applyYearEndEmergencyRestore()'));
+assert(js.includes("parsed.type !== 'academic-year-rollover'"));
+assert(js.includes('Students created after the backup are deliberately left untouched'));
+assert(js.includes("batch.set(studentRef(String(student.id)), cloudStudent)"));
+assert(html.includes('id="restoreYearEndBackupBtn"'));
+assert(html.includes('id="restoreYearEndBackupInput"'));
+
 console.log('year rollover regression: PASS');

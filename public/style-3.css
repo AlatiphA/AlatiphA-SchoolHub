@@ -1459,3 +1459,27 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
   .rollover-actions{flex-direction:column;align-items:stretch}
   .rollover-actions button{width:100%}
 }
+
+
+/* v40 Year-End emergency restore */
+.year-rollover-top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+#yearRolloverRestorePreview{margin-top:16px}
+.rollover-restore-card{padding:16px;border:1px solid var(--gold);border-radius:16px;background:var(--surface-alt)}
+.rollover-restore-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.rollover-restore-head h4{margin:0 0 4px}
+.rollover-restore-head p{margin:0}
+.rollover-restore-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}
+.rollover-restore-meta>div{padding:11px 12px;border:1px solid var(--rule);border-radius:11px;background:var(--surface);display:flex;flex-direction:column;gap:3px;min-width:0}
+.rollover-restore-meta span{font-size:.72rem;font-weight:600;color:var(--muted)}
+.rollover-restore-meta strong{font-size:.88rem;overflow-wrap:anywhere}
+.rollover-restore-explain{line-height:1.55;margin:12px 0}
+.rollover-restore-stats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.rollover-restore-stats span{padding:7px 9px;border:1px solid var(--rule);border-radius:999px;background:var(--surface);font-size:.75rem;color:var(--muted)}
+.rollover-restore-actions{display:flex;justify-content:flex-end;margin-top:14px}
+@media(max-width:700px){
+  .year-rollover-top-actions{width:100%;justify-content:stretch}
+  .year-rollover-top-actions button{width:100%}
+  .rollover-restore-meta{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rollover-restore-head{flex-direction:column}
+  .rollover-restore-actions button{width:100%}
+}

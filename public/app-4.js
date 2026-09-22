@@ -637,7 +637,7 @@ function showView(name) {
   }
 
   if (name === 'home') renderHome();
-  if (name === 'setup') { refreshHeadTeacherSelect(); renderCloudSyncStatus(); renderYearRollover(); }
+  if (name === 'setup') { refreshHeadTeacherSelect(); renderCloudSyncStatus(); renderYearRollover(); renderYearEndRestorePreview(); }
   if (name === 'students') renderStudentClassSelect();
   if (name === 'attendance') renderAttendanceView();
   if (name === 'grades') renderGradesClassSelect();
@@ -1866,6 +1866,247 @@ if (openYearRolloverBtn) {
     yearRolloverDraft = buildYearRolloverDraft();
     renderYearRollover();
     document.getElementById('yearRolloverWorkspace')?.scrollIntoView({behavior:'smooth', block:'start'});
+  });
+}
+
+
+
+/* ---------- v40 Year-End emergency restore ---------- */
+let pendingYearEndRestore = null;
+
+function parseYearEndBackupFile(text) {
+  let parsed;
+  try { parsed = JSON.parse(String(text || '')); }
+  catch (e) { throw new Error('This file is not valid JSON.'); }
+
+  if (!parsed || parsed.app !== 'AlatiphA SchoolHub' || parsed.type !== 'academic-year-rollover' || !parsed.data) {
+    throw new Error('This is not a SchoolHub Year-End Rollover backup.');
+  }
+  if (!parsed.fromYear || !parsed.toYear) {
+    throw new Error('The rollover year information is missing from this backup.');
+  }
+  if (!Array.isArray(parsed.data.students) || !Array.isArray(parsed.data.classes) ||
+      !parsed.data.settings || typeof parsed.data.settings !== 'object') {
+    throw new Error('This Year-End backup is incomplete.');
+  }
+  if (parsed.schoolId && currentSchoolId && String(parsed.schoolId) !== String(currentSchoolId)) {
+    throw new Error('This backup belongs to a different SchoolHub school.');
+  }
+  return parsed;
+}
+
+function yearEndRestoreCounts(snapshot) {
+  const data = snapshot.data || {};
+  return {
+    students: Array.isArray(data.students) ? data.students.length : 0,
+    classes: Array.isArray(data.classes) ? data.classes.length : 0,
+    grades: data.grades && typeof data.grades === 'object' ? Object.keys(data.grades).length : 0,
+    attendance: data.attendance && typeof data.attendance === 'object' ? Object.keys(data.attendance).length : 0,
+    remarks: data.remarks && typeof data.remarks === 'object' ? Object.keys(data.remarks).length : 0
+  };
+}
+
+function renderYearEndRestorePreview() {
+  const host = document.getElementById('yearRolloverRestorePreview');
+  if (!host) return;
+  if (!pendingYearEndRestore) {
+    host.classList.add('hidden');
+    host.innerHTML = '';
+    return;
+  }
+
+  const snapshot = pendingYearEndRestore;
+  const counts = yearEndRestoreCounts(snapshot);
+  const created = snapshot.createdAt ? new Date(snapshot.createdAt) : null;
+  const createdText = created && !Number.isNaN(created.getTime()) ? created.toLocaleString() : 'Unknown';
+  const currentStudents = DB.get(KEYS.students, []);
+  const backupIds = new Set(snapshot.data.students.map(s => String(s.id || '')));
+  const newerStudents = currentStudents.filter(s => s && s.id && !backupIds.has(String(s.id))).length;
+
+  host.classList.remove('hidden');
+  host.innerHTML = `<div class="rollover-restore-card">
+    <div class="rollover-restore-head">
+      <div>
+        <h4>Restore Academic Year</h4>
+        <p><strong>${escapeHtml(snapshot.fromYear)} pre-rollover state</strong></p>
+      </div>
+      <button type="button" id="cancelYearEndRestoreBtn" class="btn-text">Cancel</button>
+    </div>
+    <div class="rollover-restore-meta">
+      <div><span>Backup created</span><strong>${escapeHtml(createdText)}</strong></div>
+      <div><span>Rollover target</span><strong>${escapeHtml(snapshot.toYear)}</strong></div>
+      <div><span>Students in backup</span><strong>${counts.students}</strong></div>
+      <div><span>Classes</span><strong>${counts.classes}</strong></div>
+    </div>
+    <p class="rollover-restore-explain">
+      This emergency restore reverses the <strong>rollover changes</strong>: it restores each backed-up student's
+      pre-rollover class/enrolment record and restores the school settings from the backup.
+      Grades, attendance, remarks, staff, subjects, classes and calendar records are not deleted or replaced because
+      the rollover itself does not rewrite them.
+    </p>
+    ${newerStudents ? `<p class="hint">${newerStudents} student record${newerStudents === 1 ? '' : 's'} created after this backup will be kept to avoid data loss.</p>` : ''}
+    <div class="rollover-restore-stats">
+      <span>${counts.grades} grade set${counts.grades === 1 ? '' : 's'} preserved in the backup</span>
+      <span>${counts.attendance} attendance record${counts.attendance === 1 ? '' : 's'} preserved</span>
+      <span>${counts.remarks} remark set${counts.remarks === 1 ? '' : 's'} preserved</span>
+    </div>
+    <div class="rollover-restore-actions">
+      <button type="button" id="applyYearEndRestoreBtn" class="btn-primary">Restore Pre-Rollover State</button>
+    </div>
+  </div>`;
+
+  document.getElementById('cancelYearEndRestoreBtn')?.addEventListener('click', () => {
+    pendingYearEndRestore = null;
+    const input = document.getElementById('restoreYearEndBackupInput');
+    if (input) input.value = '';
+    renderYearEndRestorePreview();
+  });
+  document.getElementById('applyYearEndRestoreBtn')?.addEventListener('click', applyYearEndEmergencyRestore);
+}
+
+function preserveBeforeEmergencyRestore() {
+  const snapshot = {
+    app:'AlatiphA SchoolHub',
+    type:'pre-emergency-restore',
+    createdAt:new Date().toISOString(),
+    schoolId:currentSchoolId || '',
+    data:{
+      settings:DB.get(KEYS.settings, {}),
+      students:DB.get(KEYS.students, [])
+    }
+  };
+  const key = ns(`arc_pre_emergency_restore_${Date.now()}`);
+  try { localStorage.setItem(key, JSON.stringify(snapshot)); }
+  catch (e) { console.warn('Could not preserve pre-restore local snapshot:', e); }
+}
+
+function mergedStudentsForEmergencyRestore(snapshotStudents) {
+  const current = DB.get(KEYS.students, []);
+  const backupMap = new Map((snapshotStudents || []).filter(s => s && s.id).map(s => [String(s.id), s]));
+  const restored = [];
+  const seen = new Set();
+
+  current.forEach(student => {
+    const id = String(student && student.id || '');
+    if (!id) return;
+    if (backupMap.has(id)) restored.push(JSON.parse(JSON.stringify(backupMap.get(id))));
+    else restored.push(student); // never delete students added after the backup
+    seen.add(id);
+  });
+  backupMap.forEach((student, id) => {
+    if (!seen.has(id)) restored.push(JSON.parse(JSON.stringify(student)));
+  });
+  return restored;
+}
+
+async function applyYearEndEmergencyRestore() {
+  if (!pendingYearEndRestore || !requireHeadTeacher('restore a Year-End backup')) return;
+  const snapshot = pendingYearEndRestore;
+  const button = document.getElementById('applyYearEndRestoreBtn');
+  const currentSettings = DB.get(KEYS.settings, {});
+  const backupSettings = snapshot.data.settings || {};
+  const currentYear = String(currentSettings.currentYear || '');
+  const expectedPostRolloverYear = String(snapshot.toYear || '');
+
+  if (FIREBASE_ENABLED && currentSchoolId && (cloudHydrationInProgress || !sessionDataReady)) {
+    alert('School data is still synchronizing. Wait for sync to finish and try again.');
+    return;
+  }
+
+  const yearWarning = currentYear && currentYear !== expectedPostRolloverYear
+    ? `\n\nYour current Academic Year is ${currentYear}, while this backup was prepared for a rollover to ${expectedPostRolloverYear}.`
+    : '';
+
+  if (!confirm(`Restore the school to its pre-rollover roster/settings for ${snapshot.fromYear}?${yearWarning}\n\nNo grades, attendance, remarks, staff, classes, subjects or calendar records will be deleted.`)) return;
+
+  if (button) { button.disabled = true; button.textContent = 'Restoring…'; }
+
+  try {
+    preserveBeforeEmergencyRestore();
+
+    const restoredStudents = mergedStudentsForEmergencyRestore(snapshot.data.students || []);
+    const restoredSettings = JSON.parse(JSON.stringify(backupSettings));
+    const backupIds = new Set((snapshot.data.students || []).map(s => String(s.id || '')));
+
+    // Cloud first. Replace backed-up student documents so rollover-only fields
+    // (classHistory, rolloverHistory, completion status, etc.) are removed too.
+    // Students created after the backup are deliberately left untouched.
+    if (FIREBASE_ENABLED && currentSchoolId) {
+      const ops = [];
+      restoredStudents.filter(s => backupIds.has(String(s.id))).forEach(student => {
+        const cloudStudent = stripImagesForCloud('students', [student])[0];
+        ops.push(batch => batch.set(studentRef(String(student.id)), cloudStudent));
+      });
+      ops.push(batch => batch.set(schoolRef(), {
+        profile: stripImagesForCloud('settings', restoredSettings),
+        schemaVersion: CLOUD_SCHEMA_VERSION,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge:true }));
+
+      await commitChunks(ops);
+      setLastSyncedNow();
+    }
+
+    // Only after every cloud batch succeeds do we change the active browser.
+    DB.set(KEYS.students, restoredStudents, {skipCloudSync:true});
+    DB.set(KEYS.settings, restoredSettings, {skipCloudSync:true});
+
+    auditAction('restore', 'academicYear', `restore_${rolloverSafeId(snapshot.fromYear)}`,
+      `Restored pre-rollover student roster/settings for ${snapshot.fromYear}`);
+
+    pendingYearEndRestore = null;
+    const input = document.getElementById('restoreYearEndBackupInput');
+    if (input) input.value = '';
+    loadSettingsForm();
+    renderClasses();
+    renderStudents();
+    renderYearRollover();
+    renderYearEndRestorePreview();
+
+    alert(`Year-End emergency restore complete.\n\nAcademic Year restored: ${snapshot.fromYear}\nBacked-up student enrolment/class records restored: ${snapshot.data.students.length}\n\nNo grades, attendance, remarks, staff, classes, subjects or calendar records were deleted.`);
+  } catch (error) {
+    console.error('Year-End emergency restore failed:', error);
+    alert('The emergency restore did not complete.\n\nNo local SchoolHub data was replaced. You can safely retry using the same Year-End backup.\n\n' + (error.message || error));
+    if (button) { button.disabled = false; button.textContent = 'Restore Pre-Rollover State'; }
+  }
+}
+
+const restoreYearEndBackupBtn = document.getElementById('restoreYearEndBackupBtn');
+const restoreYearEndBackupInput = document.getElementById('restoreYearEndBackupInput');
+
+if (restoreYearEndBackupBtn && restoreYearEndBackupInput) {
+  restoreYearEndBackupBtn.addEventListener('click', () => {
+    if (!requireHeadTeacher('restore a Year-End backup')) return;
+    restoreYearEndBackupInput.value = '';
+    restoreYearEndBackupInput.click();
+  });
+
+  restoreYearEndBackupInput.addEventListener('change', event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) {
+      alert('That backup is too large to restore safely in the browser.');
+      event.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        pendingYearEndRestore = parseYearEndBackupFile(reader.result);
+        renderYearEndRestorePreview();
+        document.getElementById('yearRolloverRestorePreview')?.scrollIntoView({behavior:'smooth', block:'start'});
+      } catch (error) {
+        pendingYearEndRestore = null;
+        renderYearEndRestorePreview();
+        alert(error.message || 'Unable to read this Year-End backup.');
+        event.target.value = '';
+      }
+    };
+    reader.onerror = () => {
+      alert('Unable to read this Year-End backup file.');
+      event.target.value = '';
+    };
+    reader.readAsText(file);
   });
 }
 
