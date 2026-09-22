@@ -1424,3 +1424,38 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
     font-size:8.5px;
   }
 }
+
+
+/* v40 Academic Year Rollover */
+.year-rollover-section{grid-column:1/-1}
+.year-rollover-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+.year-rollover-heading .subsection-title{margin-bottom:4px}
+.year-rollover-heading .hint{margin:0;max-width:720px}
+#yearRolloverWorkspace{margin-top:18px}
+.year-rollover-period{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:14px}
+.rollover-safety-note{padding:12px 14px;border:1px solid var(--gold);border-radius:12px;background:color-mix(in srgb,var(--gold) 8%,var(--surface));line-height:1.5;margin-bottom:16px}
+.rollover-class-card{border:1px solid var(--rule);border-radius:16px;background:var(--surface-alt);padding:14px;margin:14px 0}
+.rollover-class-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.rollover-class-head h4{margin:0}
+.rollover-class-head span{font-size:.8rem;color:var(--muted)}
+.rollover-table{width:100%}
+.rollover-table td:first-child{min-width:180px}
+.rollover-table select{width:100%;min-width:150px}
+.rollover-review-card{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:18px 0}
+.rollover-review-card>div{padding:12px;border:1px solid var(--rule);border-radius:12px;background:var(--surface);display:flex;flex-direction:column;gap:4px}
+.rollover-review-card span{font-size:.75rem;color:var(--muted);font-weight:600}
+.rollover-review-card strong{font-size:1.05rem}
+.rollover-review-card .rollover-unresolved{border-color:#b42318}
+.rollover-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rollover-confirm-card{margin-top:14px;padding:16px;border:1px solid var(--gold);border-radius:14px;background:var(--surface-alt)}
+.rollover-confirm-card h4{margin-top:0}
+@media(max-width:700px){
+  .year-rollover-heading{display:block}
+  .year-rollover-heading button{width:100%;margin-top:12px}
+  .year-rollover-period{grid-template-columns:1fr}
+  .rollover-class-head{align-items:flex-start;flex-direction:column}
+  .rollover-class-head button{width:100%}
+  .rollover-review-card{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .rollover-actions{flex-direction:column;align-items:stretch}
+  .rollover-actions button{width:100%}
+}

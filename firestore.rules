@@ -212,6 +212,18 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // Immutable academic-year rollover archive. Only the active Head Teacher
+      // may create/read snapshots. Once created, they cannot be edited or deleted.
+      match /yearRollovers/{rolloverId} {
+        allow read, create: if isHeadTeacher(schoolId);
+        allow update, delete: if false;
+
+        match /snapshot/{chunkId} {
+          allow read, create: if isHeadTeacher(schoolId);
+          allow update, delete: if false;
+        }
+      }
+
       // v32: Firestore image manifest. Storage contains the binary files; this
       // collection tells each browser exactly which cloud asset belongs to a
       // school record. Teachers may manage manifests only for student photos

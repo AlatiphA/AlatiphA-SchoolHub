@@ -12,7 +12,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-floating-pill-vertical-labels-1">
+<link rel="stylesheet" href="style-3.css?v=v40-year-rollover-1">
 <link rel="stylesheet" href="ui-polish.css?v=v40-sync-engine-safety-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
@@ -294,6 +294,17 @@
       <div id="cloudSyncStatus"></div>
       <div id="joinCodeDisplay" class="hidden"></div>
       <button id="syncNowBtn" class="btn-primary hidden">Sync Now</button>
+    </div>
+
+    <div class="backup-section year-rollover-section" id="yearRolloverSection">
+      <div class="year-rollover-heading">
+        <div>
+          <h3 class="subsection-title">Academic Year Rollover</h3>
+          <p class="hint">Promote, repeat, complete or mark leaving students without overwriting the previous academic year.</p>
+        </div>
+        <button type="button" id="openYearRolloverBtn" class="btn-primary">Start Year Rollover</button>
+      </div>
+      <div id="yearRolloverWorkspace" class="hidden" aria-live="polite"></div>
     </div>
   </section>
 
@@ -798,7 +809,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
-<script src="app-4.js?v=v40-attendance-report-layout-parity-1"></script>
+<script src="app-4.js?v=v40-year-rollover-1"></script>
 <script src="install.js"></script>
 </body>
 </html>
