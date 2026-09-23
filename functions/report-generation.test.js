@@ -18,7 +18,8 @@ function fixture({ theme = 'premium', failDraw = false, failOutput = false, enou
     document: { createElement: () => ({ click() { downloads.push(this.download); } }) },
     setTimeout: fn => fn(), alert() {}, console
   });
-  vm.runInContext(app.slice(app.indexOf('function reportUsesCredits('), app.indexOf('/* ---------- utils ---------- */')), context);
+  vm.runInContext(app.slice(app.indexOf('function reportPdfConstructor('), app.indexOf('/* ---------- utils ---------- */')), context);
+  context.showPreparedReport = (url, filename) => downloads.push(filename);
   const student = { entries: [{}], student: { id: 'one', name: 'Test Student' } };
   return { context, deductions, downloads, student, requests };
 }

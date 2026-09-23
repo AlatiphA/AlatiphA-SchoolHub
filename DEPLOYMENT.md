@@ -58,3 +58,18 @@ if ($LASTEXITCODE -ne 0) { throw 'Rules deployment failed. The release is incomp
 After deployment, verify all four callables, the published app/service-worker contents, and real-account role/sync workflows. Ask users to refresh/reopen old tabs without clearing storage. Do not perform a production rollover merely as a smoke test; use a staging school for destructive acceptance scenarios.
 
 Keep a coordinated rollback plan. Old clients require their previous direct-write rules, so reverting Hosting alone is not a complete rollback. A rules rollback would reopen the repaired access risks and requires separate review. A release rollback never restores school records.
+
+
+## Follow-up: sync notice and report buttons (23 September 2026)
+
+The earlier safety release was recorded in commit b8166c7. The follow-up changes in the working tree have NOT been published by this task: automatic approval review was unavailable because its usage limit was reached.
+
+- Fixed undefined academic-year references in both current-term report buttons.
+- Added progress and visible error handling to current and historical PDF buttons.
+- Added a Report ready panel with Save PDF and Open / Print PDF links to the same prepared file, with no repeated credit deduction.
+- Moved the sync notice below the header and distinguished automatic saving from a failed sync.
+- Updated the service-worker cache version to v40-sync-reports-3.
+
+Validation: 72 automated tests pass. Isolated browser checks generated PDFs for all eight themes and showed single and class-batch save/print controls. The phone-width profile menu stayed accessible. Browser automation policy blocked the PDF viewer, so the final print dialog was not verified. No school records or live credits were modified by the sample-data checks.
+
+The static website package is outputs/SchoolHub-Sync-Reports-Fix.zip. Publish its contents to the existing GitHub Pages site as well as Firebase Hosting; both use the same already-deployed Firebase backend. This follow-up does not change cloud rules or functions. Reopen or refresh existing app tabs after publishing; do not clear site data, because pending local edits must be retained.

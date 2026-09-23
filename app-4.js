@@ -6,6 +6,7 @@ const APP_VERSION = 'v40';
 const SYNC_OUTBOX_KEY = 'arc_sync_outbox_v1';
 const VERIFIED_SESSION_PREFIX = 'arc_verified_session_v1__';
 const syncDirtyKeys = new Map();
+const syncErrors = new Map();
 const syncBaseValues = new Map();
 const SYNC_JOURNAL_KEY = 'arc_sync_journal_v2';
 function recoverSyncJournal() {
@@ -253,8 +254,11 @@ function updateOfflineModeBanner(message) {
       ? `${pending} pending change${pending === 1 ? '' : 's'} saved on this device. They will sync after your account is reverified online.`
       : 'SchoolHub is using the verified data saved on this device. Cloud features will resume when internet returns.');
   } else {
-    if (title) title.textContent = 'Sync Pending';
-    if (detail) detail.textContent = message || `${pending} change${pending === 1 ? '' : 's'} waiting to sync.`;
+    const failed = syncableFields().some(field => syncErrors.has(field.key));
+    if (title) title.textContent = failed ? 'Could not sync' : 'Saving to cloud…';
+    if (detail) detail.textContent = message || (failed
+      ? 'Changes are saved on this device. Open Profile → Sync Center to retry.'
+      : `${pending} change${pending === 1 ? '' : 's'} saved on this device. Syncing automatically.`);
   }
 }
 
@@ -284,6 +288,9 @@ function startCachedAuthenticatedSession(user, cached) {
 }
 
 function resetWorkspaceState() {
+  syncErrors.clear();
+  document.getElementById('preparedReportDialog')?.remove();
+  if (preparedReportUrl) { URL.revokeObjectURL(preparedReportUrl); preparedReportUrl = null; }
   const recoveryPreview = document.getElementById('staffRecoveryPreview');
   if (recoveryPreview) { recoveryPreview.innerHTML = ''; recoveryPreview.classList.add('hidden'); }
   pendingStaffImport = null;
@@ -6578,15 +6585,15 @@ function renderReportsStudentList() {
     list.appendChild(li);
   });
   list.querySelectorAll('.gen').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', () => runReportAction(btn, async () => {
       const studentId = btn.dataset.id;
       const result = results.find(r => r.student.id === studentId);
       const positions = computeSubjectPositions(classId, settings.currentTerm, settings.currentYear);
-      const numOnRoll = studentsForClassYear(classId, year).length;
+      const numOnRoll = studentsForClassYear(classId, settings.currentYear).length;
       const classInfo = DB.get(KEYS.classes, []).find(c => c.id === classId);
       const remarksAll = DB.get(KEYS.remarks, {})[gradeKey(classId, settings.currentTerm, settings.currentYear)] || {};
-      generateSinglePDF(result, positions, numOnRoll, classInfo, remarksAll[studentId] || {});
-    });
+      await generateSinglePDF(result, positions, numOnRoll, classInfo, remarksAll[studentId] || {});
+    }));
   });
   list.querySelectorAll('.share').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -6708,18 +6715,18 @@ document.getElementById('reportsClassSelect').addEventListener('change', () => {
   renderClassStatistics();
 });
 
-document.getElementById('generateAllBtn').addEventListener('click', () => {
+document.getElementById('generateAllBtn').addEventListener('click', event => runReportAction(event.currentTarget, async () => {
   const classId = document.getElementById('reportsClassSelect').value;
   if (!classId) { alert('Add a class first.'); return; }
   const settings = DB.get(KEYS.settings, {});
   const results = computeClassResults(classId, settings.currentTerm, settings.currentYear);
   if (!results.length) { alert('No students in this class.'); return; }
   const positions = computeSubjectPositions(classId, settings.currentTerm, settings.currentYear);
-  const numOnRoll = studentsForClassYear(classId, year).length;
+  const numOnRoll = studentsForClassYear(classId, settings.currentYear).length;
   const classInfo = DB.get(KEYS.classes, []).find(c => c.id === classId);
   const remarksAll = DB.get(KEYS.remarks, {})[gradeKey(classId, settings.currentTerm, settings.currentYear)] || {};
-  generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll);
-});
+  await generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll);
+}));
 
 /* ---------- CSV export ---------- */
 function csvValue(v) {
@@ -6883,22 +6890,22 @@ function renderHistoryBody() {
     list.appendChild(li);
   });
   list.querySelectorAll('.gen').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', () => runReportAction(btn, async () => {
       const result = results.find(r => r.student.id === btn.dataset.id);
       const settings = historicalSettings(term, year);
       const positions = computeSubjectPositions(classId, term, year);
       const numOnRoll = studentsForClassYear(classId, year).length;
       const classInfo = DB.get(KEYS.classes, []).find(c => c.id === classId);
       const remarksAll = DB.get(KEYS.remarks, {})[gradeKey(classId, term, year)] || {};
-      generateSinglePDF(result, positions, numOnRoll, classInfo, remarksAll[result.student.id] || {}, settings);
-    });
+      await generateSinglePDF(result, positions, numOnRoll, classInfo, remarksAll[result.student.id] || {}, settings);
+    }));
   });
 }
 
 document.getElementById('historyTermYearSelect').addEventListener('change', renderHistoryClassSelect);
 document.getElementById('historyClassSelect').addEventListener('change', renderHistoryBody);
 
-document.getElementById('historyGenerateAllBtn').addEventListener('click', () => {
+document.getElementById('historyGenerateAllBtn').addEventListener('click', event => runReportAction(event.currentTarget, async () => {
   const sel = currentHistorySelection();
   if (!sel) { alert('Pick a Term/Year and Class first.'); return; }
   const { classId, term, year } = sel;
@@ -6909,8 +6916,8 @@ document.getElementById('historyGenerateAllBtn').addEventListener('click', () =>
   const numOnRoll = studentsForClassYear(classId, year).length;
   const classInfo = DB.get(KEYS.classes, []).find(c => c.id === classId);
   const remarksAll = DB.get(KEYS.remarks, {})[gradeKey(classId, term, year)] || {};
-  generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settings);
-});
+  await generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settings);
+}));
 
 document.getElementById('historyExportCsvBtn').addEventListener('click', () => {
   const sel = currentHistorySelection();
@@ -7712,17 +7719,73 @@ async function prepareReportAssets(result, settings, classInfo) {
   };
 }
 
+async function runReportAction(button, action) {
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Preparing PDF…';
+  try { await action(); }
+  catch (error) {
+    console.error('Report generation failed:', error);
+    alert('Unable to generate the report: ' + (error.message || error) + '. Please try again.');
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
+function reportPdfConstructor() {
+  const Constructor = window.jspdf && window.jspdf.jsPDF;
+  if (!Constructor) throw new Error('The PDF library has not loaded. Reconnect to the internet and reload the app');
+  return Constructor;
+}
+
 function reportUsesCredits(settings) {
   return getReportTheme(settings).id !== 'bw';
+}
+
+let preparedReportUrl = null;
+function showPreparedReport(url, filename) {
+  document.getElementById('preparedReportDialog')?.remove();
+  if (preparedReportUrl) URL.revokeObjectURL(preparedReportUrl);
+  preparedReportUrl = url;
+  const overlay = document.createElement('div');
+  overlay.id = 'preparedReportDialog';
+  overlay.className = 'about-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-labelledby', 'preparedReportTitle');
+  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><div class="prepared-report-actions"><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close>Close</button></div></div>';
+  overlay.querySelector('.prepared-report-name').textContent = filename;
+  const download = overlay.querySelector('[data-report-download]');
+  download.href = url;
+  download.download = filename;
+  overlay.querySelector('[data-report-open]').href = url;
+  const previousFocus = document.activeElement;
+  const close = () => {
+    overlay.remove();
+    if (preparedReportUrl === url) preparedReportUrl = null;
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    previousFocus?.focus();
+  };
+  overlay.querySelector('[data-report-close]').addEventListener('click', close);
+  overlay.addEventListener('keydown', event => {
+    if (event.key === 'Escape') close();
+    if (event.key === 'Tab') {
+      const first = download, last = overlay.querySelector('[data-report-close]');
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+  });
+  document.body.appendChild(overlay);
+  download.focus();
+  download.click();
 }
 
 async function downloadGeneratedReport(doc, filename, count, reportType = 'paid') {
   if (!enforceGuestTrial()) return;
   // Serialize before deducting, then download the same prepared PDF.
   const url = URL.createObjectURL(doc.output('blob'));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
+  let offered = false;
   try {
     if (reportType === 'bw-single' && isActiveGuest()) {
       if (bwFreeRemaining() <= 0) {
@@ -7735,9 +7798,10 @@ async function downloadGeneratedReport(doc, filename, count, reportType = 'paid'
       try { await consumeReportCredits(count, crypto.randomUUID(), reportType); }
       catch (error) { alert(error.message || 'Test credits could not be deducted. The report was not downloaded.'); return; }
     }
-    link.click();
+    showPreparedReport(url, filename);
+    offered = true;
   } finally {
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (!offered) URL.revokeObjectURL(url);
   }
 }
 let reportGenerationBusy = false;
@@ -7746,8 +7810,8 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   reportGenerationBusy = true;
   try {
   if (!result.entries.length) { alert('No grades entered for this student yet.'); return; }
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
+  const Pdf = reportPdfConstructor();
+  const doc = new Pdf();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
   if (reportUsesCredits(settings) && !await ensureCreditsAvailable(1, 'generating a premium report card')) return;
   let assets;
@@ -7776,8 +7840,8 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   // every report that will be generated.
   if (!await ensureCreditsAvailable(usable.length, 'generating the class report batch')) return;
 
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
+  const Pdf = reportPdfConstructor();
+  const doc = new Pdf();
   for (let i = 0; i < usable.length; i++) {
     if (i > 0) doc.addPage();
     const r = usable[i];
@@ -9636,7 +9700,14 @@ function dirtyKeyedRecords(rawKey, value, allowedClassIds) {
 function pushFieldToCloud(match) {
   // Serialize writes per school/field so an older response cannot overtake a newer edit.
   if (fieldPushes.has(match.key)) return fieldPushes.get(match.key);
-  const pending = performFieldPush(match);
+  const token = sessionGeneration;
+  const pending = performFieldPush(match).then(result => {
+    if (token === sessionGeneration) { syncErrors.delete(match.key); updateOfflineModeBanner(); }
+    return result;
+  }, error => {
+    if (token === sessionGeneration) { syncErrors.set(match.key, true); updateOfflineModeBanner(); }
+    throw error;
+  });
   fieldPushes.set(match.key, pending);
   const cleanup = () => { if (fieldPushes.get(match.key) === pending) fieldPushes.delete(match.key); };
   pending.then(cleanup, cleanup);
