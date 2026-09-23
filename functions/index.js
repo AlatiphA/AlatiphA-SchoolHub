@@ -248,3 +248,6 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
   });
   return { balance, consumed, freeRemaining, allowanceKey, mode: 'test' };
 });
+
+const safetyModule = require('./safety');
+if (safetyModule) Object.assign(exports, safetyModule.register({onCall, HttpsError, db, admin}));

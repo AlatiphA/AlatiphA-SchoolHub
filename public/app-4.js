@@ -6,12 +6,28 @@ const APP_VERSION = 'v40';
 const SYNC_OUTBOX_KEY = 'arc_sync_outbox_v1';
 const VERIFIED_SESSION_PREFIX = 'arc_verified_session_v1__';
 const syncDirtyKeys = new Map();
+const syncBaseValues = new Map();
+const SYNC_JOURNAL_KEY = 'arc_sync_journal_v2';
+function recoverSyncJournal() {
+  const raw = localStorage.getItem(SYNC_JOURNAL_KEY);
+  if (!raw) return;
+  const item = JSON.parse(raw);
+  localStorage.setItem(SYNC_OUTBOX_KEY, item.outbox);
+  localStorage.setItem(item.key, item.payload);
+  localStorage.removeItem(SYNC_JOURNAL_KEY);
+  syncDirtyKeys.clear(); syncBaseValues.clear(); loadPersistentSyncOutbox();
+}
+try { recoverSyncJournal(); } catch (error) {
+  console.error('Pending save recovery is blocked; the saved journal has been retained.', error);
+}
 let offlineAuthenticatedMode = false;
 let offlineReconnectInProgress = false;
 
 function loadPersistentSyncOutbox() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(SYNC_OUTBOX_KEY) || '{}');
+    const stored = JSON.parse(localStorage.getItem(SYNC_OUTBOX_KEY) || '{}');
+    const parsed = stored.version === 2 ? stored.dirty : stored;
+    Object.entries(stored.bases || {}).forEach(([key, value]) => syncBaseValues.set(key, value));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
     Object.keys(parsed).forEach(rawKey => {
       const ids = Array.isArray(parsed[rawKey]) ? parsed[rawKey].map(String).filter(Boolean) : [];
@@ -22,18 +38,13 @@ function loadPersistentSyncOutbox() {
   }
 }
 
+function syncOutboxJson() {
+  const dirty = {};
+  syncDirtyKeys.forEach((ids, key) => { if (ids.size) dirty[key] = Array.from(ids); });
+  return JSON.stringify({version:2, dirty, bases:Object.fromEntries(syncBaseValues)});
+}
 function persistSyncOutbox() {
-  try {
-    const out = {};
-    syncDirtyKeys.forEach((ids, rawKey) => {
-      const values = Array.from(ids || []).map(String).filter(Boolean);
-      if (values.length) out[rawKey] = values;
-    });
-    if (Object.keys(out).length) localStorage.setItem(SYNC_OUTBOX_KEY, JSON.stringify(out));
-    else localStorage.removeItem(SYNC_OUTBOX_KEY);
-  } catch (e) {
-    console.warn('Could not save pending sync queue:', e);
-  }
+  localStorage.setItem(SYNC_OUTBOX_KEY, syncOutboxJson());
 }
 
 loadPersistentSyncOutbox();
@@ -42,7 +53,7 @@ function stableSyncJson(value) {
   try { return JSON.stringify(value); } catch (e) { return String(value); }
 }
 
-function markSyncDirty(rawKey, oldValue, newValue) {
+function markSyncDirty(rawKey, oldValue, newValue, deferPersist) {
   // Automatic synchronization is UPSERT-ONLY. A missing local record is never
   // interpreted as a cloud delete. Explicit Delete/Clear handlers are the only
   // code paths allowed to delete Firestore documents.
@@ -69,13 +80,21 @@ function markSyncDirty(rawKey, oldValue, newValue) {
   }
 
   if (dirty.size) syncDirtyKeys.set(rawKey, dirty);
-  persistSyncOutbox();
+  const bases = syncBaseValues.get(rawKey) || {};
+  dirty.forEach(id => {
+    if (!Object.prototype.hasOwnProperty.call(bases, id)) {
+      const previous = Array.isArray(oldValue) ? oldValue.find(item => item && String(item.id) === id) : oldValue && oldValue[id];
+      bases[id] = previous === undefined ? null : JSON.parse(JSON.stringify(previous));
+    }
+  });
+  syncBaseValues.set(rawKey, bases);
+  if (!deferPersist) persistSyncOutbox();
 }
 
 function clearSyncDirty(rawKey, ids) {
   const dirty = syncDirtyKeys.get(rawKey);
   if (!dirty) return;
-  (ids || []).forEach(id => dirty.delete(String(id)));
+  (ids || []).forEach(id => { dirty.delete(String(id)); const bases=syncBaseValues.get(rawKey); if(bases) delete bases[String(id)]; });
   if (!dirty.size) syncDirtyKeys.delete(rawKey);
   persistSyncOutbox();
   updateOfflineModeBanner();
@@ -98,21 +117,26 @@ const DB = {
       oldClean = previousRaw === null ? null : JSON.parse(previousRaw);
     } catch (e) {}
     const payload = JSON.stringify(clean);
+    const outbound = !(options && options.skipCloudSync);
     try {
-      localStorage.setItem(key, payload);
-    } catch (e) {
-      try {
-        localStorage.removeItem(key);
-        localStorage.setItem(key, payload);
-      } catch (retryError) {
-        console.error('Could not save local data:', key, retryError);
-        throw retryError;
+      recoverSyncJournal();
+      if (outbound) {
+        markSyncDirty(key, oldClean, clean, true);
+        // One durable intent contains both the value and queue; replay after interruption.
+        localStorage.setItem(SYNC_JOURNAL_KEY, JSON.stringify({key,payload,outbox:syncOutboxJson()}));
+        persistSyncOutbox();
       }
+      localStorage.setItem(key, payload);
+      if (outbound) localStorage.removeItem(SYNC_JOURNAL_KEY);
+    } catch (e) {
+      // setItem is atomic on failure: keep the previous saved value intact.
+      console.error('Could not save local data:', key, e);
+      if (typeof alert === 'function') alert('This save could not be completed on this device. Keep this page open and export a backup before freeing browser storage. Your previous saved data and any recovery journal have been retained.');
+      throw e;
     }
     // Cloud hydration/recovery writes never become outbound edits. Normal
     // local edits record only the records that actually changed.
     if (!(options && options.skipCloudSync)) {
-      markSyncDirty(key, oldClean, clean);
       if (typeof scheduleCloudPush === 'function') scheduleCloudPush(key);
       updateOfflineModeBanner();
     }
@@ -144,7 +168,7 @@ let sessionDataReady = false; // Core school data has finished loading for this 
 let cloudHydrationInProgress = false; // Suppresses cloud pushes caused by Firestore-to-local writes.
 let manualSignOutInProgress = false; // Prevent Firebase auth transitions from re-blocking the login form during logout.
 
-function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}` : base; }
+function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}${currentRole === 'teacher' ? '__user_' + currentUid : ''}` : base; }
 
 function isCurrentSession(token, uid, schoolId) {
   return token === sessionGeneration
@@ -177,7 +201,7 @@ function loadVerifiedLocalSession(user) {
   if (!user || !user.uid) return null;
   try {
     const parsed = JSON.parse(localStorage.getItem(verifiedSessionKey(user.uid)) || 'null');
-    if (!parsed || parsed.uid !== String(user.uid) || parsed.status !== 'active' ||
+    if (!parsed || !Number.isFinite(parsed.verifiedAt) || Date.now() - parsed.verifiedAt > 24 * 60 * 60 * 1000 || parsed.verifiedAt > Date.now() || parsed.uid !== String(user.uid) || parsed.status !== 'active' ||
         !parsed.schoolId || !['headteacher','teacher'].includes(parsed.role)) return null;
     return parsed;
   } catch (e) {
@@ -239,6 +263,7 @@ function startCachedAuthenticatedSession(user, cached) {
   currentUid = user.uid;
   currentSchoolId = cached.schoolId;
   currentRole = cached.role;
+  if (currentRole === 'teacher') redactCachedStaff();
   currentStatus = 'active';
   currentAssignedClassIds = Array.isArray(cached.assignedClassIds) ? cached.assignedClassIds.slice() : [];
   currentAssignedSubjectIds = Array.isArray(cached.assignedSubjectIds) ? cached.assignedSubjectIds.slice() : [];
@@ -1863,7 +1888,7 @@ function cloudRolloverSnapshot(snapshot, rolloverId, counts) {
   return metaRef.get().then(existing => {
     if (existing.exists) throw new Error(`A rollover for ${snapshot.fromYear} has already been recorded.`);
     const operations = [
-      batch => batch.create(metaRef, {
+      batch => batch.set(metaRef, {
         fromYear: snapshot.fromYear,
         toYear: snapshot.toYear,
         createdBy: currentUid || '',
@@ -1874,7 +1899,7 @@ function cloudRolloverSnapshot(snapshot, rolloverId, counts) {
       })
     ];
     chunks.forEach((chunk, index) => {
-      operations.push(batch => batch.create(metaRef.collection('snapshot').doc(String(index).padStart(4,'0')), {
+      operations.push(batch => batch.set(metaRef.collection('snapshot').doc(String(index).padStart(4,'0')), {
         index,
         total: chunks.length,
         encoding:'json',
@@ -1953,7 +1978,15 @@ async function applyYearRollover() {
     const rolloverId = `year_${rolloverSafeId(draft.fromYear)}`;
     const snapshot = buildYearEndSnapshot(draft);
     storeLocalRolloverSnapshot(snapshot, rolloverId);
-    await cloudRolloverSnapshot(snapshot, rolloverId, counts);
+    if (FIREBASE_ENABLED && currentSchoolId) {
+      await flushPendingCloudWrites();
+      await safetyCall('applySchoolYearChange', {mode:'rollover',fromYear:draft.fromYear,toYear:draft.toYear,decisions:draft.decisions});
+      await pullCloudData();
+      yearRolloverDraft = null;
+      loadSettingsForm(); renderStudents(); renderClasses(); renderYearRollover();
+      alert('Academic Year Rollover complete. The archive and roster were saved atomically.');
+      return;
+    }
 
     const updatedStudents = rolloverUpdatedStudents(draft);
     const updatedSettings = Object.assign({}, settings, {
@@ -2133,7 +2166,7 @@ function preserveBeforeEmergencyRestore() {
   };
   const key = ns(`arc_pre_emergency_restore_${Date.now()}`);
   try { localStorage.setItem(key, JSON.stringify(snapshot)); }
-  catch (e) { console.warn('Could not preserve pre-restore local snapshot:', e); }
+  catch (e) { throw new Error('Could not preserve the pre-restore snapshot. Free device storage before retrying.'); }
 }
 
 function mergedStudentsForEmergencyRestore(snapshotStudents) {
@@ -2179,6 +2212,18 @@ async function applyYearEndEmergencyRestore() {
 
   try {
     preserveBeforeEmergencyRestore();
+    if (FIREBASE_ENABLED && currentSchoolId) {
+      await flushPendingCloudWrites();
+      const safeSnapshot = JSON.parse(JSON.stringify(snapshot));
+      safeSnapshot.data.students = stripImagesForCloud('students', safeSnapshot.data.students);
+      safeSnapshot.data.settings = stripImagesForCloud('settings', safeSnapshot.data.settings);
+      await safetyCall('applySchoolYearChange', {mode:'restore',snapshot:safeSnapshot,expectedYear:currentYear});
+      await pullCloudData();
+      pendingYearEndRestore = null;
+      loadSettingsForm(); renderClasses(); renderStudents(); renderYearRollover(); renderYearEndRestorePreview();
+      alert('Year-End emergency restore complete. The archive and roster were saved atomically.');
+      return;
+    }
 
     const restoredStudents = mergedStudentsForEmergencyRestore(snapshot.data.students || []);
     const restoredSettings = JSON.parse(JSON.stringify(backupSettings));
@@ -2759,7 +2804,7 @@ function renderStudents() {
       const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
       if (FIREBASE_ENABLED && currentSchoolId) {
         if (cloudHydrationInProgress || !sessionDataReady) { alert('School data is still synchronizing. Please wait a moment and try again.'); return; }
-        try { await schoolRef().collection('students').doc(id).delete(); }
+        try { await deleteSchoolRecord(schoolRef().collection('students').doc(id)); }
         catch (error) { alert('Could not delete this student from SchoolHub cloud. Nothing was removed. Please reconnect and try again.'); return; }
         if (!isCurrentSession(token, userId, schoolId)) return;
       }
@@ -3079,7 +3124,7 @@ function renderSubjects() {
       try {
         if (FIREBASE_ENABLED && currentSchoolId) {
           if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
-          await schoolRef().collection('subjects').doc(String(id)).delete();
+          await deleteSchoolRecord(schoolRef().collection('subjects').doc(String(id)));
           setLastSyncedNow();
         }
         const subjects = DB.get(KEYS.subjects, []).filter(s => s.id !== id);
@@ -3290,7 +3335,7 @@ async function restoreRecoveredStudents(items, token, userId, schoolId) {
   if (FIREBASE_ENABLED && currentSchoolId) {
     if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
     const ref = schoolRef().collection('students');
-    await commitChunks(additions.map(record => batch => batch.set(ref.doc(String(record.id)), stripImagesForCloud('students', record), { merge:true })));
+    await commitChunks(additions.map(record => batch => batch.restore(ref.doc(String(record.id)), stripImagesForCloud('students', record))));
     if (!isCurrentSession(token, userId, schoolId)) return;
     setLastSyncedNow();
   }
@@ -3806,7 +3851,7 @@ function renderStaff() {
       const id = btn.dataset.id;
       const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
       if (currentSchoolId) {
-        try { await staffRef(id).delete(); }
+        try { await deleteSchoolRecord(staffRef(id)); }
         catch (error) { alert('Could not delete this staff member. Please reconnect and try again.'); return; }
         if (!isCurrentSession(token, userId, schoolId)) return;
       }
@@ -4134,15 +4179,20 @@ document.getElementById('checkStaffRecoveryBtn').addEventListener('click', async
     if (!missing.length) return;
     const restore = document.createElement('button'); restore.type = 'button'; restore.textContent = 'Restore selected staff';
     host.appendChild(restore);
-    restore.addEventListener('click', () => {
+    restore.addEventListener('click', async () => {
       if (!isCurrentSession(token, userId, schoolId) || !canManageStaffWorkspace()) return;
       const selected = Array.from(host.querySelectorAll('input:checked')).map(el => missing[Number(el.dataset.recoveryIndex)]);
       if (!selected.length) return;
       const latest = DB.get(KEYS.staff, []);
       const additions = selected.filter(record => !latest.some(s => String(s.id) === String(record.id) || (record.staffId && String(s.staffId || '').trim().toLowerCase() === String(record.staffId).trim().toLowerCase())));
       try {
-        DB.set(KEYS.staff, latest.concat(additions));
-        host.textContent = additions.length + ' staff restored to this device. Cloud sync will run when connected.';
+        if(FIREBASE_ENABLED&&currentSchoolId){
+          if(navigator.onLine===false||offlineAuthenticatedMode)throw new Error('Reconnect before restoring staff.');
+          await commitChunks(additions.map(record=>batch=>batch.restore(staffRef(String(record.id)),stripImagesForCloud('staff',record))));
+          if(!isCurrentSession(token,userId,schoolId))return;
+        }
+        DB.set(KEYS.staff, latest.concat(additions), {skipCloudSync:true});
+        host.textContent = additions.length + ' staff restored.';
         renderStaff(); renderClasses(); refreshHeadTeacherSelect();
       } catch (error) { host.textContent = 'Could not save restored staff: ' + error.message; }
     });
@@ -4981,6 +5031,8 @@ function renderSchoolCalendar() {
           const batch = firebase.firestore().batch();
           if (type !== 'open') {
             batch.set(schoolCalendarRef(key), { term, year, date, type, note, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+          } else {
+            batch.delete(schoolCalendarRef(key));
           }
           batch.delete(schoolCalendarRef(originalKey));
           await batch.commit();
@@ -8538,7 +8590,7 @@ async function getCloudImageInventory(options) {
   // can read the same manifest without needing permission to list Storage
   // folders. This is the cloud-to-browser synchronization contract.
   try {
-    const snap = await schoolRef().collection('imageAssets').get();
+    const snap = await pullImageAssetsForAccess();
     snap.forEach(doc => {
       const a = doc.data() || {};
       if (!a.kind || !a.recordId || !a.storagePath) return;
@@ -8672,7 +8724,7 @@ async function getCloudImageInventory(options) {
   // Re-read the manifest after seeding/probing so the returned inventory
   // represents exactly what every browser will use for synchronization.
   try {
-    const snap = await schoolRef().collection('imageAssets').get();
+    const snap = await pullImageAssetsForAccess();
     const manifest = [];
     snap.forEach(doc => {
       const a = doc.data() || {};
@@ -8756,7 +8808,7 @@ async function publishLocalImagesToCloud() {
   // the least-privilege Storage rules introduced in v32.
   let manifest = [];
   try {
-    const snap = await schoolRef().collection('imageAssets').get();
+    const snap = await pullImageAssetsForAccess();
     snap.forEach(doc => {
       const a = doc.data() || {};
       if (a.kind && a.recordId) manifest.push({ kind: String(a.kind), id: String(a.recordId), storagePath: String(a.storagePath || '') });
@@ -8979,13 +9031,40 @@ function cloudChunk(items, size) {
   return chunks;
 }
 
+function deletionMarker(ref) {
+  return schoolRef().collection('deletedRecords').doc(ref.parent.id + '__' + ref.id);
+}
+function deletionVersionsKey() { return 'arc_deletion_versions__' + currentSchoolId; }
+function recordDeletionVersion(field, key) {
+  return DB.get(deletionVersionsKey(), {})[field + '__' + cloudKey(key)] || null;
+}
+function rememberDeletions(items) {
+  const versions = DB.get(deletionVersionsKey(), {});
+  items.forEach(item => { versions[item.collection + '__' + item.id] = item.version || 'legacy-deletion'; });
+  localStorage.setItem(deletionVersionsKey(), JSON.stringify(versions));
+}
+function markBatchDelete(batch, ref) {
+  const marker = {collection:ref.parent.id, id:ref.id, version:crypto.randomUUID()};
+  batch.set(deletionMarker(ref), {...marker, deletedAt:firebase.firestore.FieldValue.serverTimestamp()});
+  batch.delete(ref);
+  return marker;
+}
+async function deleteSchoolRecord(ref) {
+  if (navigator.onLine === false || offlineAuthenticatedMode) throw new Error('Reconnect before deleting school records.');
+  const batch = firebase.firestore().batch();
+  const marker = markBatchDelete(batch, ref);
+  await batch.commit();
+  rememberDeletions([marker]);
+}
 function commitChunks(ops) {
   if (!ops.length) return Promise.resolve();
-  const chunks = cloudChunk(ops, 450);
+  const chunks = cloudChunk(ops, 220);
   return chunks.reduce((p, chunk) => p.then(() => {
     const batch = firebase.firestore().batch();
-    chunk.forEach(op => op(batch));
-    return batch.commit();
+    const markers = [];
+    const guarded = {set:(...args)=>batch.set(...args), create:(...args)=>batch.create(...args), delete:ref=>markers.push(markBatchDelete(batch,ref)), restore:(ref,data)=>{batch.delete(deletionMarker(ref));batch.set(ref,data,{merge:true});}};
+    chunk.forEach(op => op(guarded));
+    return batch.commit().then(() => { if(markers.length)rememberDeletions(markers); });
   }), Promise.resolve());
 }
 
@@ -9061,44 +9140,7 @@ function remarkEntriesForClass(classId, remarks) {
 
 function migrateLegacySchoolDocument() {
   if (!isHeadTeacher() || !currentSchoolId) return Promise.resolve(false);
-  return schoolRef().get().then(doc => {
-    if (!doc.exists) return false;
-    const data = doc.data() || {};
-    if (Number(data.schemaVersion || 0) >= CLOUD_SCHEMA_VERSION) return false;
-
-    const hasLegacy = ['classes', 'subjects', 'students', 'grades', 'attendance', 'teacherAttendance', 'schoolCalendar', 'remarks', 'staff']
-      .some(k => data[k] !== undefined);
-    if (!hasLegacy) {
-      return schoolRef().set({ schemaVersion: CLOUD_SCHEMA_VERSION }, { merge: true }).then(() => false);
-    }
-
-    const classes = Array.isArray(data.classes) ? data.classes : [];
-    const subjects = Array.isArray(data.subjects) ? data.subjects : [];
-    const students = Array.isArray(data.students) ? data.students : [];
-    const staff = Array.isArray(data.staff) ? data.staff : [];
-    const grades = data.grades && typeof data.grades === 'object' ? data.grades : {};
-    const attendance = data.attendance && typeof data.attendance === 'object' ? data.attendance : {};
-    const teacherAttendance = data.teacherAttendance && typeof data.teacherAttendance === 'object' ? data.teacherAttendance : {};
-    const schoolCalendar = data.schoolCalendar && typeof data.schoolCalendar === 'object' ? data.schoolCalendar : {};
-    const remarks = data.remarks && typeof data.remarks === 'object' ? data.remarks : {};
-
-    const ops = [];
-    classes.forEach(c => ops.push(batch => batch.set(classRef(c.id), Object.assign({}, c, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
-    subjects.forEach(s => ops.push(batch => batch.set(subjectRef(s.id), stripImagesForCloud('subjects', s))));
-    students.forEach(s => ops.push(batch => batch.set(studentRef(s.id), stripImagesForCloud('students', s))));
-    staff.forEach(s => ops.push(batch => batch.set(staffRef(s.id), stripImagesForCloud('staff', s))));
-    Object.keys(grades).forEach(key => ops.push(batch => batch.set(gradeRef(key), { classId: key.split('__')[0], entries: grades[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() })));
-    Object.keys(attendance).forEach(key => ops.push(batch => batch.set(attendanceRef(key), Object.assign({}, attendance[key], { classId: (attendance[key] && attendance[key].classId) || key.split('__')[0], entries: (attendance[key] && attendance[key].entries) || attendance[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
-    Object.keys(teacherAttendance).forEach(key => ops.push(batch => batch.set(teacherAttendanceRef(key), Object.assign({}, teacherAttendance[key], { entries: (teacherAttendance[key] && teacherAttendance[key].entries) || teacherAttendance[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
-    Object.keys(schoolCalendar).forEach(key => ops.push(batch => batch.set(schoolCalendarRef(key), Object.assign({}, schoolCalendar[key], { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }))));
-    Object.keys(remarks).forEach(key => ops.push(batch => batch.set(remarkRef(key), { classId: key.split('__')[0], entries: remarks[key], updatedAt: firebase.firestore.FieldValue.serverTimestamp() })));
-
-    return commitChunks(ops).then(() => {
-      const remove = {};
-      ['classes', 'subjects', 'students', 'grades', 'attendance', 'teacherAttendance', 'schoolCalendar', 'remarks', 'staff'].forEach(k => { remove[k] = firebase.firestore.FieldValue.delete(); });
-      return schoolRef().set(Object.assign(remove, { schemaVersion: CLOUD_SCHEMA_VERSION, migratedAt: firebase.firestore.FieldValue.serverTimestamp() }), { merge: true });
-    }).then(() => true);
-  });
+  return safetyCall('migrateSchoolLegacy', {}).then(result => result.migrated);
 }
 
 function pullSubcollection(name, allowedIds) {
@@ -9152,6 +9194,29 @@ function pullAttendanceForAccess(all, classIds) {
   });
 }
 
+function safetyCall(name, data) {
+  if (navigator.onLine === false || offlineAuthenticatedMode) return Promise.reject(new Error('Connect and reverify your account before this operation.'));
+  return firebase.functions().httpsCallable(name)(data).then(result => result.data);
+}
+function redactCachedStaff() {
+  const safe = DB.get(KEYS.staff, []).map(record => {
+    const item = {id:record.id};
+    ['name','role','signatureUrl','signatureStoragePath','isActive'].forEach(key => { if(record[key]!==undefined)item[key]=record[key]; });
+    return item;
+  });
+  DB.set(KEYS.staff, safe, {skipCloudSync:true});
+}
+function pullStaffForAccess(all) {
+  if (all) return pullSubcollection('staff', null);
+  return safetyCall('getSchoolReportStaff', {}).then(result => ({forEach: fn => result.staff.forEach(item => fn({id:item.id,data:()=>item}))}));
+}
+function pullImageAssetsForAccess() {
+  const ref=schoolRef().collection('imageAssets');
+  if(isHeadTeacher())return ref.get();
+  const queries=[ref.where('kind','in',['logo','staff']).get()];
+  Array.from(classIdsForCloudSync()||[]).forEach(classId=>queries.push(ref.where('kind','==','student').where('classId','==',classId).get()));
+  return Promise.all(queries).then(snaps=>({forEach:fn=>snaps.forEach(snap=>snap.forEach(fn))}));
+}
 function pullTeacherAttendanceForAccess(all) {
   if (!all) return Promise.resolve({ empty: true, forEach: function() {} });
   return schoolRef().collection('teacherAttendance').get();
@@ -9246,20 +9311,30 @@ function mergeKeyedData(localValue, cloudValue) {
 function mergeCloudCollection(field, cloudItems, authoritative) {
   // v40 systemic data-loss guard:
   // Firestore absence is NOT proof of intentional deletion. Every hydration is
-  // therefore a merge. Incoming cloud copies win for matching IDs/keys, while
+  // therefore a merge. Pending local edits win for matching IDs/keys, while
   // local-only records remain available for recovery instead of disappearing.
   if (field === 'settings') {
-    DB.set(KEYS.settings, Object.assign({}, DB.get(KEYS.settings, {}), cloudItems || {}), {skipCloudSync:true});
+    const local = DB.get(KEYS.settings, {});
+    const merged = Object.assign({}, local, cloudItems || {});
+    dirtyIdsFor(KEYS.settings).forEach(id => { if (Object.prototype.hasOwnProperty.call(local, id)) merged[id] = local[id]; });
+    DB.set(KEYS.settings, merged, {skipCloudSync:true});
     return;
   }
   const arrayFields = ['classes','subjects','students','staff'];
   if (arrayFields.indexOf(field) !== -1) {
     const incoming = Array.isArray(cloudItems) ? cloudItems : [];
-    DB.set(KEYS[field], mergeRecordsById(DB.get(KEYS[field], []), incoming), {skipCloudSync:true});
+    const local = DB.get(KEYS[field], []);
+    const dirty = new Set(dirtyIdsFor(KEYS[field]));
+    const merged = mergeRecordsById(local, incoming);
+    const pending = new Map(local.filter(item => item && dirty.has(String(item.id))).map(item => [String(item.id), item]));
+    DB.set(KEYS[field], merged.map(item => pending.get(String(item.id)) || item), {skipCloudSync:true});
     return;
   }
   const incoming = cloudItems && typeof cloudItems === 'object' && !Array.isArray(cloudItems) ? cloudItems : {};
-  DB.set(KEYS[field], mergeKeyedData(DB.get(KEYS[field], {}), incoming), {skipCloudSync:true});
+  const local = DB.get(KEYS[field], {});
+  const merged = mergeKeyedData(local, incoming);
+  dirtyIdsFor(KEYS[field]).forEach(id => { if (Object.prototype.hasOwnProperty.call(local, id)) merged[id] = local[id]; });
+  DB.set(KEYS[field], merged, {skipCloudSync:true});
 }
 
 function pullCloudData(sessionToken) {
@@ -9295,7 +9370,7 @@ function pullCloudData(sessionToken) {
       pullSubcollection('classes', classIds),
       pullSubcollection('subjects', subjectIds),
       pullStudentsForAccess(all, classIds),
-      pullSubcollection('staff', null),
+      pullStaffForAccess(all),
       pullGradesForAccess(all, classIds),
       pullAttendanceForAccess(all, classIds),
       pullTeacherAttendanceForAccess(all),
@@ -9303,6 +9378,11 @@ function pullCloudData(sessionToken) {
       pullRemarksForAccess(all, classIds)
     ]).then(async results => {
       if (!valid()) return;
+      const deleted = await schoolRef().collection('deletedRecords').get();
+      if (!valid()) return;
+      const tombstones = {};
+      const deletionItems = [];
+      deleted.forEach(doc => { const item=doc.data(); deletionItems.push(item); (tombstones[item.collection] ||= new Set()).add(localKeyFromCloudId(item.id)); });
       const schoolDoc = results[0];
       const classSnap = results[1];
       const subjectSnap = results[2];
@@ -9322,7 +9402,7 @@ function pullCloudData(sessionToken) {
         // Keep an existing local image. Cloud URL/path are metadata only.
         const cachedLogo = getCachedLocalImage(imageCacheKey('logo', 'school'));
         if (cachedLogo) mergedProfile.logo = cachedLogo;
-        DB.set(KEYS.settings, mergedProfile, {skipCloudSync:true});
+        mergeCloudCollection('settings', mergedProfile, true);
       }
 
       const classes = [];
@@ -9373,7 +9453,8 @@ function pullCloudData(sessionToken) {
 
       const staff = [];
       staffSnap.forEach(d => staff.push(mergeLocalImage('staff', d.data(), d.id)));
-      mergeCloudCollection('staff', staff, true);
+      if (all) mergeCloudCollection('staff', staff, true);
+      else DB.set(KEYS.staff, staff, {skipCloudSync:true});
 
       // The Head Teacher is also teaching staff. Ensure the account has a
       // corresponding Staff record so teacher attendance includes the Head
@@ -9451,6 +9532,18 @@ function pullCloudData(sessionToken) {
       });
       mergeCloudCollection('remarks', remarks, all);
       if (!valid()) return;
+      Object.entries(tombstones).forEach(([field, ids]) => {
+        if (!KEYS[field]) return;
+        const collectionResults = {classes:classSnap,subjects:subjectSnap,students:studentSnap,staff:staffSnap,grades:gradeSnap,attendance:attendanceSnap,teacherAttendance:teacherAttendanceSnap,schoolCalendar:schoolCalendarSnap,remarks:remarkSnap};
+        const existing = new Set();
+        collectionResults[field]?.forEach(doc => existing.add(localKeyFromCloudId(doc.id)));
+        existing.forEach(id => ids.delete(id));
+        const value = DB.get(KEYS[field], fieldDefault(field));
+        const clean = Array.isArray(value) ? value.filter(item => !ids.has(String(item.id))) : Object.fromEntries(Object.entries(value).filter(([id]) => !ids.has(id)));
+        DB.set(KEYS[field], clean, {skipCloudSync:true});
+        clearSyncDirty(KEYS[field], Array.from(ids));
+      });
+      rememberDeletions(deletionItems.filter(item => !dirtyIdsFor(KEYS[item.collection]).includes(localKeyFromCloudId(item.id))));
       setLastSyncedNow();
     });
   }).finally(() => {
@@ -9459,6 +9552,9 @@ function pullCloudData(sessionToken) {
     if (valid()) {
       cloudHydrationInProgress = false;
       sessionDataReady = true;
+      syncableFields().forEach(field => {
+        if (dirtyIdsFor(field.key).length) scheduleCloudPush(field.key);
+      });
       // The repair made only safe score transfers, but it was intentionally
       // performed while cloud writes were paused. Queue the now-complete
       // collections after the hydration barrier opens.
@@ -9471,6 +9567,7 @@ function pullCloudData(sessionToken) {
 }
 
 const pushTimers = {};
+const fieldPushes = new Map();
 function scheduleCloudPush(rawKey) {
   if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return;
   if (cloudHydrationInProgress || !sessionDataReady) return;
@@ -9483,7 +9580,7 @@ function scheduleCloudPush(rawKey) {
     if (!isCurrentSession(token, uidAtSchedule, schoolAtSchedule) || cloudHydrationInProgress || !sessionDataReady) return;
     pushFieldToCloud(match).catch(err => {
       console.error('Cloud sync failed for', match.field, err);
-      updateOfflineModeBanner();
+      updateOfflineModeBanner(err.message || 'Sync failed. Your local changes are preserved.');
     });
   }, 800);
 }
@@ -9537,20 +9634,38 @@ function dirtyKeyedRecords(rawKey, value, allowedClassIds) {
 
 
 function pushFieldToCloud(match) {
+  // Serialize writes per school/field so an older response cannot overtake a newer edit.
+  if (fieldPushes.has(match.key)) return fieldPushes.get(match.key);
+  const pending = performFieldPush(match);
+  fieldPushes.set(match.key, pending);
+  const cleanup = () => { if (fieldPushes.get(match.key) === pending) fieldPushes.delete(match.key); };
+  pending.then(cleanup, cleanup);
+  return pending;
+}
+
+function performFieldPush(match) {
   // Direct calls are safe and non-destructive. Automatic synchronization only
   // upserts records that DB.set marked dirty. It never compares whole local
   // collections with Firestore and never infers deletes from missing cache data.
-  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active' || cloudHydrationInProgress || !sessionDataReady) return Promise.resolve();
+  if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active' || offlineAuthenticatedMode || cloudHydrationInProgress || !sessionDataReady) return Promise.resolve();
 
   const field = match.field;
   const value = DB.get(match.key, fieldDefault(field));
   const dirtyIds = dirtyIdsFor(match.key);
   if (!dirtyIds.length) return Promise.resolve();
 
+  const token = sessionGeneration, uidAtPush = currentUid, schoolAtPush = currentSchoolId;
+  let pushedIds = [];
   let promise = Promise.resolve();
 
-  if (field === 'settings') {
+  if (['grades','attendance','teacherAttendance','remarks'].includes(field)) {
+    const entries = dirtyKeyedRecords(match.key, value, isHeadTeacher() ? null : classIdsForCloudSync());
+    pushedIds = Object.keys(entries);
+    const bases = syncBaseValues.get(match.key) || {};
+    promise = Promise.all(pushedIds.map(key => safetyCall('saveSchoolRecord', {field,key,base:bases[key] || {},value:entries[key],deletionVersion:recordDeletionVersion(field,key)})));
+  } else if (field === 'settings') {
     if (!isHeadTeacher()) return Promise.resolve();
+    pushedIds = dirtyIds.slice();
     promise = schoolRef().set({
       profile: stripImagesForCloud('settings', value),
       schemaVersion: CLOUD_SCHEMA_VERSION,
@@ -9559,32 +9674,38 @@ function pushFieldToCloud(match) {
   } else if (field === 'classes') {
     if (!isHeadTeacher()) return Promise.resolve();
     const items = dirtyArrayRecords(match.key, value);
+    pushedIds = items.map(item => String(item.id));
     promise = syncCollectionArray(schoolRef().collection('classes'), items,
       c => Object.assign({}, c, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }));
   } else if (field === 'subjects') {
     if (!isHeadTeacher()) return Promise.resolve();
     const items = dirtyArrayRecords(match.key, value);
+    pushedIds = items.map(item => String(item.id));
     promise = syncCollectionArray(schoolRef().collection('subjects'), items,
       s => Object.assign({}, s, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }));
   } else if (field === 'staff') {
     if (!isHeadTeacher()) return Promise.resolve();
     const items = dirtyArrayRecords(match.key, value);
+    pushedIds = items.map(item => String(item.id));
     promise = syncCollectionArray(schoolRef().collection('staff'), items,
       s => stripImagesForCloud('staff', s), { preserveMissing: true });
   } else if (field === 'students') {
     const allowed = classIdsForCloudSync();
     const items = dirtyArrayRecords(match.key, value, allowed);
+    pushedIds = items.map(item => String(item.id));
     promise = syncCollectionArray(schoolRef().collection('students'), items,
       s => stripImagesForCloud('students', s));
   } else if (field === 'grades') {
     const allowed = classIdsForCloudSync();
     const entries = dirtyKeyedRecords(match.key, value, allowed);
+    pushedIds = Object.keys(entries);
     promise = syncKeyedCollection(schoolRef().collection('grades'), entries,
       (key, record) => ({ classId: key.split('__')[0], entries: record || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
       isHeadTeacher() ? null : allowed);
   } else if (field === 'attendance') {
     const allowed = classIdsForCloudSync();
     const entries = dirtyKeyedRecords(match.key, value, allowed);
+    pushedIds = Object.keys(entries);
     promise = syncKeyedCollection(schoolRef().collection('attendance'), entries,
       (key, record) => Object.assign({}, record, {
         classId: (record && record.classId) || key.split('__')[0],
@@ -9594,28 +9715,38 @@ function pushFieldToCloud(match) {
   } else if (field === 'teacherAttendance') {
     if (!isHeadTeacher()) return Promise.resolve();
     const entries = dirtyKeyedRecords(match.key, value, null);
+    pushedIds = Object.keys(entries);
     promise = syncKeyedCollection(schoolRef().collection('teacherAttendance'), entries,
       (key, record) => Object.assign({}, record, { entries: (record && record.entries) || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }), null);
   } else if (field === 'schoolCalendar') {
     if (!isHeadTeacher()) return Promise.resolve();
     const entries = dirtyKeyedRecords(match.key, value, null);
+    pushedIds = Object.keys(entries);
     promise = syncKeyedCollection(schoolRef().collection('schoolCalendar'), entries,
       (key, record) => Object.assign({}, record, { updatedAt: firebase.firestore.FieldValue.serverTimestamp() }), null);
   } else if (field === 'remarks') {
     const allowed = classIdsForCloudSync();
     const entries = dirtyKeyedRecords(match.key, value, allowed);
+    pushedIds = Object.keys(entries);
     promise = syncKeyedCollection(schoolRef().collection('remarks'), entries,
       (key, record) => ({ classId: key.split('__')[0], entries: record || {}, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }),
       isHeadTeacher() ? null : allowed);
   }
 
-  const pushedIds = dirtyIds.slice();
+  const recordValue = (data, id) => Array.isArray(data)
+    ? data.find(item => item && String(item.id) === id) : data && data[id];
+  const sent = new Map(pushedIds.map(id => [id, stableSyncJson(recordValue(value, id))]));
   return promise.then(() => {
-    clearSyncDirty(match.key, pushedIds);
-    setLastSyncedNow();
-    // If the same record changed again while this request was in flight,
-    // DB.set has re-added it to the dirty set. Queue the latest value.
-    if (dirtyIdsFor(match.key).length) scheduleCloudPush(match.key);
+    if (!isCurrentSession(token, uidAtPush, schoolAtPush)) return;
+    const latest = DB.get(match.key, fieldDefault(field));
+    const unchanged = pushedIds.filter(id => stableSyncJson(recordValue(latest, id)) === sent.get(id));
+    const bases = syncBaseValues.get(match.key) || {};
+    pushedIds.filter(id => !unchanged.includes(id)).forEach(id => { bases[id] = JSON.parse(sent.get(id)); });
+    syncBaseValues.set(match.key, bases);
+    clearSyncDirty(match.key, unchanged);
+    if (pushedIds.length) setLastSyncedNow();
+    // Only retry edits made during this write; inaccessible records remain queued.
+    if (unchanged.length < pushedIds.length) scheduleCloudPush(match.key);
   });
 }
 
@@ -9670,7 +9801,7 @@ async function revalidateAndSyncAfterReconnect() {
   const uidBefore = currentUid;
   const schoolBefore = currentSchoolId;
   try {
-    const userDoc = await firebase.firestore().collection('users').doc(uidBefore).get();
+    const userDoc = await firebase.firestore().collection('users').doc(uidBefore).get({source:'server'});
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
     const data = userDoc.exists ? userDoc.data() : null;
     if (!data || data.status !== 'active' || !data.schoolId || data.schoolId !== schoolBefore) {
@@ -10301,11 +10432,9 @@ function renderManageTeachers() {
         const member = teachers.find(t => t.uid === btn.dataset.uid);
         const linkedStaff = member ? getStaffForUserUid(member.uid) : null;
         const updates = {
-          schoolId: firebase.firestore.FieldValue.delete(),
-          role: firebase.firestore.FieldValue.delete(),
           status: 'rejected',
-          assignedClassIds: firebase.firestore.FieldValue.delete(),
-          assignedSubjectIds: firebase.firestore.FieldValue.delete(),
+          assignedClassIds: [],
+          assignedSubjectIds: [],
           staffId: firebase.firestore.FieldValue.delete(),
           staffLinkedAt: firebase.firestore.FieldValue.delete()
         };
@@ -10546,7 +10675,7 @@ function initAuth() {
       // short restoration window.
       showSessionRestoring();
 
-      firebase.firestore().collection('users').doc(currentUid).get().then(userDoc => {
+      firebase.firestore().collection('users').doc(currentUid).get({source:'server'}).then(userDoc => {
         if (!isCurrentSession(token, user.uid, null)) return;
         const data = userDoc.exists ? userDoc.data() : null;
         currentUserData = data || null;
@@ -10562,7 +10691,7 @@ function initAuth() {
         currentAssignedClassIds = data && Array.isArray(data.assignedClassIds) ? data.assignedClassIds : [];
         currentAssignedSubjectIds = data && Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds : [];
 
-        if (!data || !data.schoolId) {
+        if (!data || !data.schoolId || data.status === 'rejected') {
           currentSchoolId = null; currentRole = null; currentStatus = null;
           hideSessionRestoring(); hideSyncingMessage(); hideAuthGate(); hideDisabledGate();
           showSchoolChoiceGate();
@@ -10583,6 +10712,7 @@ function initAuth() {
 
         currentSchoolId = data.schoolId;
         currentRole = data.role;
+        if (currentRole === 'teacher') redactCachedStaff();
         currentStatus = 'active';
         saveVerifiedLocalSession(user, data);
         offlineAuthenticatedMode = false;

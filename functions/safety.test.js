@@ -1,0 +1,91 @@
+const {test}=require('node:test');const assert=require('node:assert/strict');
+const {register,mergeEdit,reportStaff,archiveParts}=require('./safety');
+class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
+function fixture(){
+ const records=new Map([
+ ['users/head',{schoolId:'s',role:'headteacher',status:'active'}],
+ ['users/teacher',{schoolId:'s',role:'teacher',status:'active',assignedClassIds:['c1'],assignedSubjectIds:['math']}],
+ ['users/disabled',{schoolId:'s',role:'teacher',status:'disabled'}],
+ ['schools/s',{profile:{schoolName:'Test',currentYear:'2026/2027',currentTerm:'Term 3'}}],
+ ['schools/s/classes/c1',{name:'Class 1'}],['schools/s/classes/c2',{name:'Class 2'}],
+ ['schools/s/students/p1',{id:'p1',name:'Pupil',classId:'c1',isActive:true}],
+ ['schools/s/staff/h',{name:'Head',role:'headteacher',bankAccount:'SECRET',ghanaCard:'SECRET'}]
+ ]);let failCommit=false;
+ const ref=path=>({path,collection:name=>ref(path+'/'+name),doc:id=>ref(path+'/'+id)});
+ const get=async r=>{
+  if(r.path.split('/').length%2===1){const docs=[...records].filter(([k])=>k.startsWith(r.path+'/')&&k.split('/').length===r.path.split('/').length+1).map(([k,v])=>({id:k.split('/').at(-1),data:()=>structuredClone(v)}));return {docs};}
+  return {exists:records.has(r.path),data:()=>structuredClone(records.get(r.path))};
+ };
+ const db={collection:ref,runTransaction:async fn=>{const writes=[];const tx={get,set:(r,v)=>writes.push([r.path,v]),create:(r,v)=>{if(records.has(r.path))throw Error('already exists');writes.push([r.path,v]);},update:(r,v)=>writes.push([r.path,{...records.get(r.path),...v}])};const result=await fn(tx);if(failCommit)throw Error('injected commit failure');writes.forEach(([k,v])=>records.set(k,v));return result;}};
+ const firestore={FieldValue:{serverTimestamp:()=>123}};
+ const handlers=register({db,onCall:(_,fn)=>fn,HttpsError,admin:{firestore}});
+ return {records,handlers,setFail:()=>failCommit=true,req:(data,uid='head')=>({auth:{uid},data})};
+}
+test('leaf merge clears a score without losing another device subject edit',()=>{
+ const base={p:{math:{e:60},english:{e:50}}},desired={p:{math:{},english:{e:50}}},remote={p:{math:{e:60},english:{e:75}}};
+ assert.deepEqual(mergeEdit(base,desired,remote,()=>{}),{p:{math:{},english:{e:75}}});
+ assert.throws(()=>mergeEdit({e:60},{e:70},{e:80},()=>{}),/conflict/);
+});
+test('teacher writes require active class and subject permissions',async()=>{
+ const f=fixture();const input={field:'grades',key:'c1__Term 1__2026/2027',base:{},value:{p1:{math:{e:75}}}};
+ await f.handlers.saveSchoolRecord(f.req(input,'teacher'));
+ for(const [uid,value,key] of [['disabled',input.value,input.key],['teacher',{p1:{english:{e:80}}},input.key],['teacher',input.value,'c2__Term 1__2026/2027']])await assert.rejects(f.handlers.saveSchoolRecord(f.req({...input,value,key},uid)),e=>e.code==='permission-denied');
+ await assert.rejects(f.handlers.saveSchoolRecord({data:input}),e=>e.code==='unauthenticated');
+});
+test('server conflicts and deletion markers reject stale edits',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',id=encodeURIComponent(key);
+ f.records.set('schools/s/grades/'+id,{classId:'c1',entries:{p1:{math:{e:90}}}});
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base:{p1:{math:{e:60}}},value:{p1:{math:{e:70}}}},'teacher')),e=>e.code==='aborted');
+ f.records.set('schools/s/deletedRecords/grades__'+id,{});
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base:{},value:{p1:{math:{e:90}}}},'teacher')),e=>e.code==='failed-precondition');
+});
+test('staff response excludes personnel identifiers and bank details',async()=>{
+ const f=fixture(),result=await f.handlers.getSchoolReportStaff(f.req({},'teacher'));
+ assert.deepEqual(result.staff,[{id:'h',name:'Head',role:'headteacher'}]);
+ assert.deepEqual(reportStaff({name:'n',bankAccount:'secret'},'x'),{id:'x',name:'n'});
+});
+test('rollover commits archive and roster together and retry is idempotent',async()=>{
+ const f=fixture(),input={mode:'rollover',fromYear:'2026/2027',toYear:'2027/2028',decisions:{p1:{decision:'promote',destinationClassId:'c2'}}};
+ await f.handlers.applySchoolYearChange(f.req(input));
+ assert.equal(f.records.get('schools/s/students/p1').classId,'c2');assert.equal(f.records.get('schools/s').profile.currentYear,'2027/2028');
+ assert.equal((await f.handlers.applySchoolYearChange(f.req(input))).repeated,true);
+ const g=fixture();g.setFail();await assert.rejects(g.handlers.applySchoolYearChange(g.req(input)),/injected/);
+ assert.equal(g.records.get('schools/s/students/p1').classId,'c1');assert.equal([...g.records.keys()].some(k=>k.includes('yearRollovers')),false);
+});
+test('oversized rollover and foreign-school restore fail before any writes',async()=>{
+ const f=fixture(),decisions={};for(let i=0;i<451;i++){f.records.set('schools/s/students/p'+i,{id:'p'+i,classId:'c1'});decisions['p'+i]={decision:'repeat'};}
+ await assert.rejects(f.handlers.applySchoolYearChange(f.req({mode:'rollover',fromYear:'2026/2027',toYear:'2027/2028',decisions})),e=>e.code==='resource-exhausted');
+ assert.equal(f.records.get('schools/s').profile.currentYear,'2026/2027');
+ await assert.rejects(f.handlers.applySchoolYearChange(f.req({mode:'restore',snapshot:{schoolId:'other',type:'academic-year-rollover',data:{students:[],settings:{}}}})),e=>e.code==='invalid-argument');
+});
+test('UTF-8 archives preserve non-ASCII characters at byte boundaries',()=>{
+ const value={text:'🎒 école '.repeat(60000)};const chunks=archiveParts(value);
+ assert(chunks.every(c=>Buffer.byteLength(c)<250000));assert.deepEqual(JSON.parse(Buffer.concat(chunks.map(c=>Buffer.from(c,'base64'))).toString()),value);
+});
+test('fresh entry after a clear is accepted but older devices stay blocked',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',id=encodeURIComponent(key),input={field:'grades',key,base:{},value:{p1:{math:{e:50}}}};
+ f.records.set('schools/s/deletedRecords/grades__'+id,{version:'clear-1'});
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req(input,'teacher')),e=>e.code==='failed-precondition');
+ await f.handlers.saveSchoolRecord(f.req({...input,deletionVersion:'clear-1'},'teacher'));
+ assert.equal(f.records.get('schools/s/grades/'+id).entries.p1.math.e,50);
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({...input,value:{p1:{math:{c:20}}}},'teacher')),e=>e.code==='failed-precondition');
+});
+test('attendance always retains its queryable class and deleted classes reject edits',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027__2026-09-23';
+ await f.handlers.saveSchoolRecord(f.req({field:'attendance',key,base:{},value:{entries:{p1:'present'}}},'teacher'));
+ assert.equal(f.records.get('schools/s/attendance/'+encodeURIComponent(key)).classId,'c1');
+ f.records.delete('schools/s/classes/c1');
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key:'c1__Term 1__2026/2027',base:{},value:{}})),e=>e.code==='failed-precondition');
+});
+test('legacy migration preserves newer and explicitly deleted records',async()=>{
+ const f=fixture();f.records.get('schools/s').students=[{id:'p1',name:'Old'},{id:'gone',classId:'c1'},{id:'new',classId:'c1'}];
+ f.records.get('schools/s').grades={'c1__Term 1__2026/2027':{p1:{math:{e:55}}}};
+ f.records.set('schools/s/deletedRecords/students__gone',{});
+ await f.handlers.migrateSchoolLegacy(f.req({}));
+ assert.equal(f.records.get('schools/s/students/p1').name,'Pupil');
+ assert.equal(f.records.has('schools/s/students/gone'),false);
+ assert.equal(f.records.get('schools/s/students/new').classId,'c1');
+ assert.equal(f.records.get('schools/s').students,undefined);
+ assert.equal(f.records.get('schools/s').schemaVersion,4);
+ await assert.rejects(f.handlers.migrateSchoolLegacy(f.req({},'teacher')),e=>e.code==='permission-denied');
+});

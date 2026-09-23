@@ -1,4 +1,8 @@
 # AlatiphA SchoolHub v40
+Current release: billing remains suspended in the app; retained payment functions are test-only. The Phase 4 pricing and setup sections below describe historical/test functionality, not an instruction to enable live payments.
+
+The September 2026 safety update requires Hosting, Firestore rules, Storage rules, and the four school-data callable functions. See `AUDIT-REPORT.md` and `DEPLOYMENT.md` for validation, deployment order, and operational limits.
+
 ## Phase 4 — Freemium Billing & Report Credits
 
 SchoolHub remains free for school management. Premium report-card generation uses school-owned Report Credits.

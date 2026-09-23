@@ -37,6 +37,10 @@ service cloud.firestore {
         && subjectId in myUser().assignedSubjectIds;
     }
 
+    function notDeleted(schoolId, collection, id) {
+      return !existsAfter(/databases/$(database)/documents/schools/$(schoolId)/deletedRecords/$(collection + '__' + id));
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isHeadTeacher(resource.data.schoolId));
 
@@ -62,7 +66,9 @@ service cloud.firestore {
         (
           isHeadTeacher(resource.data.schoolId)
           && request.resource.data.schoolId == resource.data.schoolId
+          && resource.data.role == 'teacher'
           && request.resource.data.role == 'teacher'
+          && request.resource.data.status in ['active', 'pending', 'disabled', 'rejected']
           && request.resource.data.assignedClassIds is list
           && request.resource.data.assignedSubjectIds is list
         )
@@ -73,6 +79,12 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email'])
         );
 
+      allow update: if signedIn() && request.auth.uid == uid
+        && resource.data.status == 'rejected'
+        && request.resource.data.role == 'teacher' && request.resource.data.status == 'pending'
+        && request.resource.data.assignedClassIds == [] && request.resource.data.assignedSubjectIds == []
+        && request.resource.data.keys().hasOnly(['schoolId','role','status','assignedClassIds','assignedSubjectIds','email','displayName','createdAt'])
+        && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId));
       allow delete: if false;
     }
 
@@ -89,9 +101,9 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId))
         && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == request.auth.uid;
 
-      allow update, delete: if signedIn()
-        && request.resource.data.schoolId != null
-        && isHeadTeacher(request.resource.data.schoolId);
+      allow update: if isHeadTeacher(resource.data.schoolId)
+        && request.resource.data.schoolId == resource.data.schoolId;
+      allow delete: if isHeadTeacher(resource.data.schoolId);
     }
 
     match /schools/{schoolId} {
@@ -109,18 +121,31 @@ service cloud.firestore {
         && request.auth.uid == request.resource.data.ownerUid
         && request.resource.data.profile.schoolName is string;
 
-      allow update: if isHeadTeacher(schoolId);
+      allow update: if isHeadTeacher(schoolId) && request.resource.data.ownerUid == resource.data.ownerUid;
       allow delete: if false;
+
+      match /deletedRecords/{markerId} {
+        allow read: if isHeadTeacher(schoolId) || isActiveTeacher(schoolId);
+        allow create: if request.resource.data.collection in ['classes','subjects','students','staff','grades','attendance','remarks','teacherAttendance','schoolCalendar']
+          && markerId == request.resource.data.collection + '__' + request.resource.data.id
+          && (isHeadTeacher(schoolId) || (request.resource.data.collection == 'students'
+            && hasClass(schoolId, get(/databases/$(database)/documents/schools/$(schoolId)/students/$(request.resource.data.id)).data.classId)));
+        allow update: if isHeadTeacher(schoolId)
+          && request.resource.data.collection == resource.data.collection
+          && request.resource.data.id == resource.data.id;
+        allow delete: if isHeadTeacher(schoolId);
+      }
 
       match /classes/{classId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, classId);
-        allow create, update, delete: if isHeadTeacher(schoolId);
+        allow create: if isHeadTeacher(schoolId) && notDeleted(schoolId, 'classes', classId);
+        allow update, delete: if isHeadTeacher(schoolId);
       }
 
       match /students/{studentId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
-        allow create: if isHeadTeacher(schoolId)
-          || hasClass(schoolId, request.resource.data.classId);
+        allow create: if notDeleted(schoolId, 'students', studentId) && (isHeadTeacher(schoolId)
+          || hasClass(schoolId, request.resource.data.classId));
         allow update: if isHeadTeacher(schoolId)
           || (
             hasClass(schoolId, resource.data.classId)
@@ -132,34 +157,28 @@ service cloud.firestore {
 
       match /subjects/{subjectId} {
         allow read: if isHeadTeacher(schoolId) || hasSubject(schoolId, subjectId);
-        allow create, update, delete: if isHeadTeacher(schoolId);
+        allow create: if isHeadTeacher(schoolId) && notDeleted(schoolId, 'subjects', subjectId);
+        allow update, delete: if isHeadTeacher(schoolId);
       }
 
       match /grades/{gradeId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
-        allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);
-        allow update: if isHeadTeacher(schoolId)
-          || (
-            hasClass(schoolId, resource.data.classId)
-            && request.resource.data.classId == resource.data.classId
-          );
-        allow delete: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+        allow create, update: if false;
+        allow delete: if isHeadTeacher(schoolId);
       }
 
       match /attendance/{attendanceId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
-        allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);
-        allow update: if isHeadTeacher(schoolId)
-          || (
-            hasClass(schoolId, resource.data.classId)
-            && request.resource.data.classId == resource.data.classId
-          );
-        allow delete: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+        allow create, update: if false;
+        allow delete: if isHeadTeacher(schoolId);
+
       }
 
       match /teacherAttendance/{attendanceId} {
         allow read: if isHeadTeacher(schoolId);
-        allow create, update, delete: if isHeadTeacher(schoolId);
+        allow create, update: if false;
+        allow delete: if isHeadTeacher(schoolId);
+
       }
 
       match /schoolCalendar/{calendarId} {
@@ -169,18 +188,15 @@ service cloud.firestore {
 
       match /remarks/{remarkId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
-        allow create: if isHeadTeacher(schoolId) || hasClass(schoolId, request.resource.data.classId);
-        allow update: if isHeadTeacher(schoolId)
-          || (
-            hasClass(schoolId, resource.data.classId)
-            && request.resource.data.classId == resource.data.classId
-          );
-        allow delete: if isHeadTeacher(schoolId) || hasClass(schoolId, resource.data.classId);
+        allow create, update: if false;
+        allow delete: if isHeadTeacher(schoolId);
+
       }
 
       match /staff/{staffId} {
-        allow read: if isHeadTeacher(schoolId) || isActiveTeacher(schoolId);
-        allow create, update, delete: if isHeadTeacher(schoolId);
+        allow read: if isHeadTeacher(schoolId);
+        allow create: if isHeadTeacher(schoolId) && notDeleted(schoolId, 'staff', staffId);
+        allow update, delete: if isHeadTeacher(schoolId);
       }
 
       // v35: school activity/audit log. Head Teachers can read the whole
@@ -215,11 +231,13 @@ service cloud.firestore {
       // Immutable academic-year rollover archive. Only the active Head Teacher
       // may create/read snapshots. Once created, they cannot be edited or deleted.
       match /yearRollovers/{rolloverId} {
-        allow read, create: if isHeadTeacher(schoolId);
+        allow read: if isHeadTeacher(schoolId);
+        allow create: if false;
         allow update, delete: if false;
 
         match /snapshot/{chunkId} {
-          allow read, create: if isHeadTeacher(schoolId);
+          allow read: if isHeadTeacher(schoolId);
+        allow create: if false;
           allow update, delete: if false;
         }
       }
@@ -229,7 +247,8 @@ service cloud.firestore {
       // school record. Teachers may manage manifests only for student photos
       // in their assigned classes. Head Teachers may manage all school assets.
       match /imageAssets/{assetId} {
-        allow read: if isHeadTeacher(schoolId) || isActiveTeacher(schoolId);
+        allow read: if isHeadTeacher(schoolId) || (isActiveTeacher(schoolId)
+          && (resource.data.kind in ['logo','staff'] || (resource.data.kind == 'student' && hasClass(schoolId,resource.data.classId))));
 
         allow create: if isHeadTeacher(schoolId)
           || (

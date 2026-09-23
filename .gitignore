@@ -1,1 +1,4 @@
 .firebase/
+node_modules/
+*-debug.log
+outputs/

@@ -20,6 +20,7 @@ const context=vm.createContext({exports:{},require:name=>{
   if(name==='firebase-functions/v2/https')return {onCall:(_,fn)=>fn,HttpsError};
   if(name==='firebase-functions/params')return {defineSecret:()=>({value:()=> 'sk_test_fake'})};
   if(name==='firebase-admin')return {initializeApp:()=>{},firestore};
+  if(name==='./safety')return null; // Billing fixture: safety handlers are tested separately.
   throw Error(name);
 }});
 vm.runInContext(fs.readFileSync('functions/index.js','utf8'),context);

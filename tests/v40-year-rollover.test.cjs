@@ -12,7 +12,7 @@ assert(js.includes("enrollmentStatus = 'graduated'"));
 assert(js.includes("enrollmentStatus = 'left'"));
 assert(js.includes('studentsForClassYear(classId, year)'));
 assert(js.includes('cloudRolloverSnapshot(snapshot, rolloverId, counts)'));
-assert(js.includes("batch.create(metaRef"));
+assert(js.includes("batch.set(metaRef"));
 assert(html.includes('id="yearRolloverSection"'));
 assert(html.includes('id="openYearRolloverBtn"'));
 assert(rules.includes('match /yearRollovers/{rolloverId}'));

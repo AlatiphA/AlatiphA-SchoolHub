@@ -13,7 +13,7 @@ service firebase.storage {
     function isMember(schoolId) {
       return signedIn()
         && myUser().schoolId == schoolId
-        && (myUser().status == 'active' || myUser().status == 'pending');
+        && myUser().status == 'active';
     }
 
     function isHeadTeacher(schoolId) {
