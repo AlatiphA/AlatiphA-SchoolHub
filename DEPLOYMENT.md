@@ -73,3 +73,8 @@ The earlier safety release was recorded in commit b8166c7. The follow-up changes
 Validation: 72 automated tests pass. Isolated browser checks generated PDFs for all eight themes and showed single and class-batch save/print controls. The phone-width profile menu stayed accessible. Browser automation policy blocked the PDF viewer, so the final print dialog was not verified. No school records or live credits were modified by the sample-data checks.
 
 The static website package is outputs/SchoolHub-Sync-Reports-Fix.zip. Publish its contents to the existing GitHub Pages site as well as Firebase Hosting; both use the same already-deployed Firebase backend. This follow-up does not change cloud rules or functions. Reopen or refresh existing app tabs after publishing; do not clear site data, because pending local edits must be retained.
+
+
+## Students layout and visible sync status follow-up
+
+Not deployed by this task. Package: outputs/SchoolHub-Students-Layout-Sync-Status.zip. Includes an always-visible signed-in header status (Up to date, syncing count, unsynced count, or Offline), linked to Sync Center; balanced responsive student form fields; and a separate Student details table heading with the toggle aligned right. 74 automated tests pass. Isolated desktop and 390px phone browser checks verified form alignment, table toolbar placement and pending/error status. Previous report-printing fixes are retained. No backend changes.

@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
 <link rel="stylesheet" href="style-3.css?v=v40-sync-reports-3">
-<link rel="stylesheet" href="ui-polish.css?v=v40-sync-engine-safety-1">
+<link rel="stylesheet" href="ui-polish.css?v=v40-student-layout-sync-4">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
 <script>
@@ -152,6 +152,7 @@
     </span>
   </div>
   <div class="topbar-right">
+    <button id="syncStatusBtn" class="sync-status-badge hidden" type="button" aria-label="Open Sync Center">Checking…</button>
     <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle theme"></button>
     <div class="profile-menu">
       <button id="profileBtn" class="profile-btn" type="button" aria-label="Account menu">
@@ -488,7 +489,7 @@
     <div class="student-add-toolbar">
       <div>
         <strong>Add Student</strong>
-        <p class="hint">Add a student only when needed. More student fields can be added here later.</p>
+        <p class="hint">Add a student and their personal and guardian details.</p>
       </div>
       <button type="button" id="toggleAddStudentBtn" class="student-toggle-btn" aria-expanded="false">Expand</button>
     </div>
@@ -511,8 +512,11 @@
           <input type="text" id="newStudentAge" placeholder="Auto" readonly>
         </label>
       </div>
-      <input type="text" id="newStudentId" placeholder="Student ID (optional)">
-      <input type="tel" id="newStudentPhone" placeholder="Parent phone (optional, for WhatsApp)">
+      <label>Student ID (optional)<input type="text" id="newStudentId" placeholder="Student ID"></label>
+      <label>Disability<select id="newStudentDisability"><option value="">Select</option><option value="No">No</option><option value="Yes">Yes</option></select></label>
+      <label>Guardian name<input type="text" id="newStudentGuardian" placeholder="Guardian name"></label>
+      <label>Parent phone (optional)<input type="tel" id="newStudentPhone" placeholder="Phone number for WhatsApp"></label>
+      <label>House No. / GhanaPost GPS<input type="text" id="newStudentHouseGps" placeholder="e.g. House 12 / NT-123-4567"></label>
       <p id="addStudentValidation" class="form-validation" role="alert"></p>
       <button id="addStudentBtn" class="btn-primary">Add Student</button>
     </div>

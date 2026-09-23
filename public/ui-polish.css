@@ -289,3 +289,25 @@
     min-width:900px;
   }
 }
+
+/* Student form uses the same even field grid as Staff. */
+@media screen {
+ #app #view-students #addStudentForm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:start;}
+ #app #view-students #addStudentForm.hidden{display:none;}
+ #app #addStudentForm :is(.student-dob-age-grid,.student-extra-fields){display:contents;}
+ #app #addStudentForm label{display:block;margin:0;}
+ #app #addStudentForm label .required-mark{display:inline;}
+ #app #addStudentForm :is(input,select){width:100%;margin:8px 0 0;}
+ #app #addStudentForm .form-validation{grid-column:1/-1;margin:0;}
+ #app #addStudentForm .form-validation:empty{display:none;}
+ #app #addStudentForm #addStudentBtn{grid-column:1/-1;justify-self:start;min-width:160px;}
+ #app #studentDetailsTablePanel{grid-column:1/-1;min-width:0;margin-top:22px;}
+ #app #studentDetailsTablePanel>.staff-data-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:16px;}
+ .sync-status-badge{border:1px solid var(--rule);border-radius:999px;background:var(--surface-alt);color:var(--paper);padding:6px 9px;font:500 12px 'IBM Plex Sans',sans-serif;white-space:nowrap;cursor:pointer;}
+ .sync-status-badge::before{content:'';display:inline-block;width:7px;height:7px;border-radius:50%;background:#358350;margin-right:5px;}
+ .sync-status-badge[data-state='pending']::before,.sync-status-badge[data-state='offline']::before{background:#b7791f;}
+ .sync-status-badge[data-state='error']::before{background:#b53d36;}
+ @media(max-width:900px){#app #view-students #addStudentForm{grid-template-columns:repeat(2,minmax(0,1fr));}}
+ @media(max-width:520px){#app #view-students #addStudentForm{grid-template-columns:1fr;} .topbar{flex-wrap:wrap;}.topbar-right{margin-left:auto;}.sync-status-badge{font-size:11px;padding:6px 7px;}}
+}
+@media print{.sync-status-badge{display:none!important;}}

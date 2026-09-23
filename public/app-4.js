@@ -241,6 +241,18 @@ function updateOfflineModeBanner(message) {
   if (!banner) return;
   const offline = navigator.onLine === false || offlineAuthenticatedMode;
   const pending = pendingSyncCountForCurrentSchool();
+  const statusButton = document.getElementById('syncStatusBtn');
+  if (statusButton) {
+    const failed = pending > 0 && syncableFields().some(field => syncErrors.has(field.key));
+    statusButton.classList.toggle('hidden', !currentSchoolId || currentStatus !== 'active');
+    statusButton.dataset.state = offline ? 'offline' : failed ? 'error' : pending ? 'pending' : 'saved';
+    statusButton.textContent = offline ? (pending ? pending + ' pending' : 'Offline')
+      : offlineReconnectInProgress || !sessionDataReady ? 'Checking…'
+      : failed ? pending + ' unsynced' : pending ? pending + ' syncing' : 'Up to date';
+    statusButton.title = pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
+      : offline ? 'Offline. No pending record changes. Open Sync Center.' : 'No pending record changes on this device. Open Sync Center.';
+    statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
+  }
   banner.classList.toggle('hidden', !offline && !pending && !offlineReconnectInProgress);
   banner.classList.toggle('is-reconnecting', offlineReconnectInProgress);
   const title = banner.querySelector('.offline-mode-title');
@@ -3595,7 +3607,7 @@ function renderStudentDetailsTable() {
     list.parentNode.insertBefore(panel, list.nextSibling);
   }
   const rows = currentStudentTableRows();
-  panel.innerHTML = `<div class="staff-data-actions"><button type="button" id="toggleStudentTableBtn">${studentTableVisible?'Hide table':'Show table'}</button></div>
+  panel.innerHTML = `<div class="staff-data-toolbar"><strong>Student details table</strong><button type="button" id="toggleStudentTableBtn" aria-controls="studentDetailsTableWrap" aria-expanded="${studentTableVisible}">${studentTableVisible?'Hide table':'Show table'}</button></div>
     <div id="studentDetailsTableWrap" ${studentTableVisible?'':'hidden'}>
       <p class="hint">Scroll sideways to see all student details.</p>
       <div class="table-scroll" tabindex="0"><table class="grades-table student-details-table"><thead><tr>
@@ -11141,3 +11153,5 @@ const _renderStudentsBulkV40=renderStudents;renderStudents=function(){_renderStu
 const _renderSubjectsBulkV40=renderSubjects;renderSubjects=function(){_renderSubjectsBulkV40();setTimeout(()=>installBulkUiV40('subjects','subjectList','li.subject-sort-item'),0);};
 const _renderStaffBulkV40=renderStaff;renderStaff=function(){_renderStaffBulkV40();setTimeout(()=>installBulkUiV40('staff','staffList','.staff-editor-list > li'),0);};
 setTimeout(()=>{try{renderClasses();renderStudents();renderSubjects();renderStaff();}catch(e){console.warn('Bulk selection initial render:',e);}},0);
+
+document.getElementById('syncStatusBtn')?.addEventListener('click', () => document.getElementById('profileSyncCenterBtn')?.click());
