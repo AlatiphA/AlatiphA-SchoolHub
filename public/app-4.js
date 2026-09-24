@@ -604,7 +604,8 @@ function requireHeadTeacher(action) {
 
 function requireClassAccess(classId) {
   if (!canAccessClass(classId)) {
-    alert('You do not have access to this class.');
+    const cls = DB.get(KEYS.classes, []).find(c => c.id === classId);
+    alert(cls ? `You are not assigned to ${cls.name}. Ask your Head Teacher to review your class assignments.` : 'This class is no longer available in your assignments. Select an assigned class, or ask your Head Teacher to review your assignments.');
     return false;
   }
   return true;
@@ -683,7 +684,18 @@ const DEFAULT_SUBJECTS = [
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
+function repairTeacherDefaultQueue() {
+  if (!isTeacher()) return;
+  // Teachers cannot author these fields. Retain their cached values for
+  // recovery, but stop treating old startup defaults as outbound edits.
+  ['settings', 'classes', 'subjects', 'staff', 'teacherAttendance', 'schoolCalendar'].forEach(field => {
+    clearSyncDirty(KEYS[field], dirtyIdsFor(KEYS[field]));
+    syncErrors.delete(KEYS[field]);
+  });
+}
+
 function ensureDefaults() {
+  if (isTeacher()) { repairTeacherDefaultQueue(); return; }
   if (DB.get(KEYS.subjects, null) === null) {
     DB.set(KEYS.subjects, DEFAULT_SUBJECTS.map((name, order) => ({ id: uid(), name, order })));
   } else {
@@ -870,7 +882,7 @@ function floatingPillIcon(name) {
  const icons={home:'<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/></svg>',attendance:'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M7 3v4M17 3v4M4 9h16"/><path d="m8 15 2 2 5-5"/></svg>',reports:'<svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 17v-3M12 17v-6M15 17v-4"/></svg>',billing:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>'}; return icons[name]||'';
 }
 function currentVisibleViewName(){return views.find(v=>{const el=document.getElementById('view-'+v);return el&&!el.classList.contains('hidden')})||'home'}
-function floatingPillItems(){const x=[{view:'home',label:'Home',icon:'home'},{view:'attendance',label:'Attendance',icon:'attendance'},{view:'reports',label:'Reports',icon:'reports'}];if(isHeadTeacher())x.push({view:'billing',label:'Billing & Credits',icon:'billing'});return x}
+function floatingPillItems(){const x=[{view:'home',label:'Home',icon:'home'},{view:'attendance',label:'Attendance',icon:'attendance'},{view:'grades',label:'Grades',icon:'reports'},{view:'reports',label:'Reports',icon:'reports'}];if(isHeadTeacher())x.push({view:'billing',label:'Billing & Credits',icon:'billing'});return x}
 function renderFloatingPill(){let p=document.getElementById('schoolHubFloatingPill');if(!sessionReady&&FIREBASE_ENABLED){if(p)p.remove();return;}if(!p){p=document.createElement('nav');p.id='schoolHubFloatingPill';p.setAttribute('aria-label','Quick navigation');document.body.appendChild(p)}const active=currentVisibleViewName();p.innerHTML=floatingPillItems().map(i=>`<button type="button" data-view="${i.view}" class="${active===i.view?'active':''}">${floatingPillIcon(i.icon)}<span class="pill-label">${escapeHtml(i.label)}</span></button>`).join('');p.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{p.classList.remove('pill-hidden');showView(b.dataset.view);renderFloatingPill()}))}
 function showFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.remove('pill-hidden')}
 function hideFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.add('pill-hidden')}
@@ -2593,7 +2605,7 @@ function renderStudents() {
   updateCount(0);
   if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('studentList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
   const sel = document.getElementById('studentClassSelect');
-  if (!sel.options.length) fillClassSelect(sel);
+  fillClassSelect(sel);
   const query = document.getElementById('studentSearchInput').value.trim().toLowerCase();
   const searchMode = query.length > 0;
   const list = document.getElementById('studentList');
@@ -4950,7 +4962,7 @@ function renderAttendanceForm() {
   if (classId && !canAccessClass(classId)) { wrap.innerHTML = '<p class="empty">You do not have access to this class.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   if (!classId) { wrap.innerHTML = '<p class="empty">Add a class first.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   const settings = DB.get(KEYS.settings, {});
-  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
+  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">' + (isTeacher() ? 'Your school term and academic year are not available. Retry Sync Center; if they remain missing, ask your Head Teacher to save them in Setup.' : 'Set the current Term and Academic Year in Setup first.') + '</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   const date = document.getElementById('attendanceDate').value || attendanceDateToday();
   document.getElementById('attendanceDate').value = date;
   const dayType = attendanceDayType(settings.currentTerm, settings.currentYear, date);
@@ -4998,7 +5010,7 @@ function renderTeacherAttendanceForm() {
   if (!wrap) return;
   if (!isHeadTeacher()) { wrap.innerHTML = '<p class="empty">Only the Head Teacher can access teacher attendance.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   const settings = DB.get(KEYS.settings, {});
-  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; if (saveBtn) saveBtn.disabled = true; return; }
+  if (!settings.currentTerm || !settings.currentYear) { wrap.innerHTML = '<p class="empty">' + (isTeacher() ? 'Your school term and academic year are not available. Retry Sync Center; if they remain missing, ask your Head Teacher to save them in Setup.' : 'Set the current Term and Academic Year in Setup first.') + '</p>'; if (saveBtn) saveBtn.disabled = true; return; }
   const date = document.getElementById('teacherAttendanceDate').value || attendanceDateToday();
   document.getElementById('teacherAttendanceDate').value = date;
   const dayType = attendanceDayType(settings.currentTerm, settings.currentYear, date);
@@ -5055,6 +5067,7 @@ function renderSchoolCalendar() {
   const midterms = records.filter(x => String(x.record.type).toLowerCase() === 'midterm').length;
   let html = `<div class="attendance-summary-pills"><div class="attendance-summary-pill"><span>Times Open</span><strong>${timesOpen || 0} day${timesOpen === 1 ? '' : 's'}</strong></div><div class="attendance-summary-pill"><span>Holidays</span><strong>${holidays}</strong></div><div class="attendance-summary-pill"><span>Midterm</span><strong>${midterms}</strong></div></div>`;
   html += `<div class="calendar-editor"><h3>School Calendar</h3><p class="hint">${dates ? `Current term: ${escapeHtml(term)} ${escapeHtml(year)} · ${escapeHtml(dates.start)} to ${escapeHtml(dates.end)}` : 'Set the Term Opens and Term Closes dates in Setup first.'}</p>`;
+  if (isTeacher()) html += '<p class="hint">School calendar dates are managed by your Head Teacher. Teachers can view the calendar and record pupil attendance in Students.</p>';
   html += '<div class="row"><label>Date<input type="date" id="calendarDate"></label><label>Day Type<select id="calendarType"><option value="open">School Open</option><option value="holiday">Holiday</option><option value="midterm">Midterm</option></select></label></div>';
   html += '<label>Note / Occasion (optional)<input type="text" id="calendarNote" placeholder="e.g. Independence Day / Midterm Break"></label>';
   html += '<div class="attendance-toolbar"><button type="button" id="saveCalendarDay" class="btn-primary">Save Calendar Day</button><button type="button" id="clearCalendarDay" class="btn-text">Clear / Set School Open</button></div></div>';
@@ -5631,7 +5644,7 @@ function renderAttendanceAnalysis() {
   const settings = DB.get(KEYS.settings, {});
   const term = settings.currentTerm || '';
   const year = settings.currentYear || '';
-  if (!term || !year) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
+  if (!term || !year) { wrap.innerHTML = '<p class="empty">' + (isTeacher() ? 'Your school term and academic year are not available. Retry Sync Center; if they remain missing, ask your Head Teacher to save them in Setup.' : 'Set the current Term and Academic Year in Setup first.') + '</p>'; return; }
 
   const timesOpen = calculateTimesOpen(term, year);
   const data = attendanceAnalyticsBuild(term, year, timesOpen);
@@ -5683,7 +5696,7 @@ function renderAttendanceSummary() {
   const settings = DB.get(KEYS.settings, {});
   const term = settings.currentTerm || '';
   const year = settings.currentYear || '';
-  if (!term || !year) { wrap.innerHTML = '<p class="empty">Set the current Term and Academic Year in Setup first.</p>'; return; }
+  if (!term || !year) { wrap.innerHTML = '<p class="empty">' + (isTeacher() ? 'Your school term and academic year are not available. Retry Sync Center; if they remain missing, ask your Head Teacher to save them in Setup.' : 'Set the current Term and Academic Year in Setup first.') + '</p>'; return; }
   const timesOpen = calculateTimesOpen(term, year);
   const monitoringDate = document.getElementById('attendanceSummaryDate')?.value || attendanceDateToday();
   const completion = attendanceCompletionForDate(term, year, monitoringDate);
@@ -9461,7 +9474,7 @@ function mergeCloudCollection(field, cloudItems, authoritative) {
   if (field === 'settings') {
     const local = DB.get(KEYS.settings, {});
     const merged = Object.assign({}, local, cloudItems || {});
-    dirtyIdsFor(KEYS.settings).forEach(id => { if (Object.prototype.hasOwnProperty.call(local, id)) merged[id] = local[id]; });
+    if (!isTeacher()) dirtyIdsFor(KEYS.settings).forEach(id => { if (Object.prototype.hasOwnProperty.call(local, id)) merged[id] = local[id]; });
     DB.set(KEYS.settings, merged, {skipCloudSync:true});
     return;
   }
@@ -9501,6 +9514,7 @@ function pullCloudData(sessionToken) {
 
   // v40: save a rollback snapshot before cloud data touches local storage.
   backupLocalSchoolData('before-cloud-pull');
+  repairTeacherDefaultQueue();
 
   return migrateLegacyImageLocalStorage()
     .then(() => migrateInlineImagesFromLocalRecords())

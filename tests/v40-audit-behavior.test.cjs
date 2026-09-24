@@ -12,7 +12,7 @@ function fixture(){
   syncErrors:new Map(),updateOfflineModeBanner(){},syncDirtyKeys:dirty,syncBaseValues:new Map(),fieldPushes:new Map(),stableSyncJson:JSON.stringify,
   dirtyIdsFor:key=>Array.from(dirty.get(key)||[]),
   clearSyncDirty:(key,ids)=>ids.forEach(id=>dirty.get(key)?.delete(id)),
-  classIdsForCloudSync:()=>new Set(['class1']),isHeadTeacher:()=>true,
+  isTeacher:()=>false,classIdsForCloudSync:()=>new Set(['class1']),isHeadTeacher:()=>true,
   isCurrentSession:(token,uid,school)=>token===ctx.sessionGeneration&&uid===ctx.currentUid&&school===ctx.currentSchoolId,
   stripImagesForCloud:(_,value)=>value,
   fieldDefault:field=>['students','classes','staff','subjects'].includes(field)?[]:{},
@@ -86,7 +86,7 @@ test('emergency restore stops when its protective snapshot cannot be stored',()=
 
 test('service-worker upgrade deletes only older SchoolHub caches',async()=>{
  const listeners={},deleted=[];let completion;
- const ctx={self:{addEventListener:(name,fn)=>listeners[name]=fn,clients:{claim:async()=>{}},location:{origin:'https://school.example'}},caches:{keys:async()=>['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4','schoolhub-cache-v40-bulk-staff-attendance-5','another-app-cache'],delete:async key=>deleted.push(key)}};
+ const ctx={self:{addEventListener:(name,fn)=>listeners[name]=fn,clients:{claim:async()=>{}},location:{origin:'https://school.example'}},caches:{keys:async()=>['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4','schoolhub-cache-v40-bulk-staff-attendance-5-teacher-startup-1','another-app-cache'],delete:async key=>deleted.push(key)}};
  vm.createContext(ctx);vm.runInContext(fs.readFileSync('sw.js','utf8'),ctx);
  listeners.activate({waitUntil:p=>completion=p});await completion;
  assert.deepEqual(deleted,['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4']);
