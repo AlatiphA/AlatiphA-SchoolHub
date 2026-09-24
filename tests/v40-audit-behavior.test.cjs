@@ -86,10 +86,10 @@ test('emergency restore stops when its protective snapshot cannot be stored',()=
 
 test('service-worker upgrade deletes only older SchoolHub caches',async()=>{
  const listeners={},deleted=[];let completion;
- const ctx={self:{addEventListener:(name,fn)=>listeners[name]=fn,clients:{claim:async()=>{}},location:{origin:'https://school.example'}},caches:{keys:async()=>['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4','another-app-cache'],delete:async key=>deleted.push(key)}};
+ const ctx={self:{addEventListener:(name,fn)=>listeners[name]=fn,clients:{claim:async()=>{}},location:{origin:'https://school.example'}},caches:{keys:async()=>['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4','schoolhub-cache-v40-bulk-staff-attendance-5','another-app-cache'],delete:async key=>deleted.push(key)}};
  vm.createContext(ctx);vm.runInContext(fs.readFileSync('sw.js','utf8'),ctx);
  listeners.activate({waitUntil:p=>completion=p});await completion;
- assert.deepEqual(deleted,['schoolhub-cache-v39']);
+ assert.deepEqual(deleted,['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4']);
 });
 
 test('moving an exception to School Open clears both cloud calendar dates atomically',async()=>{

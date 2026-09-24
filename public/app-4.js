@@ -2587,6 +2587,10 @@ function calculateStudentAge(dob) {
 }
 
 function renderStudents() {
+  installStudentTabUpgrade();
+  const count = document.getElementById('studentSearchCount');
+  const updateCount = visible => { if (count) count.textContent = 'Showing ' + visible + ' of ' + getAccessibleStudents().length + ' students'; };
+  updateCount(0);
   if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('studentList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
   const sel = document.getElementById('studentClassSelect');
   if (!sel.options.length) fillClassSelect(sel);
@@ -2602,12 +2606,14 @@ function renderStudents() {
         .map(v => String(v || '').toLowerCase()).join(' ');
       return haystack.includes(query);
     });
+    updateCount(students.length);
     if (!students.length) { list.innerHTML = '<li class="empty">No students match your search.</li>'; return; }
   } else {
     const classId = sel.value;
     if (classId && !requireClassAccess(classId)) { list.innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
     if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; return; }
     students = getAccessibleStudents().filter(s => s.classId === classId);
+    updateCount(students.length);
     if (!students.length) { list.innerHTML = '<li class="empty">No students yet — add one below.</li>'; return; }
   }
 
@@ -2881,22 +2887,82 @@ document.getElementById('addStudentBtn').addEventListener('click', async () => {
   }catch(error){alert('Student was NOT added to SchoolHub.\n\n'+(error.message||error));}finally{if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=oldText;}}
 });
 
-// Bulk add: one student per line, optionally "Name, ID". Gender and
-// parent phone are left unset — use Edit on each student afterward.
-document.getElementById('bulkAddStudentsBtn').addEventListener('click', async () => {
-  const classId=document.getElementById('studentClassSelect').value;
-  if(!classId){alert('Add a class first.');return;} if(!requireClassAccess(classId))return;
-  const textarea=document.getElementById('bulkStudentInput'),lines=textarea.value.split('\n').map(l=>l.trim()).filter(Boolean);
-  if(!lines.length)return;
-  const existing=DB.get(KEYS.students,[]),usedIds=new Set(existing.map(x=>String(x.admissionId||'').trim().toLowerCase()).filter(Boolean)),newRecords=[],errors=[];
-  lines.forEach((line,index)=>{const parts=line.split(','),name=parts[0].trim(),admissionId=parts.length>1?parts.slice(1).join(',').trim():'';if(!name)return;const key=admissionId.toLowerCase();if(key&&usedIds.has(key)){errors.push(`Line ${index+1}: Student ID ${admissionId} is already in use.`);return;}if(key)usedIds.add(key);newRecords.push({id:uid(),classId,name,gender:'',admissionId,parentPhone:''});});
-  if(errors.length){alert(errors.slice(0,20).join('\n'));return;} if(!newRecords.length)return;
-  const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
-  try{
-    if(FIREBASE_ENABLED&&currentSchoolId){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');const ref=schoolRef().collection('students');await commitChunks(newRecords.map(record=>batch=>batch.set(ref.doc(String(record.id)),stripImagesForCloud('students',record))));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
-    DB.set(KEYS.students,existing.concat(newRecords),{skipCloudSync:true});textarea.value='';renderStudents();renderClasses();auditAction('import','students','',`Bulk added ${newRecords.length} student records.`);alert(`Added ${newRecords.length} student(s) and saved to SchoolHub.`);
-  }catch(error){alert('Students were NOT added to SchoolHub. Your existing student list has been left unchanged.\n\n'+(error.message||error));}
-});
+// Keep record IDs across retries, including a lost acknowledgement from the cloud.
+const bulkAddPending = new Map();
+function prepareBulkAdd(kind, text, classId, previous) {
+  const idField = kind === 'staff' ? 'staffId' : 'admissionId';
+  const usedIds = new Map(DB.get(KEYS[kind], []).map(record => [String(record[idField] || '').trim().toLowerCase(), record.id]).filter(([id]) => id));
+  const errors = [], items = [], inputIds = new Set();
+  const reusable = previous ? previous.items.slice() : [];
+  text.split(/\r?\n/).forEach((raw, index) => {
+    const line = raw.trim();
+    if (!line) return;
+    const [rawName, ...parts] = line.split(',');
+    const name = rawName.trim(), externalId = parts.join(',').trim(), key = externalId.toLowerCase();
+    if (!name || (kind === 'staff' && !externalId)) { errors.push(`Line ${index + 1}: ${kind === 'staff' ? 'Name and Staff ID are required.' : 'Name is required.'}`); return; }
+    const oldIndex = reusable.findIndex(item => item.line === line);
+    const old = oldIndex < 0 ? null : reusable.splice(oldIndex, 1)[0];
+    if (key && (inputIds.has(key) || (usedIds.has(key) && usedIds.get(key) !== old?.record.id))) { errors.push(`Line ${index + 1}: ${kind === 'staff' ? 'Staff' : 'Student'} ID ${externalId} is already in use.`); return; }
+    if (key) inputIds.add(key);
+    const record = old?.record || (kind === 'staff'
+      ? {id:uid(), name, staffId:externalId, role:'Teacher'}
+      : {id:uid(), classId, name, gender:'', admissionId:externalId, parentPhone:''});
+    items.push({line, record});
+  });
+  return {items, errors};
+}
+
+async function bulkAddPeople(kind) {
+  const staff = kind === 'staff';
+  const classId = staff ? '' : document.getElementById('studentClassSelect').value;
+  if (staff) { if (!requireHeadTeacher('manage staff')) return; }
+  else { if (!classId) { alert('Add a class first.'); return; } if (!requireClassAccess(classId)) return; }
+  const textarea = document.getElementById(staff ? 'bulkStaffInput' : 'bulkStudentInput');
+  const button = document.getElementById(staff ? 'bulkAddStaffBtn' : 'bulkAddStudentsBtn');
+  if (button.disabled) return;
+  const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
+  const pendingKey = JSON.stringify([kind, token, userId, schoolId, classId]);
+  const plan = prepareBulkAdd(kind, textarea.value, classId, bulkAddPending.get(pendingKey));
+  if (plan.errors.length) { alert(plan.errors.join('\n')); return; }
+  if (!plan.items.length) return;
+  bulkAddPending.set(pendingKey, plan);
+  const total = plan.items.length, oldText = button.textContent;
+  let saved = 0;
+  button.disabled = true; textarea.disabled = true;
+  try {
+    while (plan.items.length) {
+      if (!isCurrentSession(token, userId, schoolId)) return;
+      // Each create checks a deletion marker. Stay within the rules' 20-read
+      // batch budget, with room for user/permission checks.
+      const chunk = plan.items.slice(0, 10);
+      button.textContent = `Saving ${saved} of ${total}…`;
+      if (FIREBASE_ENABLED && schoolId) {
+        if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+        const ref = schoolRef().collection(kind);
+        await commitChunks(chunk.map(({record}) => batch => batch.set(ref.doc(String(record.id)), stripImagesForCloud(kind, record))));
+        if (!isCurrentSession(token, userId, schoolId)) return;
+        setLastSyncedNow();
+      }
+      const latest = DB.get(KEYS[kind], []), ids = new Set(latest.map(record => record.id));
+      DB.set(KEYS[kind], latest.concat(chunk.filter(({record}) => !ids.has(record.id)).map(item => item.record)), {skipCloudSync:true});
+      saved += chunk.length;
+      plan.items.splice(0, chunk.length);
+      textarea.value = plan.items.map(item => item.line).join('\n');
+    }
+    bulkAddPending.delete(pendingKey);
+    auditAction('import', kind, '', `Bulk added ${saved} ${kind} records.`);
+    alert(`Added ${saved} ${staff ? 'staff member(s)' : 'student(s)'} and saved to SchoolHub.`);
+  } catch (error) {
+    if (isCurrentSession(token, userId, schoolId)) alert(`Confirmed ${saved} of ${total} ${kind} saved. Remaining entries are kept below; click Add All to retry.\n\n` + (error.message || error));
+  } finally {
+    button.disabled = false; textarea.disabled = false; button.textContent = oldText;
+    if (isCurrentSession(token, userId, schoolId)) {
+      if (staff) renderStaff(); else { renderStudents(); renderClasses(); }
+    } else { bulkAddPending.delete(pendingKey); textarea.value = ''; }
+  }
+}
+document.getElementById('bulkAddStudentsBtn').addEventListener('click', () => bulkAddPeople('students'));
+document.getElementById('bulkAddStaffBtn').addEventListener('click', () => bulkAddPeople('staff'));
 
 async function showStudentDetails(studentId) {
   const st = DB.get(KEYS.students, []).find(x => x.id === studentId);
@@ -3248,6 +3314,8 @@ function installStudentTabUpgrade() {
       <button type="button" id="printStudentsBtn">Print / Save as PDF</button>
       <input type="file" id="studentImportInput" accept=".xlsx,.xls,.csv" hidden>
       <div id="studentImportPreview" class="hidden" style="width:100%"></div>
+      <p class="hint" style="width:100%">Excel exports include all accessible students and their personal, guardian and class details. Print the current search or class results, then choose Save as PDF in the print dialog.</p>
+      <p id="studentSearchCount" class="hint" style="width:100%" aria-live="polite"></p>
       <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
       <div id="studentRecoveryPreview" class="staff-import-preview hidden" style="width:100%" aria-live="polite"></div>`;
     const classSelect = document.getElementById('studentClassSelect');
@@ -4950,7 +5018,7 @@ function renderTeacherAttendanceForm() {
   const summary = teacherAttendanceSummary(settings.currentTerm, settings.currentYear).summary;
   const averageRatio = averageAttendanceRatio(summary, timesOpen, true);
   let html = attendanceSummaryHeader('Average Teacher Attendance Ratio', timesOpen, averageRatio);
-  html += `<div class="attendance-toolbar"><button type="button" id="teacherAttendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="teacherAttendanceAllAbsent" class="btn-text">Mark All Absent</button></div>`;
+  html += `<div class="attendance-toolbar"><button type="button" id="teacherAttendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="teacherAttendanceAllAbsent" class="btn-text">Mark All Absent</button><button type="button" id="teacherAttendanceUnmarkAll" class="btn-text">Unmark All</button></div>`;
   html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Attendance Ratio</th></tr></thead><tbody>';
   teachers.forEach(st => {
     const status = String(entries[st.id] || '').toUpperCase();
@@ -4969,6 +5037,7 @@ function renderTeacherAttendanceForm() {
   wrap.innerHTML = html;
   document.getElementById('teacherAttendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('teacherAttendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'A'));
+  document.getElementById('teacherAttendanceUnmarkAll').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = ''));
 }
 
 let editingSchoolCalendarDate = null;
