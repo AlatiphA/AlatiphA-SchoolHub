@@ -337,3 +337,29 @@
  @media(max-width:520px){#app #view-students #addStudentForm{grid-template-columns:1fr;} .topbar{flex-wrap:wrap;}.topbar-right{margin-left:auto;}.sync-status-badge{font-size:11px;padding:6px 7px;}}
 }
 @media print{.sync-status-badge{display:none!important;}}
+/* Subjects: stable name/action columns and compact mobile controls. */
+@media screen {
+  #app #view-subjects .subject-order-toolbar{align-items:flex-start;gap:10px;margin:22px 0 16px;}
+  #app #view-subjects .subject-order-toolbar .hint{flex-basis:100%;min-width:0;line-height:1.55;}
+  #app #view-subjects #toggleSubjectArrangeBtn{padding:8px 12px;border:1px solid var(--rule);border-radius:10px;min-height:44px;}
+  #app #view-subjects .bulk-selection-toolbar{display:grid;grid-template-columns:1fr auto;gap:12px;padding:12px;background:var(--surface-alt);border-color:var(--rule);}
+  #app #view-subjects .bulk-selection-toolbar label{margin:0;font-size:14px;min-height:32px;}
+  #app #view-subjects .bulk-selection-toolbar label:nth-of-type(2){display:none;}
+  #app #view-subjects .bulk-count{font-size:13px;color:var(--muted);text-align:right;}
+  #app #view-subjects .bulk-delete-btn{grid-column:1/-1;width:100%;margin:0;min-height:44px;font-size:14px;}
+  #app #subjectList .subject-sort-item{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:10px;align-items:center;padding:16px 0;}
+  #app #subjectList .bulk-record-select{grid-column:1;margin:0;align-self:start;min-height:28px;}
+  #app #subjectList .bulk-record-check{margin:0;width:20px;height:20px;}
+  #app #subjectList .subject-row-main{grid-column:2;min-width:0;text-align:left;line-height:1.45;}
+  #app #subjectList .subject-row-main strong{display:block;font-size:16px;}
+  #app #subjectList .actions{grid-column:3;display:flex;gap:8px;margin:0;}
+  #app #subjectList .actions button{min-height:44px;padding:8px 14px;margin:0;font-size:14px;}
+  #app #subjectList .edit-row{grid-column:1/-1;min-width:0;width:100%;}
+  #app #subjectList .subject-sort-item.arranging{grid-template-columns:minmax(0,1fr) auto;}
+  #app #subjectList .subject-order-main{min-width:0;text-align:left;}
+  #app #view-subjects > .hint{line-height:1.6;margin-top:20px;}
+  @media(max-width:520px){
+    #app #subjectList .subject-sort-item:not(.arranging){grid-template-columns:28px minmax(0,1fr);row-gap:10px;}
+    #app #subjectList .actions{grid-column:2;justify-content:flex-start;}
+  }
+}
