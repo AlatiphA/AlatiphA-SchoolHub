@@ -352,14 +352,13 @@
   #app #subjectList .bulk-record-check{margin:0;width:20px;height:20px;}
   #app #subjectList .subject-row-main{grid-column:2;min-width:0;text-align:left;line-height:1.45;}
   #app #subjectList .subject-row-main strong{display:block;font-size:16px;}
-  #app #subjectList .actions{grid-column:3;display:flex;gap:8px;margin:0;}
-  #app #subjectList .actions button{min-height:44px;padding:8px 14px;margin:0;font-size:14px;}
+  #app #subjectList .actions{grid-column:3;display:flex;justify-content:flex-end;justify-self:end;flex-wrap:nowrap;gap:8px;margin:0;}
   #app #subjectList .edit-row{grid-column:1/-1;min-width:0;width:100%;}
   #app #subjectList .subject-sort-item.arranging{grid-template-columns:minmax(0,1fr) auto;}
   #app #subjectList .subject-order-main{min-width:0;text-align:left;}
   #app #view-subjects > .hint{line-height:1.6;margin-top:20px;}
   @media(max-width:520px){
-    #app #subjectList .subject-sort-item:not(.arranging){grid-template-columns:28px minmax(0,1fr);row-gap:10px;}
-    #app #subjectList .actions{grid-column:2;justify-content:flex-start;}
+    #app #subjectList .subject-sort-item:not(.arranging){grid-template-columns:22px minmax(0,1fr) auto;gap:8px;}
+    #app #subjectList .actions{gap:6px;}
   }
 }
