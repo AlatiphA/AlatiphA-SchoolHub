@@ -1,6 +1,12 @@
 'use strict';
 // Server-side validation shared by callable handlers and regression tests.
-const equal = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+const equal = (a,b) => {
+  if(a===b)return true;
+  if(a===null || b===null || typeof a!=='object' || typeof b!=='object')return false;
+  if(Array.isArray(a)!==Array.isArray(b))return false;
+  const keys=Object.keys(a);
+  return keys.length===Object.keys(b).length && keys.every(key=>Object.hasOwn(b,key) && equal(a[key],b[key]));
+};
 const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const badKey = k => ['__proto__','prototype','constructor'].includes(k);
 function mergeEdit(base, desired, remote, validate, path=[]) {
@@ -92,17 +98,27 @@ function register({onCall,HttpsError,db,admin}) {
    if(deletionVersion!==currentDeletionVersion)fail('failed-precondition','This record was cleared on another device. Reload before entering new values. Your pending edit remains on this device.');
    const data=existing.data()||{};
    const remote=(field==='grades'||field==='remarks')?(data.entries||{}):Object.fromEntries(Object.entries(data).filter(([k])=>k!=='updatedAt'));
-   // A teacher authorized for this class may finish cleanup for an already
-   // deleted pupil, including subjects taught by other staff. Ordinary grade
-   // edits still require subject permission.
+   // A confirmed pupil deletion takes precedence over stale scores for that
+   // pupil only. Do not rebase or overwrite any surviving pupil's edits.
    const deletedPupils=new Set();
-   if(field==='grades' && u.role==='teacher'){
-    for(const pupil of Object.keys(base||{}).filter(id=>!Object.hasOwn(value,id))){
+   const pupilEntries=record=>field==='attendance' && object(record?.entries)?record.entries:(record||{});
+   if(['grades','attendance','remarks'].includes(field)){
+    const oldEntries=pupilEntries(base),nextEntries=pupilEntries(value);
+    for(const pupil of Object.keys(oldEntries).filter(id=>!Object.hasOwn(nextEntries,id))){
      if(badKey(pupil) || pupil.includes('/'))fail('invalid-argument','Invalid pupil identifier.');
      const marker=await tx.get(school.collection('deletedRecords').doc('students__'+pupil));
-     if(marker.exists)deletedPupils.add(pupil);
+     if(marker.exists){
+      const student=await tx.get(school.collection('students').doc(pupil));
+      if(!student.exists)deletedPupils.add(pupil);
+     }
     }
    }
+   const withoutDeletedPupils=record=>{
+    const copy=JSON.parse(JSON.stringify(record||{}));
+    const entries=pupilEntries(copy);
+    deletedPupils.forEach(id=>delete entries[id]);
+    return copy;
+   };
    const validate=(path,v)=>{
     if(field==='grades'){
      // Student/subject deletion removes a container, not a single score.
@@ -121,7 +137,7 @@ function register({onCall,HttpsError,db,admin}) {
     }else if(field!=='remarks'&&path[0]==='classId'&&v!==classId)fail('invalid-argument','Class cannot change.');
    };
    let merged;
-   try{const clean=x=>Object.fromEntries(Object.entries(x||{}).filter(([k])=>k!=='updatedAt'));merged=mergeEdit(clean(base),clean(value),remote,validate);}catch(e){if(e instanceof HttpsError)throw e;fail(e.message==='conflict'?'aborted':'invalid-argument',e.message==='conflict'?'Another device changed this record. Your local edit is preserved. Review the current cloud record before retrying.':'Invalid field.');}
+   try{const clean=x=>Object.fromEntries(Object.entries(x||{}).filter(([k])=>k!=='updatedAt'));merged=mergeEdit(clean(withoutDeletedPupils(base)),clean(value),withoutDeletedPupils(remote),validate);}catch(e){if(e instanceof HttpsError)throw e;fail(e.message==='conflict'?'aborted':'invalid-argument',e.message==='conflict'?'Another device changed this record. Your local edit is preserved. Review the current cloud record before retrying.':'Invalid field.');}
    const document=(field==='grades'||field==='remarks')?{classId,entries:merged}:merged;
    if(field==='attendance')document.classId=classId;
    if(Buffer.byteLength(JSON.stringify(document))>750000)fail('resource-exhausted','Record too large.');

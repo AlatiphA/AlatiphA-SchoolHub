@@ -134,8 +134,42 @@ test('teachers can finish all-subject cleanup only for deleted pupils in their a
  const input={field:'grades',key,base,value:{p2:base.p2}};
  await assert.rejects(f.handlers.saveSchoolRecord(f.req(input,'teacher')),e=>e.code==='permission-denied');
  f.records.set('schools/s/deletedRecords/students__p1',{collection:'students',id:'p1'});
+ f.records.delete('schools/s/students/p1');
  await f.handlers.saveSchoolRecord(f.req(input,'teacher'));
  assert.deepEqual(f.records.get(path).entries,{p2:{english:{e:55}}});
  await assert.rejects(f.handlers.saveSchoolRecord(f.req({...input,key:'c2__Term 1__2026/2027'},'teacher')),e=>e.code==='permission-denied');
  await assert.rejects(f.handlers.saveSchoolRecord(f.req({...input,value:{p1:{english:{e:90}},p2:base.p2}},'teacher')),e=>e.code==='permission-denied');
+});
+
+test('object key order does not produce false conflicts when deleting grade containers',()=>{
+ const base={p:{math:{c:20,e:70},english:{e:80}}};
+ const remote={p:{english:{e:80},math:{e:70,c:20}}};
+ assert.deepEqual(mergeEdit(base,{},remote,()=>{}),{});
+});
+
+for(const field of ['grades','remarks','attendance'])test(`confirmed pupil deletion resolves stale ${field} cleanup without changing surviving pupils`,async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',path='schools/s/'+field+'/'+encodeURIComponent(key);
+ const old={p1:{math:{e:70}},p2:{math:{e:50}}};
+ const latest={p1:{math:{e:90}},p2:{math:{e:85}}};
+ const wrap=x=>field==='attendance'?{entries:x}:x;
+ f.records.set(path,{classId:'c1',entries:latest});
+ f.records.delete('schools/s/students/p1');
+ f.records.set('schools/s/deletedRecords/students__p1',{collection:'students',id:'p1'});
+ const input={field,key,base:wrap(old),value:wrap({p2:old.p2})};
+ await f.handlers.saveSchoolRecord(f.req(input));
+ assert.deepEqual(f.records.get(path).entries,{p2:{math:{e:85}}});
+ await f.handlers.saveSchoolRecord(f.req(input));
+ assert.deepEqual(f.records.get(path).entries,{p2:{math:{e:85}}});
+});
+
+test('deletion cleanup does not hide surviving-pupil conflicts or delete a restored pupil',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',path='schools/s/grades/'+encodeURIComponent(key);
+ const base={p1:{math:{e:70}},p2:{math:{e:50}}};
+ const remote={p1:{math:{e:90}},p2:{math:{e:85}}};
+ f.records.set(path,{classId:'c1',entries:remote});
+ f.records.set('schools/s/deletedRecords/students__p1',{collection:'students',id:'p1'});
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base,value:{p2:base.p2}})),e=>e.code==='aborted');
+ f.records.delete('schools/s/students/p1');
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base,value:{p2:{math:{e:60}}}})),e=>e.code==='aborted');
+ assert.deepEqual(f.records.get(path).entries,remote);
 });
