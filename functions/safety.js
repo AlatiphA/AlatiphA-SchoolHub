@@ -94,6 +94,16 @@ function register({onCall,HttpsError,db,admin}) {
    const remote=(field==='grades'||field==='remarks')?(data.entries||{}):Object.fromEntries(Object.entries(data).filter(([k])=>k!=='updatedAt'));
    const validate=(path,v)=>{
     if(field==='grades'){
+     // Student/subject deletion removes a container, not a single score.
+     // Validate every removed score; mergeEdit still checks the whole subtree
+     // against remote changes before accepting the deletion.
+     if(v===undefined && (path.length===1 || path.length===2)){
+      const previous=path.reduce((node,key)=>node?.[key],base);
+      if(!object(previous))fail('invalid-argument','Invalid grade field.');
+      if(path.length===2 && u.role!=='headteacher' && !(u.assignedSubjectIds||[]).includes(path[1]))fail('permission-denied','Subject is not assigned.');
+      mergeEdit(previous,{},previous,validate,path);
+      return;
+     }
      if(path.length!==3||!['c','e'].includes(path[2]))fail('invalid-argument','Invalid grade field.');
      if(u.role!=='headteacher'&&!(u.assignedSubjectIds||[]).includes(path[1]))fail('permission-denied','Subject is not assigned.');
      if(v!==undefined&&(typeof v!=='number'||!Number.isFinite(v)||v<0||v>(path[2]==='c'?60:100)))fail('invalid-argument','Grade out of range.');

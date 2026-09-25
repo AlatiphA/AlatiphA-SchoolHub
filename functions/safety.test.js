@@ -89,3 +89,40 @@ test('legacy migration preserves newer and explicitly deleted records',async()=>
  assert.equal(f.records.get('schools/s').schemaVersion,4);
  await assert.rejects(f.handlers.migrateSchoolLegacy(f.req({},'teacher')),e=>e.code==='permission-denied');
 });
+
+test('deleting a student with grades syncs and preserves other pupils and concurrent edits',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',path='schools/s/grades/'+encodeURIComponent(key);
+ const base={p1:{math:{c:25,e:70},english:{e:80}},p2:{math:{e:60}}};
+ f.records.set(path,{classId:'c1',entries:{...base,p2:{math:{e:85}}}});
+ f.records.delete('schools/s/students/p1');
+ const input={field:'grades',key,base,value:{p2:base.p2}};
+ await f.handlers.saveSchoolRecord(f.req(input));
+ assert.deepEqual(f.records.get(path).entries,{p2:{math:{e:85}}});
+ await f.handlers.saveSchoolRecord(f.req(input));
+ assert.deepEqual(f.records.get(path).entries,{p2:{math:{e:85}}});
+});
+
+test('grade container deletion retains subject permissions and is atomic',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',path='schools/s/grades/'+encodeURIComponent(key);
+ const base={p1:{math:{c:25,e:70},english:{e:80}}};
+ f.records.set(path,{classId:'c1',entries:base});
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base,value:{}},'teacher')),e=>e.code==='permission-denied');
+ assert.deepEqual(f.records.get(path).entries,base);
+ await f.handlers.saveSchoolRecord(f.req({field:'grades',key,base,value:{p1:{english:{e:80}}}},'teacher'));
+ assert.deepEqual(f.records.get(path).entries,{p1:{english:{e:80}}});
+ const mathOnly={p1:{math:{e:70}}};f.records.set(path,{classId:'c1',entries:mathOnly});
+ await f.handlers.saveSchoolRecord(f.req({field:'grades',key,base:mathOnly,value:{}},'teacher'));
+ assert.deepEqual(f.records.get(path).entries,{});
+});
+
+test('student grade deletion rejects concurrent changes and malformed replacements',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',path='schools/s/grades/'+encodeURIComponent(key);
+ const base={p1:{math:{e:70}}},remote={p1:{math:{e:75}}};
+ f.records.set(path,{classId:'c1',entries:remote});
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base,value:{}})),e=>e.code==='aborted');
+ assert.deepEqual(f.records.get(path).entries,remote);
+ for(const value of [{p1:null},{p1:10},{p1:{math:null}},{p1:{math:{wrong:1}}}]) {
+  await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base:remote,value})),e=>e.code==='invalid-argument');
+ }
+ assert.deepEqual(f.records.get(path).entries,remote);
+});
