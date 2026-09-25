@@ -205,7 +205,7 @@ service cloud.firestore {
       // credit purchases and credit consumption are performed only by
       // Firebase Cloud Functions so clients cannot mint or edit credits.
       match /billing/{billingId} {
-        allow read: if isHeadTeacher(schoolId);
+        allow read: if isHeadTeacher(schoolId) || (billingId == 'account' && isActiveTeacher(schoolId));
         allow write: if false;
       }
 

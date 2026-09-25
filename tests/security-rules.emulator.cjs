@@ -97,3 +97,11 @@ test('callables save and restore atomically against real Firestore transactions'
     assert.equal((await db.collection('schools/s/yearRollovers').get()).size,2);
   }finally{await app.delete();}
 });
+
+test('school teachers can read entitlements but cannot alter billing or read purchases',async()=>{
+  const db=env.authenticatedContext('teacher').firestore();
+  await assertSucceeds(getDoc(doc(db,'schools/s/billing/account')));
+  await assertFails(setDoc(doc(db,'schools/s/billing/account'),{testLifetimeLicence:{active:true}}));
+  await assertFails(getDoc(doc(db,'schools/s/billingTransactions/ref')));
+  for(const uid of ['disabled','outsider']) await assertFails(getDoc(doc(env.authenticatedContext(uid).firestore(),'schools/s/billing/account')));
+});

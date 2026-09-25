@@ -18,6 +18,8 @@ function paymentMode() {
 }
 
 const PACKAGES = {
+  attendance: { credits: 0, amountPesewas: 5000, type: 'attendance_term' },
+  lifetime: { credits: 0, amountPesewas: 54900, type: 'lifetime_licence' },
   '10': { credits: 10, amountPesewas: 200 },
   '50': { credits: 50, amountPesewas: 1000 },
   '100': { credits: 100, amountPesewas: 2000 },
@@ -31,7 +33,7 @@ async function getHeadSchool(uid) {
   if (!snap.exists) throw new HttpsError('permission-denied', 'School account not found.');
   const user = snap.data() || {};
   if (user.role !== 'headteacher' || user.status !== 'active' || !user.schoolId) {
-    throw new HttpsError('permission-denied', 'Only an active Head Teacher can purchase report credits.');
+    throw new HttpsError('permission-denied', 'Only an active Head Teacher can purchase a school plan or report credits.');
   }
   return { user, schoolId: user.schoolId };
 }
@@ -62,6 +64,25 @@ exports.initializeReportCreditPurchase = onCall({ invoker: 'public', secrets: [P
   const pack = Object.hasOwn(PACKAGES, packageId) ? PACKAGES[packageId] : null;
   if (!pack) throw new HttpsError('invalid-argument', 'Invalid credit package.');
 
+  if (pack.type === 'lifetime_licence') {
+    const account = (await db.collection('schools').doc(schoolId).collection('billing').doc('account').get()).data() || {};
+    if (account[mode === 'test' ? 'testLifetimeLicence' : 'lifetimeLicence']?.active === true) {
+      throw new HttpsError('already-exists', 'This school already has a lifetime licence.');
+    }
+  }
+
+  let attendanceTermKey = null;
+  if (pack.type === 'attendance_term') {
+    const profile = (await db.collection('schools').doc(schoolId).get()).data()?.profile || {};
+    const term = String(profile.currentTerm || '').trim();
+    const year = String(profile.currentYear || '').trim();
+    if (!['Term 1', 'Term 2', 'Term 3'].includes(term) || !year) throw new HttpsError('failed-precondition', 'Save and sync the school term and academic year in Setup first.');
+    attendanceTermKey = encodeURIComponent(JSON.stringify([year, term]));
+    const account = (await db.collection('schools').doc(schoolId).collection('billing').doc('account').get()).data() || {};
+    if (account[mode === 'test' ? 'testLifetimeLicence' : 'lifetimeLicence']?.active || account[mode === 'test' ? 'testAttendanceTerms' : 'attendanceTerms']?.[attendanceTermKey]?.active) {
+      throw new HttpsError('already-exists', 'Attendance is already included for this school term.');
+    }
+  }
   const email = String(request.auth.token.email || request.data?.email || '').trim();
   if (!email) throw new HttpsError('invalid-argument', 'A valid account email is required for payment.');
 
@@ -70,10 +91,11 @@ exports.initializeReportCreditPurchase = onCall({ invoker: 'public', secrets: [P
     reference,
     schoolId,
     uid: request.auth.uid,
-    type: 'credit_purchase',
+    type: pack.type || 'credit_purchase',
     mode,
     packageId,
     credits: pack.credits,
+    attendanceTermKey,
     expectedAmountPesewas: pack.amountPesewas,
     currency: 'GHS',
     status: 'initiated',
@@ -86,7 +108,7 @@ exports.initializeReportCreditPurchase = onCall({ invoker: 'public', secrets: [P
       body: {
         email,
         amount: String(pack.amountPesewas),
-        currency: 'GHS',
+      currency: 'GHS',
         reference,
         metadata: {
           schoolId,
@@ -129,10 +151,18 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
   const mode = paymentMode();
   if (tx.mode !== mode) throw new HttpsError('failed-precondition', 'Payment environment does not match.');
   const balanceField = mode === 'test' ? 'testBalance' : 'balance';
+  const licenceField = mode === 'test' ? 'testLifetimeLicence' : 'lifetimeLicence';
+  const lifetime = tx.type === 'lifetime_licence';
+  const attendance = tx.type === 'attendance_term';
+  const attendanceField = mode === 'test' ? 'testAttendanceTerms' : 'attendanceTerms';
+  if (attendance && (tx.packageId !== 'attendance' || Number(tx.expectedAmountPesewas) !== PACKAGES.attendance.amountPesewas || !tx.attendanceTermKey)) throw new HttpsError('failed-precondition', 'Invalid attendance purchase.');
+  if (lifetime && (tx.packageId !== 'lifetime' || Number(tx.expectedAmountPesewas) !== PACKAGES.lifetime.amountPesewas)) {
+    throw new HttpsError('failed-precondition', 'Invalid lifetime licence purchase.');
+  }
 
   if (tx.status === 'credited') {
     const billSnap = await db.collection('schools').doc(schoolId).collection('billing').doc('account').get();
-    return { credited: true, mode, balance: Number((billSnap.data() || {})[balanceField] || 0), reference };
+    return { credited: true, mode, lifetime, attendance, balance: Number((billSnap.data() || {})[balanceField] || 0), reference };
   }
 
   const verified = await paystackRequest(`/transaction/verify/${encodeURIComponent(reference)}`);
@@ -157,9 +187,11 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
       return;
     }
     const current = Number((billSnap.data() || {})[balanceField] || 0);
-    newBalance = current + Number(tx.credits || 0);
+    newBalance = current + (lifetime || attendance ? 0 : Number(tx.credits || 0));
     t.set(billRef, {
       [balanceField]: newBalance,
+      ...(lifetime ? { [licenceField]: { active: true, schoolId, includesUpdates: true, reference, purchasedAt: admin.firestore.FieldValue.serverTimestamp() } } : {}),
+      ...(attendance ? { [attendanceField]: { ...((billSnap.data() || {})[attendanceField] || {}), [tx.attendanceTermKey]: { active: true, reference } } } : {}),
       currency: 'GHS',
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -171,7 +203,7 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
     }, { merge: true });
   });
 
-  return { credited: true, mode, balance: newBalance, reference };
+  return { credited: true, mode, lifetime, attendance, balance: newBalance, reference };
 });
 
 exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1' }, async (request) => {
@@ -198,13 +230,15 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
   let consumed = count;
   let freeRemaining = null;
   let allowanceKey = null;
+  let lifetime = false;
   await db.runTransaction(async t => {
     const billSnap = await t.get(billRef);
     const usageSnap = await t.get(usageRef);
     const account = billSnap.data() || {};
     const current = Number(account.testBalance || 0);
+    lifetime = account.testLifetimeLicence?.active === true && account.testLifetimeLicence.schoolId === schoolId;
     const allowances = account.testBwUsageByTerm || {};
-    if (reportType === 'bw-single') {
+    if (reportType === 'bw-single' && !lifetime) {
       const schoolSnap = await t.get(db.collection('schools').doc(schoolId));
       const profile = schoolSnap.data()?.profile || {};
       const term = String(profile.currentTerm || '').trim();
@@ -224,7 +258,7 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
       return;
     }
     const used = allowanceKey ? Math.max(0, Number(allowances[allowanceKey] || 0)) : 0;
-    consumed = reportType === 'bw-single' && used < 10 ? 0 : count;
+    consumed = lifetime || (reportType === 'bw-single' && used < 10) ? 0 : count;
     if (current < consumed) throw new HttpsError('failed-precondition', `Not enough report credits. You have ${current}.`);
     balance = current - consumed;
     const update = { testBalance: balance, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
@@ -246,7 +280,7 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
   });
-  return { balance, consumed, freeRemaining, allowanceKey, mode: 'test' };
+  return { balance, consumed, freeRemaining, allowanceKey, lifetime, mode: 'test' };
 });
 
 const safetyModule = require('./safety');

@@ -124,3 +124,49 @@ test('active teachers can consume test credits', async () => {
   f.records.get('schools/school/billing/account').testBalance = 1;
   assert.equal((await f.exports.consumeReportCredits(deductionRequest())).balance, 0);
 });
+
+test('lifetime verification is school-owned, idempotent and does not mint credits', async () => {
+  const f = fixture({ amount: 54900 });
+  Object.assign(f.records.get('schools/school/billingTransactions/ref'), {type:'lifetime_licence',packageId:'lifetime',expectedAmountPesewas:54900});
+  await f.exports.verifyReportCreditPurchase(f.request);
+  await f.exports.verifyReportCreditPurchase(f.request);
+  const account=f.records.get('schools/school/billing/account');
+  assert.equal(account.testLifetimeLicence.schoolId,'school');
+  assert.equal(account.testLifetimeLicence.active,true);
+  assert.equal(account.lifetimeLicence,undefined);
+  assert.equal(account.testBalance,0);
+  f.records.set('users/new-head',{role:'headteacher',status:'active',schoolId:'school'});
+  f.records.set('users/teacher',{role:'teacher',status:'active',schoolId:'school'});
+  for(const uid of ['new-head','teacher']) {
+    const req=deductionRequest(30,'generation-'+uid+'-0001'); req.auth.uid=uid;
+    assert.equal((await f.exports.consumeReportCredits(req)).consumed,0);
+  }
+});
+
+test('foreign-school and live licences do not grant test report access', async () => {
+  const f=fixture();
+  Object.assign(f.records.get('schools/school/billing/account'), {testLifetimeLicence:{active:true,schoolId:'other'},lifetimeLicence:{active:true,schoolId:'school'}});
+  await assert.rejects(f.exports.consumeReportCredits(deductionRequest()), {code:'failed-precondition'});
+});
+
+test('attendance verification unlocks only the purchased term and preserves balances', async () => {
+  const f=fixture({amount:5000});
+  const termKey=encodeURIComponent(JSON.stringify(['2026/2027','Term 1']));
+  Object.assign(f.records.get('schools/school/billingTransactions/ref'),{type:'attendance_term',packageId:'attendance',expectedAmountPesewas:5000,attendanceTermKey:termKey});
+  f.records.set('schools/school',{profile:{currentTerm:'Term 2',currentYear:'2026/2027'}});
+  await f.exports.verifyReportCreditPurchase(f.request);
+  await f.exports.verifyReportCreditPurchase(f.request);
+  const account=f.records.get('schools/school/billing/account');
+  assert.equal(account.testAttendanceTerms[termKey].active,true);
+  assert.equal(Object.keys(account.testAttendanceTerms).length,1);
+  assert.equal(account.testBalance,0);
+  assert.equal(account.attendanceTerms,undefined);
+});
+
+test('attendance initialization requires a saved term and rejects duplicate unlocks', async () => {
+  const f=fixture(); f.request.data={packageId:'attendance'};
+  await assert.rejects(f.exports.initializeReportCreditPurchase(f.request),{code:'failed-precondition'});
+  f.records.set('schools/school',{profile:{currentTerm:'Term 1',currentYear:'2026/2027'}});
+  f.records.get('schools/school/billing/account').testLifetimeLicence={active:true,schoolId:'school'};
+  await assert.rejects(f.exports.initializeReportCreditPurchase(f.request),{code:'already-exists'});
+});

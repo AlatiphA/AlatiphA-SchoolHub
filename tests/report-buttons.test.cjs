@@ -10,7 +10,7 @@ function fixture(){
   const list={innerHTML:'',appendChild(){},querySelectorAll:selector=>selector==='.gen'?[button]:[]};
   const settings={currentYear:'2026/2027',currentTerm:'Term 1'};
   const result={student:{id:'pupil',name:'Example Pupil'},entries:[{}],avg:70};
-  const ctx={console,alert:msg=>alerts.push(msg),renderReportCreditStatus(){},isHeadTeacher:()=>false,canAccessClass:()=>true,
+  const ctx={hasSchoolBillingAccount:()=>false,console,alert:msg=>alerts.push(msg),renderReportCreditStatus(){},isHeadTeacher:()=>false,canAccessClass:()=>true,
     DB:{get:key=>key==='settings'?settings:key==='classes'?[{id:'class1'}]:{}},KEYS:{settings:'settings',classes:'classes',remarks:'remarks'},
     document:{getElementById:id=>id==='reportsClassSelect'?{value:'class1'}:id==='generateAllBtn'?batch:list,createElement:()=>({})},
     escapeHtml:x=>x,computeClassResults:()=>[result],computeSubjectPositions:()=>({}),gradeKey:()=> 'term',
