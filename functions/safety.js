@@ -92,6 +92,17 @@ function register({onCall,HttpsError,db,admin}) {
    if(deletionVersion!==currentDeletionVersion)fail('failed-precondition','This record was cleared on another device. Reload before entering new values. Your pending edit remains on this device.');
    const data=existing.data()||{};
    const remote=(field==='grades'||field==='remarks')?(data.entries||{}):Object.fromEntries(Object.entries(data).filter(([k])=>k!=='updatedAt'));
+   // A teacher authorized for this class may finish cleanup for an already
+   // deleted pupil, including subjects taught by other staff. Ordinary grade
+   // edits still require subject permission.
+   const deletedPupils=new Set();
+   if(field==='grades' && u.role==='teacher'){
+    for(const pupil of Object.keys(base||{}).filter(id=>!Object.hasOwn(value,id))){
+     if(badKey(pupil) || pupil.includes('/'))fail('invalid-argument','Invalid pupil identifier.');
+     const marker=await tx.get(school.collection('deletedRecords').doc('students__'+pupil));
+     if(marker.exists)deletedPupils.add(pupil);
+    }
+   }
    const validate=(path,v)=>{
     if(field==='grades'){
      // Student/subject deletion removes a container, not a single score.
@@ -100,12 +111,12 @@ function register({onCall,HttpsError,db,admin}) {
      if(v===undefined && (path.length===1 || path.length===2)){
       const previous=path.reduce((node,key)=>node?.[key],base);
       if(!object(previous))fail('invalid-argument','Invalid grade field.');
-      if(path.length===2 && u.role!=='headteacher' && !(u.assignedSubjectIds||[]).includes(path[1]))fail('permission-denied','Subject is not assigned.');
+      if(path.length===2 && u.role!=='headteacher' && !deletedPupils.has(path[0]) && !(u.assignedSubjectIds||[]).includes(path[1]))fail('permission-denied','Subject is not assigned.');
       mergeEdit(previous,{},previous,validate,path);
       return;
      }
      if(path.length!==3||!['c','e'].includes(path[2]))fail('invalid-argument','Invalid grade field.');
-     if(u.role!=='headteacher'&&!(u.assignedSubjectIds||[]).includes(path[1]))fail('permission-denied','Subject is not assigned.');
+     if(u.role!=='headteacher'&&!(v===undefined&&deletedPupils.has(path[0]))&&!(u.assignedSubjectIds||[]).includes(path[1]))fail('permission-denied','Subject is not assigned.');
      if(v!==undefined&&(typeof v!=='number'||!Number.isFinite(v)||v<0||v>(path[2]==='c'?60:100)))fail('invalid-argument','Grade out of range.');
     }else if(field!=='remarks'&&path[0]==='classId'&&v!==classId)fail('invalid-argument','Class cannot change.');
    };

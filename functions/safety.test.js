@@ -126,3 +126,16 @@ test('student grade deletion rejects concurrent changes and malformed replacemen
  }
  assert.deepEqual(f.records.get(path).entries,remote);
 });
+
+test('teachers can finish all-subject cleanup only for deleted pupils in their assigned class',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',path='schools/s/grades/'+encodeURIComponent(key);
+ const base={p1:{math:{e:70},english:{e:85}},p2:{english:{e:55}}};
+ f.records.set(path,{classId:'c1',entries:base});
+ const input={field:'grades',key,base,value:{p2:base.p2}};
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req(input,'teacher')),e=>e.code==='permission-denied');
+ f.records.set('schools/s/deletedRecords/students__p1',{collection:'students',id:'p1'});
+ await f.handlers.saveSchoolRecord(f.req(input,'teacher'));
+ assert.deepEqual(f.records.get(path).entries,{p2:{english:{e:55}}});
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({...input,key:'c2__Term 1__2026/2027'},'teacher')),e=>e.code==='permission-denied');
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({...input,value:{p1:{english:{e:90}},p2:base.p2}},'teacher')),e=>e.code==='permission-denied');
+});

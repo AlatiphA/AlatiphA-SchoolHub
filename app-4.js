@@ -2488,42 +2488,7 @@ function renderClasses() {
     });
   });
   list.querySelectorAll('.del-class').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Delete this class and its students/grades?')) return;
-      const id = btn.dataset.id;
-      try {
-        if (FIREBASE_ENABLED && currentSchoolId) {
-          if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
-          const refs = [
-            schoolRef().collection('students').where('classId', '==', id).get(),
-            schoolRef().collection('grades').where('classId', '==', id).get(),
-            schoolRef().collection('attendance').where('classId', '==', id).get(),
-            schoolRef().collection('remarks').where('classId', '==', id).get()
-          ];
-          const snaps = await Promise.all(refs);
-          const ops = [batch => batch.delete(schoolRef().collection('classes').doc(String(id)))];
-          snaps.forEach(snap => snap.forEach(doc => ops.push(batch => batch.delete(doc.ref))));
-          await commitChunks(ops);
-          setLastSyncedNow();
-        }
-
-        DB.set(KEYS.classes, DB.get(KEYS.classes, []).filter(c => c.id !== id), {skipCloudSync:true});
-        DB.set(KEYS.students, DB.get(KEYS.students, []).filter(s => s.classId !== id), {skipCloudSync:true});
-        const grades = DB.get(KEYS.grades, {});
-        Object.keys(grades).forEach(k => { if (k.startsWith(id + '__')) delete grades[k]; });
-        DB.set(KEYS.grades, grades, {skipCloudSync:true});
-        const attendance = DB.get(KEYS.attendance, {});
-        Object.keys(attendance).forEach(k => { if (k.startsWith(id + '__')) delete attendance[k]; });
-        DB.set(KEYS.attendance, attendance, {skipCloudSync:true});
-        const remarks = DB.get(KEYS.remarks, {});
-        Object.keys(remarks).forEach(k => { if (k.startsWith(id + '__')) delete remarks[k]; });
-        DB.set(KEYS.remarks, remarks, {skipCloudSync:true});
-        auditAction('delete', 'class', id, 'Deleted class and its academic records');
-        renderClasses();
-      } catch (error) {
-        alert('The class was NOT deleted. Existing data has been left unchanged.\n\n' + (error.message || error));
-      }
-    });
+    btn.addEventListener('click', () => deleteRecordsV40('classes', [String(btn.dataset.id)]));
   });
 }
 
@@ -2835,30 +2800,7 @@ function renderStudents() {
     });
   });
   list.querySelectorAll('.del-student').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Delete this student and their grades?')) return;
-      const id = btn.dataset.id;
-      const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
-      if (FIREBASE_ENABLED && currentSchoolId) {
-        if (cloudHydrationInProgress || !sessionDataReady) { alert('School data is still synchronizing. Please wait a moment and try again.'); return; }
-        try { await deleteSchoolRecord(schoolRef().collection('students').doc(id)); }
-        catch (error) { alert('Could not delete this student from SchoolHub cloud. Nothing was removed. Please reconnect and try again.'); return; }
-        if (!isCurrentSession(token, userId, schoolId)) return;
-      }
-      DB.set(KEYS.students, DB.get(KEYS.students, []).filter(s => s.id !== id), {skipCloudSync:true});
-      auditAction('delete', 'student', id, `Deleted student: ${id}`);
-      const grades = DB.get(KEYS.grades, {});
-      Object.keys(grades).forEach(k => { if (grades[k][id]) delete grades[k][id]; });
-      DB.set(KEYS.grades, grades);
-      const attendance = DB.get(KEYS.attendance, {});
-      Object.keys(attendance).forEach(k => { if (attendance[k] && attendance[k].entries && attendance[k].entries[id]) delete attendance[k].entries[id]; else if (attendance[k] && attendance[k][id]) delete attendance[k][id]; });
-      DB.set(KEYS.attendance, attendance);
-      const remarks = DB.get(KEYS.remarks, {});
-      Object.keys(remarks).forEach(k => { if (remarks[k][id]) delete remarks[k][id]; });
-      DB.set(KEYS.remarks, remarks);
-      renderStudents();
-      renderClasses();
-    });
+    btn.addEventListener('click', () => deleteRecordsV40('students', [String(btn.dataset.id)]));
   });
 }
 
@@ -3215,24 +3157,7 @@ function renderSubjects() {
     });
   });
   list.querySelectorAll('.del-subject').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!confirm('Delete this subject from all classes?')) return;
-      const id = btn.dataset.id;
-      try {
-        if (FIREBASE_ENABLED && currentSchoolId) {
-          if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
-          await deleteSchoolRecord(schoolRef().collection('subjects').doc(String(id)));
-          setLastSyncedNow();
-        }
-        const subjects = DB.get(KEYS.subjects, []).filter(s => s.id !== id);
-        subjects.forEach((sub, i) => { sub.order = i; });
-        DB.set(KEYS.subjects, subjects, {skipCloudSync:true});
-        auditAction('delete', 'subject', id, 'Deleted subject');
-        renderSubjects();
-      } catch (error) {
-        alert('The subject was NOT deleted. Existing data has been left unchanged.\n\n' + (error.message || error));
-      }
-    });
+    btn.addEventListener('click', () => deleteRecordsV40('subjects', [String(btn.dataset.id)]));
   });
 
   if (subjectArrangeMode) {
@@ -3944,22 +3869,7 @@ function renderStaff() {
     });
   });
   list.querySelectorAll('.del-staff').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      if (!canManageStaffWorkspace()) return;
-      if (!confirm('Delete this staff member? Any class or Head Teacher signature assignment referencing them will be cleared.')) return;
-      const id = btn.dataset.id;
-      const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
-      if (currentSchoolId) {
-        try { await deleteSchoolRecord(staffRef(id)); }
-        catch (error) { alert('Could not delete this staff member. Please reconnect and try again.'); return; }
-        if (!isCurrentSession(token, userId, schoolId)) return;
-      }
-      DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== id), {skipCloudSync:true});
-      auditAction('delete', 'staff', id, 'Deleted staff record');
-      const classes = DB.get(KEYS.classes, []); classes.forEach(c => { if (c.classTeacherId === id) c.classTeacherId = ''; }); DB.set(KEYS.classes, classes);
-      const settings = DB.get(KEYS.settings, {}); if (settings.headTeacherId === id) { settings.headTeacherId = ''; DB.set(KEYS.settings, settings); }
-      renderStaff(); renderClasses();
-    });
+    btn.addEventListener('click', () => deleteRecordsV40('staff', [String(btn.dataset.id)]));
   });
 }
 
@@ -11258,24 +11168,83 @@ function installBulkUiV40(kind,listId,rowSelector){
   bulkRefreshToolbarV40(kind);
 }
 function classDepsV40(id){const st=DB.get(KEYS.students,[]).filter(x=>x.classId===id).length,g=Object.keys(DB.get(KEYS.grades,{})).filter(k=>k.startsWith(id+'__')).length,a=Object.keys(DB.get(KEYS.attendance,{})).filter(k=>k.startsWith(id+'__')).length,r=Object.keys(DB.get(KEYS.remarks,{})).filter(k=>k.startsWith(id+'__')).length;return{st,g,a,r,total:st+g+a+r};}
-function subjectDepsV40(id){let g=0;Object.values(DB.get(KEYS.grades,{})).forEach(v=>{try{if(v&&JSON.stringify(v).includes('"'+id+'"'))g++;}catch(e){}});return{g,total:g};}
-async function bulkDeleteV40(kind){
-  const ids=Array.from(bulkSelectionsV40[kind]);if(!ids.length)return;
-  if(kind!=='students'&&!isHeadTeacher()){alert('Only the Headteacher can bulk delete these records.');return;}
-  if(kind==='students'){const chosen=DB.get(KEYS.students,[]).filter(x=>ids.includes(String(x.id)));if(chosen.some(x=>!requireClassAccess(x.classId)))return;}
-  if(kind==='classes'){const blocked=ids.map(id=>({id,d:classDepsV40(id),x:DB.get(KEYS.classes,[]).find(c=>String(c.id)===id)})).filter(x=>x.d.total);if(blocked.length){alert('Safe Delete blocked because selected classes still contain academic records.\n\n'+blocked.slice(0,8).map(x=>`${x.x?.name||x.id}: ${x.d.st} student(s), ${x.d.g} grade record(s), ${x.d.a} attendance record(s), ${x.d.r} remark record(s)`).join('\n'));return;}}
-  if(kind==='subjects'){const blocked=ids.map(id=>({id,d:subjectDepsV40(id),x:DB.get(KEYS.subjects,[]).find(c=>String(c.id)===id)})).filter(x=>x.d.total);if(blocked.length){alert('Safe Delete blocked because selected subjects still have grade references.\n\n'+blocked.slice(0,8).map(x=>`${x.x?.name||x.id}: ${x.d.g} grade reference(s)`).join('\n'));return;}}
-  if(!confirm(`Delete ${ids.length} selected ${kind}?\n\nThis action cannot be undone.`))return;
+function subjectDepsV40(id){
+  let g=0;
+  Object.values(DB.get(KEYS.grades,{})).forEach(record=>{
+    Object.values(record||{}).forEach(student=>{if(student && Object.hasOwn(student,id))g++;});
+  });
+  return {g,total:g};
+}
+function removeStudentRelatedRecordsV40(ids){
+  for(const field of ['grades','attendance','remarks']){
+    const records=DB.get(KEYS[field],{});let changed=false;
+    Object.values(records).forEach(record=>{
+      if(!record || typeof record!=='object')return;
+      const entries=field==='attendance' && record.entries ? record.entries : record;
+      ids.forEach(id=>{if(Object.hasOwn(entries,id)){delete entries[id];changed=true;}});
+    });
+    if(changed)DB.set(KEYS[field],records);
+  }
+}
+async function checkCloudDeletionDependenciesV40(kind,ids){
+  if(kind!=='classes' && kind!=='subjects')return;
+  if(kind==='subjects'){
+    const snap=await schoolRef().collection('grades').get({source:'server'});
+    if(snap.docs.some(doc=>Object.values(doc.data().entries||{}).some(student=>student && ids.some(id=>Object.hasOwn(student,id)))))throw new Error('Safe Delete blocked: a selected subject still has saved grades.');
+  }else{
+    for(const id of ids){
+      const snaps=await Promise.all(['students','grades','attendance','remarks'].map(field=>schoolRef().collection(field).where('classId','==',id).limit(1).get({source:'server'})));
+      if(snaps.some(snap=>!snap.empty))throw new Error('Safe Delete blocked: a selected class still contains students or academic records.');
+    }
+  }
+}
+let deletionBusyV40=false;
+async function bulkDeleteV40(kind){return deleteRecordsV40(kind,Array.from(bulkSelectionsV40[kind]));}
+async function deleteRecordsV40(kind,selectedIds){
+  if(deletionBusyV40 || !Object.hasOwn(bulkSelectionsV40,kind))return;
+  const ids=[...new Set(selectedIds.map(String))];if(!ids.length)return;
+  if(kind!=='students'&&!isHeadTeacher()){alert('Only the Head Teacher can delete these records.');return;}
+  if(kind==='students'){
+    const chosen=DB.get(KEYS.students,[]).filter(x=>ids.includes(String(x.id)));
+    if(chosen.length!==ids.length){alert('The student list has changed. Refresh the list before deleting.');return;}
+    if(chosen.some(x=>!requireClassAccess(x.classId)))return;
+  }
+  if(kind==='classes'&&ids.some(id=>classDepsV40(id).total)){alert('Safe Delete blocked: selected classes still contain students, grades, attendance or remarks.');return;}
+  if(kind==='subjects'&&ids.some(id=>subjectDepsV40(id).total)){alert('Safe Delete blocked: selected subjects still have grade references.');return;}
+  // A single batch is atomic; never report a partial multi-batch delete as a failure.
+  if(ids.length>220){alert('Select at most 220 records per deletion.');return;}
+  const detail=kind==='students'?'Their grades, attendance entries and remarks will also be removed.':kind==='staff'?'Class and Head Teacher signature assignments will be cleared. Historical staff attendance is retained. Teacher login access stays active; use Manage Teachers → Disable to revoke it.':'Only records without linked academic data can be deleted.';
+  if(!confirm(`Delete ${ids.length} ${kind} record(s)?\n\n${detail}\n\nThis action cannot be undone.`))return;
   const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
+  let cloudDeleted=false;deletionBusyV40=true;
   try{
-    if(FIREBASE_ENABLED&&currentSchoolId){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');await commitChunks(ids.map(id=>batch=>batch.delete(schoolRef().collection(kind).doc(String(id)))));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
-    if(kind==='students')DB.set(KEYS.students,DB.get(KEYS.students,[]).filter(x=>!ids.includes(String(x.id))),{skipCloudSync:true});
-    if(kind==='staff'){DB.set(KEYS.staff,DB.get(KEYS.staff,[]).filter(x=>!ids.includes(String(x.id))),{skipCloudSync:true});const cs=DB.get(KEYS.classes,[]);cs.forEach(c=>{if(ids.includes(String(c.classTeacherId)))c.classTeacherId='';});DB.set(KEYS.classes,cs);const st=DB.get(KEYS.settings,{});if(ids.includes(String(st.headTeacherId))){st.headTeacherId='';DB.set(KEYS.settings,st);}}
-    if(kind==='classes')DB.set(KEYS.classes,DB.get(KEYS.classes,[]).filter(x=>!ids.includes(String(x.id))),{skipCloudSync:true});
-    if(kind==='subjects'){const a=DB.get(KEYS.subjects,[]).filter(x=>!ids.includes(String(x.id)));a.forEach((x,i)=>x.order=i);DB.set(KEYS.subjects,a,{skipCloudSync:true});}
-    auditAction('delete',kind,'bulk',`Bulk deleted ${ids.length} ${kind} record(s)`);bulkSelectionsV40[kind].clear();
+    if(FIREBASE_ENABLED&&currentSchoolId){
+      if(navigator.onLine===false || offlineAuthenticatedMode)throw new Error('Reconnect before deleting school records.');
+      if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');
+      await checkCloudDeletionDependenciesV40(kind,ids);
+      if(!isCurrentSession(token,userId,schoolId))return;
+      await commitChunks(ids.map(id=>batch=>batch.delete(schoolRef().collection(kind).doc(id))));
+      cloudDeleted=true;
+      if(!isCurrentSession(token,userId,schoolId))return;
+    }
+    // Use the same cleanup for individual and selected-record deletion.
+    if(kind==='students')removeStudentRelatedRecordsV40(ids);
+    if(kind==='staff'){
+      const classes=DB.get(KEYS.classes,[]);let changed=false;
+      classes.forEach(c=>{if(ids.includes(String(c.classTeacherId))){c.classTeacherId='';changed=true;}});
+      if(changed)DB.set(KEYS.classes,classes);
+      const settings=DB.get(KEYS.settings,{});
+      if(ids.includes(String(settings.headTeacherId))){settings.headTeacherId='';DB.set(KEYS.settings,settings);}
+    }
+    const remaining=DB.get(KEYS[kind],[]).filter(x=>!ids.includes(String(x.id)));
+    if(kind==='subjects')remaining.forEach((x,i)=>{x.order=i;});
+    DB.set(KEYS[kind],remaining,{skipCloudSync:true});
+    auditAction('delete',kind,ids.length===1?ids[0]:'bulk',`Deleted ${ids.length} ${kind} record(s)`);
+    ids.forEach(id=>bulkSelectionsV40[kind].delete(id));
     if(kind==='students'){renderStudents();renderClasses();}else if(kind==='staff'){renderStaff();renderClasses();}else if(kind==='classes'){renderClasses();renderStudentClassSelect();}else renderSubjects();
-  }catch(error){alert(`Could not delete the selected ${kind}. Nothing was removed locally.\n\n${error.message||error}`);}
+  }catch(error){
+    alert((cloudDeleted?'The selected records were deleted from the cloud, but local cleanup needs attention. Keep this device’s data and retry Sync Now.':'Deletion did not complete. Your local records have been kept.')+'\n\n'+(error.message||error));
+  }finally{deletionBusyV40=false;}
 }
 const _renderClassesBulkV40=renderClasses;renderClasses=function(){_renderClassesBulkV40();setTimeout(()=>installBulkUiV40('classes','classList','li'),0);};
 const _renderStudentsBulkV40=renderStudents;renderStudents=function(){_renderStudentsBulkV40();setTimeout(()=>installBulkUiV40('students','studentList','li'),0);};
