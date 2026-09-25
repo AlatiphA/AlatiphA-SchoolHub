@@ -362,3 +362,11 @@
     #app #subjectList .actions{gap:6px;}
   }
 }
+
+.my-staff-profile{width:min(620px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:1px solid #d8d4c7;border-radius:18px;padding:24px;background:var(--bg,#fff);color:var(--text,#182d25)}
+.my-staff-profile::backdrop{background:rgba(0,0,0,.45)}
+.my-staff-profile input,.my-staff-profile select{width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border:1px solid #c9c8be;border-radius:8px;background:transparent;color:inherit;font:inherit}
+.my-staff-profile label{display:block}
+.my-staff-profile #myStaffProfileStatus{padding:12px;background:#eef4ee;border-radius:8px;color:#193a28}
+.my-staff-profile [readonly]{opacity:.75}
+.my-staff-profile #myStaffProfileClose{margin-top:16px;min-height:44px;width:100%;border-radius:8px;border:1px solid #c9c8be;background:transparent;color:inherit;font:inherit}

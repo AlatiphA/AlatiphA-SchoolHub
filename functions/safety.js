@@ -84,6 +84,44 @@ function register({onCall,HttpsError,db,admin}) {
   const u=await member(tx,request);const snap=await tx.get(db.collection('schools').doc(u.schoolId).collection('staff'));
   return {staff:snap.docs.map(d=>reportStaff(d.data(),d.id))};
  }));
+ const personalFields=['name','sex','dob','registeredNo','licenseNo','emisNo','ssnitNo','ghanaCardId','academicQualification','professionalQualification','bankBranch','bankAccount','phone','email'];
+ const schoolFields=['staffId','role','rank','notionalDate','substantiveDate','isActive'];
+ const ownProfile=record=>Object.fromEntries([...personalFields,...schoolFields].filter(key=>record[key]!==undefined).map(key=>[key,record[key]]));
+ async function linkedTeacher(tx,request){
+  const u=await member(tx,request);
+  if(u.role!=='teacher')fail('permission-denied','This page is for approved teachers.');
+  if(typeof u.staffId!=='string'||!u.staffId||u.staffId.includes('/'))fail('failed-precondition','Ask your Head Teacher to attach your Staff record first.');
+  const school=db.collection('schools').doc(u.schoolId),ref=school.collection('staff').doc(u.staffId);
+  const snap=await tx.get(ref),record=snap.data();
+  if(!record||record.userUid!==request.auth.uid)fail('failed-precondition','Your Staff link has changed. Ask your Head Teacher to check it.');
+  return {u,ref,record};
+ }
+ exports.getMyStaffProfile=callable(async request=>db.runTransaction(async tx=>{
+  const {u,record}=await linkedTeacher(tx,request);
+  return {staffRecordId:u.staffId,profile:ownProfile(record)};
+ }));
+ exports.updateMyStaffProfile=callable(async request=>db.runTransaction(async tx=>{
+  const {u,ref,record}=await linkedTeacher(tx,request);
+  const {staffRecordId,changes,base}=request.data||{};
+  if(staffRecordId!==u.staffId)fail('failed-precondition','Your Staff link changed. Close this page and open it again.');
+  if(!object(changes)||!object(base)||Object.keys(changes).length>personalFields.length)fail('invalid-argument','Invalid personal details.');
+  const update={};
+  for(const [key,value] of Object.entries(changes)){
+   if(!personalFields.includes(key)||typeof value!=='string'||value.length>250)fail('invalid-argument','That field cannot be updated here.');
+   const text=value.trim();
+   if(key==='name'&&!text)fail('invalid-argument','Full name is required.');
+   if(key==='sex'&&!['','M','F'].includes(text))fail('invalid-argument','Select a valid sex.');
+   if(key==='dob'&&text){
+    const date=new Date(text+'T00:00:00Z');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(text)||!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==text||date>new Date())fail('invalid-argument','Enter a valid date of birth.');
+   }
+   if(key==='email'&&text&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text))fail('invalid-argument','Enter a valid contact email.');
+   if((record[key]??'')!==(base[key]??'')&&(record[key]??'')!==text)fail('aborted','This detail was updated by your Head Teacher. Reopen My Details to review the latest value.');
+   update[key]=text;
+  }
+  if(Object.keys(update).length)tx.update(ref,{...update,updatedAt:admin.firestore.FieldValue.serverTimestamp(),personalDetailsUpdatedBy:request.auth.uid});
+  return {staffRecordId:u.staffId,profile:ownProfile({...record,...update})};
+ }));
  exports.saveSchoolRecord=callable(async request=>{
   const {field,key,base,value,deletionVersion=null}=request.data||{};
   if(!['grades','attendance','teacherAttendance','remarks'].includes(field)||typeof key!=='string'||!key||key.length>500||!object(value))fail('invalid-argument','Invalid record.');

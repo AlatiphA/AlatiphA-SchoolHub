@@ -173,3 +173,37 @@ test('deletion cleanup does not hide surviving-pupil conflicts or delete a resto
  await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base,value:{p2:{math:{e:60}}}})),e=>e.code==='aborted');
  assert.deepEqual(f.records.get(path).entries,remote);
 });
+
+function personalFixture(){
+ const f=fixture();f.records.get('users/teacher').staffId='t';
+ f.records.set('schools/s/staff/t',{name:'Teacher Name',userUid:'teacher',staffId:'EMP1',role:'Teacher',phone:'0123',bankAccount:'12345',rank:'Rank',internalNote:'PRIVATE'});
+ return f;
+}
+test('approved teacher sees only their linked personal record and updates allowed fields',async()=>{
+ const f=personalFixture();
+ const loaded=await f.handlers.getMyStaffProfile(f.req({},'teacher'));
+ assert.equal(loaded.profile.bankAccount,'12345');assert.equal(loaded.profile.staffId,'EMP1');assert.equal(loaded.profile.internalNote,undefined);
+ await f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{phone:'0123'},changes:{phone:'0456'}},'teacher'));
+ assert.equal(f.records.get('schools/s/staff/t').phone,'0456');assert.equal(f.records.get('schools/s/staff/t').rank,'Rank');
+ assert.equal(f.records.get('schools/s/staff/h').name,'Head');
+});
+test('personal details reject disabled, unlinked, foreign and mismatched teacher accounts',async()=>{
+ for(const mutation of [f=>f.records.get('users/teacher').status='disabled',f=>delete f.records.get('users/teacher').staffId,f=>f.records.get('users/teacher').schoolId='other',f=>f.records.get('schools/s/staff/t').userUid='other',f=>f.records.delete('schools/s/staff/t')]){
+  const f=personalFixture();mutation(f);
+  await assert.rejects(f.handlers.getMyStaffProfile(f.req({},'teacher')));
+  await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{},changes:{name:'New'}},'teacher')));
+ }
+ const f=personalFixture();await assert.rejects(f.handlers.getMyStaffProfile({data:{}}),e=>e.code==='unauthenticated');
+});
+test('personal details cannot change school authority, other staff or invalid values',async()=>{
+ const f=personalFixture();
+ for(const changes of [{role:'Head Teacher'},{userUid:'other'},{staffId:'other'},{rank:'Director'},{isActive:'true'},{name:''},{dob:'2026-02-31'},{email:'bad'},{sex:'X'},{phone:42}])await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{},changes},'teacher')),e=>e.code==='invalid-argument');
+ await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'h',base:{},changes:{name:'Other'}},'teacher')),e=>e.code==='failed-precondition');
+});
+test('personal changes preserve concurrent school changes and reject same-field conflicts',async()=>{
+ const f=personalFixture();f.records.get('schools/s/staff/t').rank='New rank';
+ await f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{phone:'0123'},changes:{phone:'0456'}},'teacher'));
+ assert.equal(f.records.get('schools/s/staff/t').rank,'New rank');
+ await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{phone:'0123'},changes:{phone:'0789'}},'teacher')),e=>e.code==='aborted');
+ assert.equal(f.records.get('schools/s/staff/t').phone,'0456');
+});

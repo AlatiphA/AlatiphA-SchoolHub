@@ -339,6 +339,7 @@ function resetWorkspaceState() {
 }
 
 function beginSessionTransition() {
+  document.getElementById('myStaffProfileDialog')?.remove();
   sessionGeneration += 1;
   resetWorkspaceState();
   showSyncingMessage();
@@ -1065,6 +1066,7 @@ function renderHome() {
 
 /* ---------- Profile menu ---------- */
 function refreshProfileMenu() {
+  document.getElementById('profileMyDetailsBtn')?.classList.toggle('hidden', !(isTeacher() && currentStatus === 'active'));
   const settings = DB.get(KEYS.settings, {});
   document.getElementById('profileSchoolName').textContent = settings.schoolName || 'School name not set';
   document.getElementById('profileTermYear').textContent = (settings.currentTerm && settings.currentYear)
@@ -1113,6 +1115,39 @@ document.getElementById('profileTourBtn').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
   showTour();
 });
+
+// Personal details stay in this dialog only, outside the shared staff cache.
+async function openMyStaffProfile(){
+  document.getElementById('profileDropdown').classList.add('hidden');
+  if(!isTeacher() || currentStatus!=='active')return;
+  document.getElementById('myStaffProfileDialog')?.remove();
+  const dialog=document.createElement('dialog');dialog.id='myStaffProfileDialog';dialog.className='my-staff-profile';
+  dialog.setAttribute('aria-labelledby','myStaffProfileTitle');
+  dialog.innerHTML='<h2 id="myStaffProfileTitle">My Details</h2><p class="hint">Your personal details are shared with your Head Teacher. Updating your contact email does not change your login email.</p><p role="status" id="myStaffProfileStatus">Loading your attached Staff record…</p><form id="myStaffProfileForm" class="stack"></form><button type="button" id="myStaffProfileClose" class="btn-secondary">Close</button>';
+  document.body.append(dialog);dialog.showModal();
+  dialog.addEventListener('close',()=>dialog.remove());
+  dialog.querySelector('#myStaffProfileClose').onclick=()=>dialog.close();
+  const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
+  const valid=()=>dialog.isConnected&&isCurrentSession(token,userId,schoolId);
+  const status=dialog.querySelector('#myStaffProfileStatus'),form=dialog.querySelector('form');
+  const fields=[['name','Full name','text'],['sex','Sex','select'],['dob','Date of birth','date'],['registeredNo','Registered No.','text'],['licenseNo','License No.','text'],['emisNo','EMIS No.','text'],['ssnitNo','SSNIT No.','text'],['ghanaCardId','Ghana Card ID','text'],['academicQualification','Academic qualification','text'],['professionalQualification','Professional qualification','text'],['bankBranch','Bank and branch','text'],['bankAccount','Bank account','text'],['phone','Phone','tel'],['email','Contact email','email']];
+  try{
+    let loaded=await safetyCall('getMyStaffProfile',{});if(!valid())return;
+    form.innerHTML=fields.map(([key,label,type])=>`<label>${label}${type==='select'?`<select name="${key}"><option value="">Select</option><option value="M">Male</option><option value="F">Female</option></select>`:`<input name="${key}" type="${type}" maxlength="250" ${key==='name'?'required':''}>`}</label>`).join('')+'<p class="hint">School-managed details (read only)</p>'+[['staffId','Staff ID'],['role','Role'],['rank','Rank / Grade'],['notionalDate','Notional date'],['substantiveDate','Substantive date']].map(([key,label])=>`<label>${label}<input data-school-field="${key}" readonly></label>`).join('')+'<button class="btn-primary" type="submit">Save My Details</button>';
+    const populate=()=>{fields.forEach(([key])=>{form.elements.namedItem(key).value=loaded.profile[key]||'';});form.querySelectorAll('[data-school-field]').forEach(input=>{input.value=loaded.profile[input.dataset.schoolField]||'';});};
+    populate();status.textContent='You can edit your personal details below.';
+    form.onsubmit=async event=>{
+      event.preventDefault();if(!valid())return;
+      const changes={},base={};fields.forEach(([key])=>{const value=form.elements.namedItem(key).value.trim();if(value!==(loaded.profile[key]||'')){changes[key]=value;base[key]=loaded.profile[key]||'';}});
+      if(!Object.keys(changes).length){status.textContent='No changes to save.';return;}
+      const button=form.querySelector('[type="submit"]');Array.from(form.elements).forEach(input=>input.disabled=true);status.textContent='Saving…';
+      try{const result=await safetyCall('updateMyStaffProfile',{staffRecordId:loaded.staffRecordId,changes,base});if(!valid())return;loaded=result;populate();status.textContent='Your details have been updated. Your Head Teacher will see them after syncing.';}
+      catch(error){if(valid())status.textContent=error.message||'Could not save. Your entries are still here; reconnect and retry.';}
+      finally{if(valid()){Array.from(form.elements).forEach(input=>input.disabled=false);status.scrollIntoView({block:'nearest'});}}
+    };
+  }catch(error){if(valid())status.textContent=error.message||'Unable to load your details.';}
+}
+document.getElementById('profileMyDetailsBtn')?.addEventListener('click',openMyStaffProfile);
 
 // About dialog / version information. Keeping the version visible in-app
 // makes PWA/service-worker troubleshooting possible without relying on
