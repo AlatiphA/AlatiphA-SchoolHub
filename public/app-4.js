@@ -482,9 +482,17 @@ function subjectNameKey(name) {
     .toLocaleLowerCase();
 }
 
+function subjectScorePartHasValue(value) {
+  // Zero is a valid score. Blank strings and null values are not scores.
+  // Older builds could leave {c:''}, {e:null} or {} after clearing cells.
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string' && value.trim() === '') return false;
+  return Number.isFinite(Number(value));
+}
+
 function subjectEntryHasScore(entry) {
   return !!entry && typeof entry === 'object'
-    && (entry.c !== undefined || entry.e !== undefined);
+    && (subjectScorePartHasValue(entry.c) || subjectScorePartHasValue(entry.e));
 }
 
 function subjectHasSavedScores(subjectId, grades) {
@@ -11233,7 +11241,13 @@ function installBulkUiV40(kind,listId,rowSelector){
 }
 function classDepsV40(id){const st=DB.get(KEYS.students,[]).filter(x=>x.classId===id).length,g=Object.keys(DB.get(KEYS.grades,{})).filter(k=>k.startsWith(id+'__')).length,a=Object.keys(DB.get(KEYS.attendance,{})).filter(k=>k.startsWith(id+'__')).length,r=Object.keys(DB.get(KEYS.remarks,{})).filter(k=>k.startsWith(id+'__')).length;return{st,g,a,r,total:st+g+a+r};}
 function subjectGradeRefHasScoreV40(entry){
-  return !!entry && typeof entry==='object' && (entry.c!==undefined || entry.e!==undefined);
+  if(!entry || typeof entry!=='object')return false;
+  const hasPart=value=>{
+    if(value===undefined || value===null)return false;
+    if(typeof value==='string' && value.trim()==='')return false;
+    return Number.isFinite(Number(value));
+  };
+  return hasPart(entry.c) || hasPart(entry.e);
 }
 function subjectDepsV40(id){
   let g=0;
