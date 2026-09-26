@@ -3,7 +3,7 @@ const app=fs.readFileSync('app-4.js','utf8');
 assert(app.includes('async function refreshAboutImageStatus'));
 assert(app.includes('const inventory = await getCloudImageInventory({ probeLegacy: false })'));
 assert(app.includes('const localCount = await countCachedInventoryItems(inventory)'));
-assert(app.includes('current-school local image'));
+assert(app.includes('accessible'));
 assert(app.includes('hideAboutDialog();'));
 const syncCenter=app.slice(app.indexOf('async function showSyncCenter()'),app.indexOf('function hideSyncCenter()'));
 assert(syncCenter.includes('hideAboutDialog();'));

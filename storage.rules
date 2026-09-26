@@ -23,8 +23,23 @@ service firebase.storage {
         && myUser().status == 'active';
     }
 
+    // Older student photos can remain under the student's former class path.
+    // A teacher may read that binary only when the Student record currently
+    // belongs to one of the teacher's assigned classes.
+    function isCurrentAssignedStudent(schoolId, studentId) {
+      return isActiveTeacherForStorage(schoolId)
+        && firestore.get(
+          /databases/(default)/documents/schools/$(schoolId)/students/$(studentId)
+        ).data.classId in myUser().assignedClassIds;
+    }
+
     match /schools/{schoolId}/student-photos/{classId}/{fileName} {
-      allow read: if isMember(schoolId) && (isHeadTeacher(schoolId) || classId in myUser().assignedClassIds);
+      allow read: if isMember(schoolId)
+        && (
+          isHeadTeacher(schoolId)
+          || classId in myUser().assignedClassIds
+          || isCurrentAssignedStudent(schoolId, fileName)
+        );
       allow write: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId) && classId in myUser().assignedClassIds);
       allow delete: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId) && classId in myUser().assignedClassIds);
     }

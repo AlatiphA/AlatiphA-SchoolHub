@@ -167,6 +167,7 @@ let sessionGeneration = 0;
 let sessionReady = false;
 let sessionDataReady = false; // Core school data has finished loading for this session.
 let cloudHydrationInProgress = false; // Suppresses cloud pushes caused by Firestore-to-local writes.
+let cloudHydrationStatusError = ''; // Last core cloud-load error shown by the sync badge.
 let manualSignOutInProgress = false; // Prevent Firebase auth transitions from re-blocking the login form during logout.
 
 function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}${currentRole === 'teacher' ? '__user_' + currentUid : ''}` : base; }
@@ -243,13 +244,19 @@ function updateOfflineModeBanner(message) {
   const pending = pendingSyncCountForCurrentSchool();
   const statusButton = document.getElementById('syncStatusBtn');
   if (statusButton) {
-    const failed = pending > 0 && syncableFields().some(field => syncErrors.has(field.key));
+    const writeFailed = pending > 0 && syncableFields().some(field => syncErrors.has(field.key));
+    const hydrationErrorText = typeof cloudHydrationStatusError === 'string' ? cloudHydrationStatusError : '';
+    const hydrationFailed = !!hydrationErrorText;
+    const failed = writeFailed || hydrationFailed;
     statusButton.classList.toggle('hidden', !currentSchoolId || currentStatus !== 'active');
     statusButton.dataset.state = offline ? 'offline' : failed ? 'error' : pending ? 'pending' : 'saved';
     statusButton.textContent = offline ? (pending ? pending + ' pending' : 'Offline')
-      : offlineReconnectInProgress || !sessionDataReady ? 'Checking…'
-      : failed ? pending + ' unsynced' : pending ? pending + ' syncing' : 'Up to date';
-    statusButton.title = pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
+      : offlineReconnectInProgress ? 'Checking…'
+      : !sessionDataReady ? 'Checking…'
+      : hydrationFailed ? 'Sync issue'
+      : writeFailed ? pending + ' unsynced' : pending ? pending + ' syncing' : 'Up to date';
+    statusButton.title = hydrationFailed ? `Core school data check ended with an error: ${hydrationErrorText}. Open Sync Center to retry.`
+      : pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
       : offline ? 'Offline. No pending record changes. Open Sync Center.' : 'No pending record changes on this device. Open Sync Center.';
     statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
   }
@@ -1098,7 +1105,12 @@ function renderHome() {
 
 /* ---------- Profile menu ---------- */
 function refreshProfileMenu() {
-  document.getElementById('profileMyDetailsBtn')?.classList.toggle('hidden', !(isTeacher() && currentStatus === 'active'));
+  const activeTeacher = isTeacher() && currentStatus === 'active';
+  document.getElementById('profileMyDetailsBtn')?.classList.toggle('hidden', !activeTeacher);
+  const setupLink = document.getElementById('profileSetupLink');
+  if (setupLink) setupLink.textContent = activeTeacher ? 'Home' : 'Go to Setup';
+  const billingLink = document.getElementById('profileBillingBtn');
+  if (billingLink) billingLink.classList.toggle('hidden', !isHeadTeacher());
   const settings = DB.get(KEYS.settings, {});
   document.getElementById('profileSchoolName').textContent = settings.schoolName || 'School name not set';
   document.getElementById('profileTermYear').textContent = (settings.currentTerm && settings.currentYear)
@@ -1141,7 +1153,7 @@ document.getElementById('profileBtn').addEventListener('click', e => {
 });
 document.getElementById('profileSetupLink').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
-  showView('setup');
+  showView(isTeacher() ? 'home' : 'setup');
 });
 document.getElementById('profileTourBtn').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
@@ -1209,8 +1221,9 @@ async function refreshAboutImageStatus(cacheStatus, cloudImageStatus, imageSyncS
     // Use the exact same inventory and cache coverage calculation as Sync Center.
     const inventory = await getCloudImageInventory({ probeLegacy: false });
     const localCount = await countCachedInventoryItems(inventory);
-    if (cacheEl) cacheEl.textContent = `${localCount}/${inventory.length} current-school local image${inventory.length === 1 ? '' : 's'} cached${totalCount === null ? '' : ` · ${totalCount} total cached on this device`}`;
-    if (cloudEl) cloudEl.textContent = `${inventory.length} cloud image${inventory.length === 1 ? '' : 's'} (Storage + Firestore)`;
+    const scopeText = isHeadTeacher() ? 'school' : 'accessible';
+    if (cacheEl) cacheEl.textContent = `${localCount}/${inventory.length} ${scopeText} cloud image${inventory.length === 1 ? '' : 's'} cached locally${totalCount === null ? '' : ` · ${totalCount} total cached on this device`}`;
+    if (cloudEl) cloudEl.textContent = `${inventory.length} ${scopeText} cloud image${inventory.length === 1 ? '' : 's'} (Storage + Firestore)`;
     if (syncEl) syncEl.textContent = `Last image sync: ${getLastImageSyncText()}`;
   } catch (e) {
     if (cacheEl) cacheEl.textContent = totalCount === null
@@ -1522,7 +1535,7 @@ document.getElementById('profileSystemHealthBtn').addEventListener('click', () =
 });
 const profileBillingBtn = document.getElementById('profileBillingBtn');
 if (profileBillingBtn) {
-  profileBillingBtn.classList.toggle('hidden', isTeacher());
+  profileBillingBtn.classList.toggle('hidden', !isHeadTeacher());
   profileBillingBtn.addEventListener('click', () => {
     document.getElementById('profileDropdown').classList.add('hidden');
     if (!isHeadTeacher()) { showView('home'); return; }
@@ -9486,9 +9499,24 @@ function pullStaffForAccess(all) {
 function pullImageAssetsForAccess() {
   const ref=schoolRef().collection('imageAssets');
   if(isHeadTeacher())return ref.get();
-  const queries=[ref.where('kind','in',['logo','staff']).get()];
-  Array.from(classIdsForCloudSync()||[]).forEach(classId=>queries.push(ref.where('kind','==','student').where('classId','==',classId).get()));
-  return Promise.all(queries).then(snaps=>({forEach:fn=>snaps.forEach(snap=>snap.forEach(fn))}));
+
+  const sharedQuery=ref.where('kind','in',['logo','staff']).get();
+  // Fetch student manifests by the current Student record ID rather than by
+  // imageAssets.classId. A promoted/moved pupil may still have an older classId
+  // in the manifest, but the current assigned-class teacher must still be able
+  // to retrieve that pupil's photo.
+  const studentIds=[...new Set(getAccessibleStudents({includeInactive:true}).map(student=>String(student.id||'')).filter(Boolean))];
+  const studentReads=Promise.all(studentIds.map(id=>imageAssetRef('student',id).get()))
+    .then(docs=>({forEach:fn=>docs.forEach(doc=>{if(doc.exists)fn(doc);})}));
+
+  return Promise.all([sharedQuery,studentReads]).then(snaps=>{
+    const seen=new Set();
+    return {forEach:fn=>snaps.forEach(snap=>snap.forEach(doc=>{
+      if(seen.has(doc.id))return;
+      seen.add(doc.id);
+      fn(doc);
+    }))};
+  });
 }
 function pullTeacherAttendanceForAccess(all) {
   if (!all) return Promise.resolve({ empty: true, forEach: function() {} });
@@ -9620,6 +9648,18 @@ function pullCloudData(sessionToken) {
   if (!valid()) return Promise.resolve();
   cloudHydrationInProgress = true;
   sessionDataReady = false;
+  cloudHydrationStatusError = '';
+  updateOfflineModeBanner();
+  const hydrationWatchdog = setTimeout(() => {
+    if (!valid() || !cloudHydrationInProgress || sessionDataReady) return;
+    const statusButton = document.getElementById('syncStatusBtn');
+    if (statusButton) {
+      statusButton.dataset.state = 'pending';
+      statusButton.textContent = 'Still syncing';
+      statusButton.title = 'The initial cloud check is taking longer than expected. Your local data remains available.';
+      statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
+    }
+  }, 12000);
   // A timer from before hydration could otherwise delete cloud records using
   // the temporarily empty local cache. Cancel every pending delayed push.
   Object.keys(pushTimers).forEach(rawKey => {
@@ -9820,7 +9860,11 @@ function pullCloudData(sessionToken) {
       rememberDeletions(deletionItems.filter(item => !dirtyIdsFor(KEYS[item.collection]).includes(localKeyFromCloudId(item.id))));
       setLastSyncedNow();
     });
+  }).catch(error => {
+    if (valid()) cloudHydrationStatusError = String(error && error.message || error || 'Cloud data check failed.');
+    throw error;
   }).finally(() => {
+    clearTimeout(hydrationWatchdog);
     // Whether the read succeeded or failed, the user may make intentional
     // changes only after this hydration attempt has reached a safe endpoint.
     if (valid()) {
@@ -9836,6 +9880,7 @@ function pullCloudData(sessionToken) {
         scheduleCloudPush(KEYS.grades);
         scheduleCloudPush(KEYS.subjects);
       }
+      updateOfflineModeBanner();
     }
   });
 }

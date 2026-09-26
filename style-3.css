@@ -1720,3 +1720,29 @@ html.disabledAccess #schoolHubFloatingPill{
 }
 
 .prepared-report-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.prepared-report-actions a{text-decoration:none;display:inline-block}.prepared-report-name{overflow-wrap:anywhere}
+
+
+/* v40 teacher mobile/pill polish */
+#schoolHubFloatingPill{
+  z-index:9;
+  background:var(--surface);
+  color:var(--paper);
+  border-color:var(--rule);
+}
+@supports (backdrop-filter:blur(16px)){
+  #schoolHubFloatingPill{
+    background:color-mix(in srgb,var(--surface) 92%,transparent);
+  }
+}
+#schoolHubFloatingPill button{
+  color:var(--paper);
+}
+#schoolHubFloatingPill button.active{
+  background:var(--gold);
+  color:var(--ink);
+}
+#schoolHubFloatingPill button.active svg,
+#schoolHubFloatingPill button.active .pill-label{
+  color:inherit;
+  stroke:currentColor;
+}

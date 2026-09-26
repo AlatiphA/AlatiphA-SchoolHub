@@ -37,6 +37,18 @@ service cloud.firestore {
         && subjectId in myUser().assignedSubjectIds;
     }
 
+    // A student's image manifest may retain an older classId after promotion.
+    // Authorize by the student's CURRENT class as well as the manifest class.
+    function hasCurrentStudent(schoolId, studentId) {
+      return isActiveTeacher(schoolId)
+        && studentId is string
+        && exists(/databases/$(database)/documents/schools/$(schoolId)/students/$(studentId))
+        && hasClass(
+          schoolId,
+          get(/databases/$(database)/documents/schools/$(schoolId)/students/$(studentId)).data.classId
+        );
+    }
+
     function notDeleted(schoolId, collection, id) {
       return !existsAfter(/databases/$(database)/documents/schools/$(schoolId)/deletedRecords/$(collection + '__' + id));
     }
@@ -248,7 +260,16 @@ service cloud.firestore {
       // in their assigned classes. Head Teachers may manage all school assets.
       match /imageAssets/{assetId} {
         allow read: if isHeadTeacher(schoolId) || (isActiveTeacher(schoolId)
-          && (resource.data.kind in ['logo','staff'] || (resource.data.kind == 'student' && hasClass(schoolId,resource.data.classId))));
+          && (
+            resource.data.kind in ['logo','staff']
+            || (
+              resource.data.kind == 'student'
+              && (
+                hasClass(schoolId, resource.data.classId)
+                || hasCurrentStudent(schoolId, resource.data.recordId)
+              )
+            )
+          ));
 
         allow create: if isHeadTeacher(schoolId)
           || (
@@ -263,17 +284,22 @@ service cloud.firestore {
             isActiveTeacher(schoolId)
             && resource.data.kind == 'student'
             && request.resource.data.kind == 'student'
-            && resource.data.classId is string
-            && request.resource.data.classId == resource.data.classId
-            && hasClass(schoolId, resource.data.classId)
+            && resource.data.recordId is string
+            && request.resource.data.recordId == resource.data.recordId
+            && request.resource.data.classId is string
+            && hasClass(schoolId, request.resource.data.classId)
+            && hasCurrentStudent(schoolId, resource.data.recordId)
           );
 
         allow delete: if isHeadTeacher(schoolId)
           || (
             isActiveTeacher(schoolId)
             && resource.data.kind == 'student'
-            && resource.data.classId is string
-            && hasClass(schoolId, resource.data.classId)
+            && resource.data.recordId is string
+            && (
+              hasClass(schoolId, resource.data.classId)
+              || hasCurrentStudent(schoolId, resource.data.recordId)
+            )
           );
       }
     }

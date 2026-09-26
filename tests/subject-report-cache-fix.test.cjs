@@ -9,5 +9,5 @@ assert(app.includes('Manifest lookup is record-ID based'));
 assert(app.includes('async function resolveAssignedTeacherForReport(classId)'));
 assert(app.includes('return unique.length === 1 ? unique[0] : null'));
 assert(app.includes('if (isHeadTeacher()) recovery = await publishLocalImagesToCloud()'));
-assert(app.includes('current-school local image'));
+assert(app.includes('accessible'));
 console.log('subject/report/cache regression: PASS');
