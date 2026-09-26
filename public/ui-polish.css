@@ -370,3 +370,50 @@
 .my-staff-profile #myStaffProfileStatus{padding:12px;background:#eef4ee;border-radius:8px;color:#193a28}
 .my-staff-profile [readonly]{opacity:.75}
 .my-staff-profile #myStaffProfileClose{margin-top:16px;min-height:44px;width:100%;border-radius:8px;border:1px solid #c9c8be;background:transparent;color:inherit;font:inherit}
+
+
+/* v40 Student details table: freeze header and Full Name column like Staff */
+#app #view-students #studentDetailsTableWrap .table-scroll{
+  max-height:65vh;
+  overflow:auto;
+}
+#app #view-students .student-details-table{
+  width:max-content;
+  min-width:1100px;
+  border-collapse:separate;
+  border-spacing:0;
+}
+#app #view-students .student-details-table th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:var(--surface-alt);
+}
+#app #view-students .student-details-table :is(th,td):first-child{
+  position:sticky;
+  left:0;
+  width:200px;
+  min-width:200px;
+  max-width:200px;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  background:var(--surface);
+  box-shadow:2px 0 0 var(--rule);
+  z-index:1;
+}
+#app #view-students .student-details-table td:first-child{
+  text-align:left;
+}
+#app #view-students .student-details-table th:first-child{
+  z-index:3;
+  background:var(--surface-alt);
+}
+@media(max-width:600px){
+  #app #view-students .student-details-table :is(th,td):first-child{
+    width:120px;
+    min-width:120px;
+    max-width:120px;
+    box-sizing:border-box;
+    padding-inline:8px;
+  }
+}

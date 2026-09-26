@@ -89,7 +89,7 @@ test('service-worker upgrade deletes only older SchoolHub caches',async()=>{
  const ctx={self:{addEventListener:(name,fn)=>listeners[name]=fn,clients:{claim:async()=>{}},location:{origin:'https://school.example'}},caches:{keys:async()=>['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4','schoolhub-cache-v40-bulk-staff-attendance-5-teacher-details-1','another-app-cache'],delete:async key=>deleted.push(key)}};
  vm.createContext(ctx);vm.runInContext(fs.readFileSync('sw.js','utf8'),ctx);
  listeners.activate({waitUntil:p=>completion=p});await completion;
- assert.deepEqual(deleted,['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4']);
+ assert.deepEqual(deleted,['schoolhub-cache-v39','schoolhub-cache-v40-student-layout-sync-4','schoolhub-cache-v40-bulk-staff-attendance-5-teacher-details-1']);
 });
 
 test('moving an exception to School Open clears both cloud calendar dates atomically',async()=>{

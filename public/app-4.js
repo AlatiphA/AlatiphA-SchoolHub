@@ -698,7 +698,12 @@ function repairTeacherDefaultQueue() {
 function ensureDefaults() {
   if (isTeacher()) { repairTeacherDefaultQueue(); return; }
   if (DB.get(KEYS.subjects, null) === null) {
-    DB.set(KEYS.subjects, DEFAULT_SUBJECTS.map((name, order) => ({ id: uid(), name, order })));
+    // Keep the sample subject set for Guest/local trials only. A signed-in
+    // school must never gain subjects silently from a browser startup.
+    const initialSubjects = isActiveGuest()
+      ? DEFAULT_SUBJECTS.map((name, order) => ({ id: uid(), name, order }))
+      : [];
+    DB.set(KEYS.subjects, initialSubjects, FIREBASE_ENABLED ? { skipCloudSync: true } : undefined);
   } else {
     const subjects = DB.get(KEYS.subjects, []);
     if (Array.isArray(subjects) && ensureSubjectOrder(subjects)) DB.set(KEYS.subjects, subjects);
@@ -1028,13 +1033,31 @@ document.getElementById('tourBackBtn').addEventListener('click', () => {
 });
 document.getElementById('tourSkipBtn').addEventListener('click', hideTour);
 
+function currentWelcomeName() {
+  // Prefer the signed-in user's linked Staff record.
+  const linkedStaff = getStaffForUserUid(currentUid)
+    || getStaffById(currentUserData && currentUserData.staffId);
+  const staffName = String(linkedStaff && linkedStaff.name || '').trim();
+  if (staffName) return staffName;
+
+  const accountName = String(currentUserData && (currentUserData.displayName || currentUserData.name) || '').trim();
+  if (accountName) return accountName;
+
+  // The optional Setup value is a Head Teacher/Guest fallback only.
+  // It must never identify a different signed-in teacher.
+  if (isHeadTeacher() || isActiveGuest()) {
+    return String(DB.get(KEYS.settings, {}).teacherName || '').trim();
+  }
+  return '';
+}
+
 function renderHome() {
   // During a new authenticated session, show only neutral identity/status
   // information. Never expose the previous school's cached records while
   // cloud data is being loaded, but also do not make the welcome screen wait
   // for the complete Firestore synchronization.
   if (FIREBASE_ENABLED && !sessionDataReady) {
-    const displayName = (currentUserData && (currentUserData.displayName || currentUserData.name)) || '';
+    const displayName = currentWelcomeName();
     document.getElementById('welcomeHeading').textContent = displayName
       ? `Welcome back, ${displayName}` : 'Welcome back';
     document.getElementById('welcomeSubtext').textContent = 'Your school workspace is loading in the background…';
@@ -1044,8 +1067,9 @@ function renderHome() {
     return;
   }
   const settings = DB.get(KEYS.settings, {});
-  document.getElementById('welcomeHeading').textContent = settings.teacherName
-    ? `Welcome back, ${settings.teacherName}`
+  const displayName = currentWelcomeName();
+  document.getElementById('welcomeHeading').textContent = displayName
+    ? `Welcome back, ${displayName}`
     : 'Welcome back';
   document.getElementById('welcomeSubtext').textContent = (settings.currentTerm && settings.currentYear)
     ? `Here's what's happening in ${settings.currentTerm}, ${settings.currentYear}.`
@@ -6053,8 +6077,13 @@ document.getElementById('saveGradesBtn').addEventListener('click', () => {
     const clamped = clampScore(input.value, max);
     if (!classGrades[studentId]) classGrades[studentId] = {};
     if (!classGrades[studentId][subjectId]) classGrades[studentId][subjectId] = {};
-    if (clamped === '') { delete classGrades[studentId][subjectId][part]; }
-    else { classGrades[studentId][subjectId][part] = clamped; }
+    if (clamped === '') {
+      delete classGrades[studentId][subjectId][part];
+      if (!subjectEntryHasScore(classGrades[studentId][subjectId])) delete classGrades[studentId][subjectId];
+      if (!Object.keys(classGrades[studentId]).length) delete classGrades[studentId];
+    } else {
+      classGrades[studentId][subjectId][part] = clamped;
+    }
   });
   allGrades[key] = classGrades;
   DB.set(KEYS.grades, allGrades);
@@ -11203,12 +11232,39 @@ function installBulkUiV40(kind,listId,rowSelector){
   bulkRefreshToolbarV40(kind);
 }
 function classDepsV40(id){const st=DB.get(KEYS.students,[]).filter(x=>x.classId===id).length,g=Object.keys(DB.get(KEYS.grades,{})).filter(k=>k.startsWith(id+'__')).length,a=Object.keys(DB.get(KEYS.attendance,{})).filter(k=>k.startsWith(id+'__')).length,r=Object.keys(DB.get(KEYS.remarks,{})).filter(k=>k.startsWith(id+'__')).length;return{st,g,a,r,total:st+g+a+r};}
+function subjectGradeRefHasScoreV40(entry){
+  return !!entry && typeof entry==='object' && (entry.c!==undefined || entry.e!==undefined);
+}
 function subjectDepsV40(id){
   let g=0;
   Object.values(DB.get(KEYS.grades,{})).forEach(record=>{
-    Object.values(record||{}).forEach(student=>{if(student && Object.hasOwn(student,id))g++;});
+    Object.values(record||{}).forEach(student=>{if(student && subjectGradeRefHasScoreV40(student[id]))g++;});
   });
   return {g,total:g};
+}
+function pruneEmptySubjectGradeRefsV40(ids){
+  const wanted=new Set((ids||[]).map(String));
+  const grades=DB.get(KEYS.grades,{});
+  let changed=false;
+  Object.values(grades).forEach(record=>{
+    if(!record||typeof record!=='object')return;
+    Object.keys(record).forEach(studentId=>{
+      const student=record[studentId];
+      if(!student||typeof student!=='object')return;
+      wanted.forEach(id=>{
+        if(Object.hasOwn(student,id) && !subjectGradeRefHasScoreV40(student[id])){
+          delete student[id];
+          changed=true;
+        }
+      });
+      if(!Object.keys(student).length){
+        delete record[studentId];
+        changed=true;
+      }
+    });
+  });
+  if(changed)DB.set(KEYS.grades,grades);
+  return changed;
 }
 function removeStudentRelatedRecordsV40(ids){
   for(const field of ['grades','attendance','remarks']){
@@ -11225,7 +11281,7 @@ async function checkCloudDeletionDependenciesV40(kind,ids){
   if(kind!=='classes' && kind!=='subjects')return;
   if(kind==='subjects'){
     const snap=await schoolRef().collection('grades').get({source:'server'});
-    if(snap.docs.some(doc=>Object.values(doc.data().entries||{}).some(student=>student && ids.some(id=>Object.hasOwn(student,id)))))throw new Error('Safe Delete blocked: a selected subject still has saved grades.');
+    if(snap.docs.some(doc=>Object.values(doc.data().entries||{}).some(student=>student && ids.some(id=>subjectGradeRefHasScoreV40(student[id])))))throw new Error('Safe Delete blocked: a selected subject still has saved grades.');
   }else{
     for(const id of ids){
       const snaps=await Promise.all(['students','grades','attendance','remarks'].map(field=>schoolRef().collection(field).where('classId','==',id).limit(1).get({source:'server'})));
@@ -11272,7 +11328,12 @@ async function deleteRecordsV40(kind,selectedIds){
       if(ids.includes(String(settings.headTeacherId))){settings.headTeacherId='';DB.set(KEYS.settings,settings);}
     }
     const remaining=DB.get(KEYS[kind],[]).filter(x=>!ids.includes(String(x.id)));
-    if(kind==='subjects')remaining.forEach((x,i)=>{x.order=i;});
+    if(kind==='subjects'){
+      remaining.forEach((x,i)=>{x.order=i;});
+      // Existing builds could leave {} under a subject after both score parts
+      // were cleared. Remove those harmless stale containers after deletion.
+      pruneEmptySubjectGradeRefsV40(ids);
+    }
     DB.set(KEYS[kind],remaining,{skipCloudSync:true});
     auditAction('delete',kind,ids.length===1?ids[0]:'bulk',`Deleted ${ids.length} ${kind} record(s)`);
     ids.forEach(id=>bulkSelectionsV40[kind].delete(id));
