@@ -13,6 +13,15 @@
   --red:#B4432F;
   --rule:#39493E;
   --stripe:rgba(241,239,230,0.03);
+
+  /* Semantic compatibility tokens used by newer SchoolHub components.
+     These must never fall back to browser/light defaults in dark mode. */
+  --card:var(--surface);
+  --card-alt:var(--surface-alt);
+  --border:var(--rule);
+  --accent:var(--gold);
+  --surface2:var(--surface-alt);
+  --on-accent:#16241C;
 }
 
 /* Light theme — same gold/red-ink identity, on a parchment background */
@@ -95,7 +104,7 @@ h1,h2,h3,.brand{
   width:36px;height:36px;
   display:flex;align-items:center;justify-content:center;
   background:var(--gold);
-  color:var(--ink);
+  color:var(--on-accent);
   border:none;
   border-radius:50%;
   cursor:pointer;
@@ -209,7 +218,7 @@ textarea::placeholder{color:var(--muted);font-style:italic;opacity:0.8;}
 .btn-primary{
   display:block;
   background:var(--gold);
-  color:var(--ink);
+  color:var(--on-accent);
   border:none;
   padding:13px 16px;
   border-radius:4px;
@@ -361,7 +370,7 @@ textarea::placeholder{color:var(--muted);font-style:italic;opacity:0.8;}
   flex:1;padding:10px;border-radius:4px;font-size:13px;cursor:pointer;
   font-family:'IBM Plex Sans',sans-serif;min-height:40px;
 }
-.edit-actions .save-btn{background:var(--gold);color:var(--ink);border:none;font-weight:600;}
+.edit-actions .save-btn{background:var(--gold);color:var(--on-accent);border:none;font-weight:600;}
 .edit-actions .cancel-btn{background:none;border:1px solid var(--rule);color:var(--muted);}
 
 #logoPreviewWrap{margin:-4px 0 14px;}
@@ -662,7 +671,7 @@ html.sessionRestoring #sessionRestoreGate{
 /* v38 student + teacher attendance */
 .attendance-mode-bar{display:flex;gap:8px;margin:0 0 16px;border-bottom:1px solid var(--rule);padding-bottom:10px}
 .attendance-mode{border:1px solid var(--rule);background:var(--surface-alt);color:var(--muted);padding:9px 16px;border-radius:999px;cursor:pointer;font-weight:600}
-.attendance-mode.active{background:var(--gold);color:var(--paper);border-color:var(--gold);font-weight:700}
+.attendance-mode.active{background:var(--gold);color:var(--on-accent);border-color:var(--gold);font-weight:700}
 .attendance-mode:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .teacher-attendance-status{min-width:135px}
 
@@ -675,7 +684,7 @@ html.sessionRestoring #sessionRestoreGate{
 
 
 /* v38.3 school calendar + theme-safe attendance tabs */
-.attendance-mode.active{background:var(--gold);color:#fff;border-color:var(--gold);}
+.attendance-mode.active{background:var(--gold);color:var(--on-accent);border-color:var(--gold);}
 .attendance-mode:not(.active){color:inherit;}
 .attendance-summary-pills{display:flex;flex-wrap:wrap;gap:8px;margin:.75rem 0 1rem;}
 .attendance-summary-pills .attendance-summary-pill{margin:0;}
@@ -872,7 +881,7 @@ html.sessionRestoring #sessionRestoreGate{
 .rtp-head span,.rtp-head i{width:20px;height:25px;border-radius:3px;background:#fff;opacity:.9}.rtp-head i{width:19px;height:25px}.rtp-head b{font-size:12px;letter-spacing:.02em;font-weight:800}
 .rtp-meta{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:8px 0}.rtp-meta span{height:22px;background:#fff;border-radius:4px;border:1px solid #d7ded9}.rtp-table{background:#fff;border-radius:5px;overflow:hidden;border:1px solid #d7ded9}.rtp-table b{display:block;height:12px;border-bottom:1px solid #d7ded9}.rtp-table b:first-child{height:20px;background:var(--rt-primary);border:0}.rtp-bottom{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:7px}.rtp-bottom span{height:27px;background:#fff;border-radius:4px;border:1px solid #d7ded9}.rtp-footer{position:absolute;left:0;right:0;bottom:0;height:9px;background:var(--rt-dark);border-top:2px solid var(--rt-accent)}
 .report-theme-card-body{padding:14px}.report-theme-card-body h3{margin:0 0 6px;font-size:1.12rem;color:var(--paper);font-weight:800}.report-theme-card-body h3 small{display:block;margin-top:3px;color:var(--muted);font-weight:600;font-size:.92rem}.report-theme-card-body p{margin:0;min-height:45px;color:var(--muted);font-size:.84rem;line-height:1.4}
-.report-theme-actions{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:12px}.report-theme-actions button{display:inline-flex;flex:0 0 auto!important;width:auto!important;min-width:88px;min-height:34px;height:34px;padding:7px 12px;border-radius:9px;font-size:13px;line-height:1;white-space:nowrap;align-items:center;justify-content:center}.report-theme-actions .report-theme-apply{min-width:82px;min-height:34px;height:34px;padding:7px 14px;color:#1B2B22;background:var(--gold);border:none}.report-theme-preview-btn{border:1px solid var(--rule);background:var(--surface);color:var(--paper);font-weight:700}
+.report-theme-actions{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:12px}.report-theme-actions button{display:inline-flex;flex:0 0 auto!important;width:auto!important;min-width:88px;min-height:34px;height:34px;padding:7px 12px;border-radius:9px;font-size:13px;line-height:1;white-space:nowrap;align-items:center;justify-content:center}.report-theme-actions .report-theme-apply{min-width:82px;min-height:34px;height:34px;padding:7px 14px;color:var(--on-accent);background:var(--gold);border:none}.report-theme-preview-btn{border:1px solid var(--rule);background:var(--surface);color:var(--paper);font-weight:700}
 @media(max-width:700px){.report-theme-grid{grid-template-columns:1fr}.report-themes-launch{align-items:flex-start;flex-direction:column}.report-themes-launch button{width:100%}.report-theme-actions{justify-content:center}.report-theme-actions button{min-width:88px}.report-theme-actions .report-theme-apply{min-width:82px}}
 
 
@@ -1192,18 +1201,18 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
 .attendance-date-navigator #attendancePrevDate,.attendance-date-navigator #attendanceNextDate,.attendance-date-navigator #teacherAttendancePrevDate,.attendance-date-navigator #teacherAttendanceNextDate{flex:0 0 42px;min-width:42px;min-height:42px;padding:6px 10px;font-size:18px;line-height:1}
 
 /* v40 floating quick-access pill */
-#schoolHubFloatingPill{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));z-index:9000;transform:translate(-50%,0);display:flex;align-items:center;gap:2px;max-width:calc(100vw - 20px);padding:4px;border:1px solid rgba(128,128,128,.22);border-radius:999px;background:var(--card,#fff);box-shadow:0 8px 24px rgba(0,0,0,.14);transition:transform .22s ease,opacity .22s ease;opacity:1}
-@supports (backdrop-filter:blur(16px)){#schoolHubFloatingPill{background:color-mix(in srgb,var(--card,#fff) 88%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}}
+#schoolHubFloatingPill{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));z-index:9000;transform:translate(-50%,0);display:flex;align-items:center;gap:2px;max-width:calc(100vw - 20px);padding:4px;border:1px solid rgba(128,128,128,.22);border-radius:999px;background:var(--card);box-shadow:0 8px 24px rgba(0,0,0,.14);transition:transform .22s ease,opacity .22s ease;opacity:1}
+@supports (backdrop-filter:blur(16px)){#schoolHubFloatingPill{background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}}
 #schoolHubFloatingPill.pill-hidden{transform:translate(-50%,calc(100% + 26px));opacity:0;pointer-events:none}
 #schoolHubFloatingPill button{appearance:none;border:0;background:transparent;color:inherit;border-radius:999px;min-height:38px;padding:5px 9px;display:flex;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer}
 #schoolHubFloatingPill button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
-#schoolHubFloatingPill button.active{background:var(--accent,#956433);color:#fff}
+#schoolHubFloatingPill button.active{background:var(--accent);color:#fff}
 @media(max-width:520px){#schoolHubFloatingPill{width:max-content;max-width:calc(100vw - 12px);padding:3px;gap:1px}#schoolHubFloatingPill button{min-height:36px;padding:4px 7px;font-size:10.5px;gap:3px}#schoolHubFloatingPill button svg{width:15px;height:15px}}
 @media(max-width:390px){#schoolHubFloatingPill button{padding:4px 6px}#schoolHubFloatingPill .pill-label{font-size:9.5px}}
 
 /* v40 Bulk Selection & Safe Delete */
-.bulk-selection-toolbar{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin:.65rem 0;padding:.65rem .75rem;border:1px solid var(--border,#ddd);border-radius:12px;background:var(--card,#fff)}
-.bulk-selection-toolbar label{display:inline-flex;align-items:center;gap:.35rem;font-weight:600;cursor:pointer}.bulk-selection-toolbar input,.bulk-record-check{width:18px;height:18px;accent-color:var(--accent,#956433)}.bulk-selection-toolbar .bulk-delete-btn{margin-left:auto}.bulk-selection-toolbar .bulk-delete-btn:disabled{opacity:.5}.bulk-record-select{display:inline-flex;align-items:center;margin-right:.45rem}@media(max-width:520px){.bulk-selection-toolbar .bulk-delete-btn{margin-left:0;width:100%}}
+.bulk-selection-toolbar{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;margin:.65rem 0;padding:.65rem .75rem;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+.bulk-selection-toolbar label{display:inline-flex;align-items:center;gap:.35rem;font-weight:600;cursor:pointer}.bulk-selection-toolbar input,.bulk-record-check{width:18px;height:18px;accent-color:var(--accent)}.bulk-selection-toolbar .bulk-delete-btn{margin-left:auto}.bulk-selection-toolbar .bulk-delete-btn:disabled{opacity:.5}.bulk-record-select{display:inline-flex;align-items:center;margin-right:.45rem}@media(max-width:520px){.bulk-selection-toolbar .bulk-delete-btn{margin-left:0;width:100%}}
 
 
 /* v40 report list: long student names wrap without displacing actions */
@@ -1739,10 +1748,32 @@ html.disabledAccess #schoolHubFloatingPill{
 }
 #schoolHubFloatingPill button.active{
   background:var(--gold);
-  color:var(--ink);
+  color:var(--on-accent);
 }
 #schoolHubFloatingPill button.active svg,
 #schoolHubFloatingPill button.active .pill-label{
   color:inherit;
   stroke:currentColor;
+}
+
+
+/* v40 whole-app theme consistency
+   Newer UI blocks must inherit the same palette as the original app. */
+.bulk-selection-toolbar{
+  background:var(--card);
+  border-color:var(--border);
+  color:var(--paper);
+}
+.bulk-selection-toolbar label,
+.bulk-selection-toolbar span{
+  color:inherit;
+}
+.bulk-selection-toolbar .bulk-delete-btn{
+  color:var(--paper);
+}
+.bulk-selection-toolbar .bulk-delete-btn:disabled{
+  background:var(--surface-alt);
+  color:var(--muted);
+  border-color:var(--rule);
+  opacity:1;
 }
