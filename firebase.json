@@ -9,6 +9,7 @@
     "rules": "storage.rules"
   },
   "hosting": {
+    "site": "alatipha-schoolhub",
     "public": "public",
     "ignore": [
       "firebase.json",
