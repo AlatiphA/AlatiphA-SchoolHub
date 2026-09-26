@@ -15,6 +15,6 @@ assert(index.includes('Head Teacher welcome name (optional)'));
 assert(ui.includes('#app #view-students .student-details-table :is(th,td):first-child'));
 assert(ui.includes('position:sticky;'));
 assert(ui.includes('left:0;'));
-assert(sw.includes('schoolhub-cache-v40-subject-report-image-fix-3'));
+assert(sw.includes('schoolhub-cache-v40-sync-about-consistency-4'));
 
 console.log('teacher identity, subject cleanup, and student freeze regression: PASS');

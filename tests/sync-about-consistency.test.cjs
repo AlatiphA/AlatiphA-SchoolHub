@@ -1,0 +1,13 @@
+const fs=require('fs');const assert=require('assert');
+const app=fs.readFileSync('app-4.js','utf8');
+assert(app.includes('async function refreshAboutImageStatus'));
+assert(app.includes('const inventory = await getCloudImageInventory({ probeLegacy: false })'));
+assert(app.includes('const localCount = await countCachedInventoryItems(inventory)'));
+assert(app.includes('current-school local image'));
+assert(app.includes('hideAboutDialog();'));
+const syncCenter=app.slice(app.indexOf('async function showSyncCenter()'),app.indexOf('function hideSyncCenter()'));
+assert(syncCenter.includes('hideAboutDialog();'));
+const aboutSync=app.slice(app.indexOf('const aboutSyncImagesBtn'),app.indexOf("document.addEventListener('click'",app.indexOf('const aboutSyncImagesBtn')));
+assert(aboutSync.includes('await refreshAboutImageStatus();'));
+assert(!aboutSync.includes('showAboutDialog();'));
+console.log('Sync Center/About consistency regression: PASS');

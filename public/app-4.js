@@ -1184,6 +1184,43 @@ document.getElementById('profileMyDetailsBtn')?.addEventListener('click',openMyS
 // About dialog / version information. Keeping the version visible in-app
 // makes PWA/service-worker troubleshooting possible without relying on
 // browser developer tools.
+async function refreshAboutImageStatus(cacheStatus, cloudImageStatus, imageSyncStatus) {
+  const cacheEl = cacheStatus || document.getElementById('aboutImageCacheStatus');
+  const cloudEl = cloudImageStatus || document.getElementById('aboutCloudImageStatus');
+  const syncEl = imageSyncStatus || document.getElementById('aboutImageSyncStatus');
+
+  if (cacheEl) cacheEl.textContent = 'Checking this school’s image cache…';
+  if (cloudEl) cloudEl.textContent = 'Checking cloud images…';
+  if (syncEl) syncEl.textContent = `Last image sync: ${getLastImageSyncText()}`;
+
+  let totalCount = null;
+  try { totalCount = await getImageCacheCount(); } catch (e) { totalCount = null; }
+
+  if (!FIREBASE_ENABLED || !currentSchoolId) {
+    if (cacheEl) cacheEl.textContent = totalCount === null
+      ? 'Unavailable in this browser'
+      : `${totalCount} total cached image${totalCount === 1 ? '' : 's'} on this device`;
+    if (cloudEl) cloudEl.textContent = 'Cloud sync unavailable';
+    if (syncEl) syncEl.textContent = 'Not signed in';
+    return;
+  }
+
+  try {
+    // Use the exact same inventory and cache coverage calculation as Sync Center.
+    const inventory = await getCloudImageInventory({ probeLegacy: false });
+    const localCount = await countCachedInventoryItems(inventory);
+    if (cacheEl) cacheEl.textContent = `${localCount}/${inventory.length} current-school local image${inventory.length === 1 ? '' : 's'} cached${totalCount === null ? '' : ` · ${totalCount} total cached on this device`}`;
+    if (cloudEl) cloudEl.textContent = `${inventory.length} cloud image${inventory.length === 1 ? '' : 's'} (Storage + Firestore)`;
+    if (syncEl) syncEl.textContent = `Last image sync: ${getLastImageSyncText()}`;
+  } catch (e) {
+    if (cacheEl) cacheEl.textContent = totalCount === null
+      ? 'Unable to read image cache'
+      : `${totalCount} total cached image${totalCount === 1 ? '' : 's'} on this device`;
+    if (cloudEl) cloudEl.textContent = 'Unable to read cloud images';
+    if (syncEl) syncEl.textContent = `Last image sync: ${getLastImageSyncText()}`;
+  }
+}
+
 function showAboutDialog() {
   const dialog = document.getElementById('aboutDialog');
   if (!dialog) return;
@@ -1195,31 +1232,7 @@ function showAboutDialog() {
   const swStatus = document.getElementById('aboutSwStatus');
   const cloudImageStatus = document.getElementById('aboutCloudImageStatus');
   const imageSyncStatus = document.getElementById('aboutImageSyncStatus');
-  if (cacheStatus) {
-    cacheStatus.textContent = 'Checking this school’s image cache…';
-    Promise.all([getImageCacheCount(), getKnownLocalImageCandidates().catch(() => [])]).then(([totalCount, currentItems]) => {
-      if (totalCount === null) {
-        cacheStatus.textContent = 'Unavailable in this browser';
-        return;
-      }
-      const currentCount = Array.isArray(currentItems) ? currentItems.length : 0;
-      cacheStatus.textContent = `${currentCount} current-school local image${currentCount === 1 ? '' : 's'} · ${totalCount} total cached on this device`;
-    });
-  }
-  if (cloudImageStatus || imageSyncStatus) {
-    if (!FIREBASE_ENABLED || !currentSchoolId) {
-      if (cloudImageStatus) cloudImageStatus.textContent = 'Cloud sync unavailable';
-      if (imageSyncStatus) imageSyncStatus.textContent = 'Not signed in';
-    } else {
-      getCloudImageInventory().then(items => {
-        if (cloudImageStatus) cloudImageStatus.textContent = `${items.length} cloud image${items.length === 1 ? '' : 's'} (Storage + Firestore)`;
-        if (imageSyncStatus) imageSyncStatus.textContent = `Last image sync: ${getLastImageSyncText()}`;
-      }).catch(() => {
-        if (cloudImageStatus) cloudImageStatus.textContent = 'Unable to read cloud images';
-        if (imageSyncStatus) imageSyncStatus.textContent = `Last image sync: ${getLastImageSyncText()}`;
-      });
-    }
-  }
+  refreshAboutImageStatus(cacheStatus, cloudImageStatus, imageSyncStatus);
   if (browserStatus) browserStatus.textContent = /SamsungBrowser/i.test(navigator.userAgent) ? 'Samsung Internet' : /Chrome/i.test(navigator.userAgent) ? 'Chrome' : 'Other';
   if (localStorageStatus) {
     try {
@@ -1347,6 +1360,8 @@ async function updateSyncCenter() {
 async function showSyncCenter() {
   const dialog = document.getElementById('syncCenterDialog');
   if (!dialog) return;
+  // Keep diagnostic dialogs mutually exclusive so About cannot reappear underneath.
+  hideAboutDialog();
   dialog.classList.remove('hidden');
   await updateSyncCenter();
 }
@@ -1577,7 +1592,7 @@ if (aboutSyncImagesBtn) {
       if (isHeadTeacher()) recovery = await publishLocalImagesToCloud();
       const result = await syncImagesFromCloud({ force: false });
       if (status) status.textContent = `Sync complete: ${result.local}/${result.total} cloud images local, ${result.downloaded} downloaded, ${recovery.published || 0} local image${recovery.published === 1 ? '' : 's'} published, ${result.failed + (recovery.failed || 0)} failed`;
-      showAboutDialog();
+      await refreshAboutImageStatus();
     } catch (err) {
       if (status) status.textContent = 'Image sync failed: ' + (err && err.message ? err.message : String(err));
     } finally {
