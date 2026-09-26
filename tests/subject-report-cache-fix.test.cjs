@@ -1,0 +1,13 @@
+const fs=require('fs');const assert=require('assert');
+const app=fs.readFileSync('app-4.js','utf8');
+assert(app.includes("safetyCall('deleteSubjectsWithGrades',{subjectIds:ids})"));
+assert(app.includes("backupLocalSchoolData('before-subject-grade-cascade-delete')"));
+assert(app.includes('function subjectGradeReferencesV40(ids)'));
+assert(app.includes('function removeSubjectGradeRefsLocalV40(ids)'));
+assert(app.includes('async function reportImageManifestDescriptor(kind, id)'));
+assert(app.includes('Manifest lookup is record-ID based'));
+assert(app.includes('async function resolveAssignedTeacherForReport(classId)'));
+assert(app.includes('return unique.length === 1 ? unique[0] : null'));
+assert(app.includes('if (isHeadTeacher()) recovery = await publishLocalImagesToCloud()'));
+assert(app.includes('current-school local image'));
+console.log('subject/report/cache regression: PASS');

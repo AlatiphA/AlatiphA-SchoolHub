@@ -183,6 +183,35 @@ function register({onCall,HttpsError,db,admin}) {
    return {saved:true};
   });
  });
+ exports.deleteSubjectsWithGrades=callable(async request=>db.runTransaction(async tx=>{
+  const u=await member(tx,request,true),school=db.collection('schools').doc(u.schoolId);
+  const raw=request.data&&Array.isArray(request.data.subjectIds)?request.data.subjectIds:[];
+  const ids=[...new Set(raw.map(value=>String(value||'').trim()).filter(Boolean))];
+  if(!ids.length||ids.length>25||ids.some(id=>id.length>250||id.includes('/')||badKey(id)))fail('invalid-argument','Select between 1 and 25 valid subjects.');
+  const subjectRefs=ids.map(id=>school.collection('subjects').doc(id));
+  const subjectSnaps=await Promise.all(subjectRefs.map(ref=>tx.get(ref)));
+  const gradeSnap=await tx.get(school.collection('grades'));
+  const updates=[];let removedRefs=0;
+  for(const doc of gradeSnap.docs){
+    const data=doc.data()||{},entries=JSON.parse(JSON.stringify(data.entries||{}));let changed=false;
+    for(const studentId of Object.keys(entries)){
+      const student=entries[studentId];if(!object(student))continue;
+      for(const id of ids){if(Object.hasOwn(student,id)){delete student[id];removedRefs++;changed=true;}}
+      if(!Object.keys(student).length){delete entries[studentId];changed=true;}
+    }
+    if(changed)updates.push([school.collection('grades').doc(doc.id),entries]);
+  }
+  if(updates.length+ids.length*2>430)fail('resource-exhausted','This subject is linked to too many academic records for one safe deletion. No records were changed.');
+  const crypto=require('node:crypto'),deletions=[];
+  updates.forEach(([ref,entries])=>tx.set(ref,{entries,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}));
+  ids.forEach((id,index)=>{
+    const version=crypto.randomUUID(),subjectRef=subjectRefs[index],marker=school.collection('deletedRecords').doc('subjects__'+id);
+    tx.set(marker,{collection:'subjects',id,version,deletedAt:admin.firestore.FieldValue.serverTimestamp(),deletedBy:request.auth.uid,cascadeGrades:true});
+    tx.delete(subjectRef);
+    deletions.push({collection:'subjects',id,version});
+  });
+  return {deleted:subjectSnaps.filter(snap=>snap.exists).length,gradeDocuments:updates.length,gradeReferences:removedRefs,deletions};
+ }));
  exports.applySchoolYearChange=callable(async request=>db.runTransaction(async tx=>{
   const u=await member(tx,request,true);const school=db.collection('schools').doc(u.schoolId);const input=request.data||{};
   if(!['rollover','restore'].includes(input.mode))fail('invalid-argument','Invalid year operation.');

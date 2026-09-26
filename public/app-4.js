@@ -1196,9 +1196,14 @@ function showAboutDialog() {
   const cloudImageStatus = document.getElementById('aboutCloudImageStatus');
   const imageSyncStatus = document.getElementById('aboutImageSyncStatus');
   if (cacheStatus) {
-    cacheStatus.textContent = 'Checking local image cache…';
-    getImageCacheCount().then(count => {
-      cacheStatus.textContent = count === null ? 'Unavailable in this browser' : `${count} local image${count === 1 ? '' : 's'} cached (IndexedDB)`;
+    cacheStatus.textContent = 'Checking this school’s image cache…';
+    Promise.all([getImageCacheCount(), getKnownLocalImageCandidates().catch(() => [])]).then(([totalCount, currentItems]) => {
+      if (totalCount === null) {
+        cacheStatus.textContent = 'Unavailable in this browser';
+        return;
+      }
+      const currentCount = Array.isArray(currentItems) ? currentItems.length : 0;
+      cacheStatus.textContent = `${currentCount} current-school local image${currentCount === 1 ? '' : 's'} · ${totalCount} total cached on this device`;
     });
   }
   if (cloudImageStatus || imageSyncStatus) {
@@ -1568,8 +1573,10 @@ if (aboutSyncImagesBtn) {
     aboutSyncImagesBtn.disabled = true;
     if (status) status.textContent = 'Synchronizing images…';
     try {
+      let recovery = { published: 0, skipped: 0, failed: 0 };
+      if (isHeadTeacher()) recovery = await publishLocalImagesToCloud();
       const result = await syncImagesFromCloud({ force: false });
-      if (status) status.textContent = `Sync complete: ${result.local}/${result.total} local, ${result.downloaded} downloaded, ${result.repaired} metadata repaired`;
+      if (status) status.textContent = `Sync complete: ${result.local}/${result.total} cloud images local, ${result.downloaded} downloaded, ${recovery.published || 0} local image${recovery.published === 1 ? '' : 's'} published, ${result.failed + (recovery.failed || 0)} failed`;
       showAboutDialog();
     } catch (err) {
       if (status) status.textContent = 'Image sync failed: ' + (err && err.message ? err.message : String(err));
@@ -7775,26 +7782,92 @@ async function resolveReportAsset(primarySource, fallbackFolder, fallbackPrefixe
   return findStorageAssetDataUrl(fallbackFolder, fallbackPrefixes);
 }
 
+async function reportImageManifestDescriptor(kind, id) {
+  if (!FIREBASE_ENABLED || !currentSchoolId || !kind || !id) return null;
+  try {
+    let snap;
+    try { snap = await imageAssetRef(kind, id).get({ source: 'server' }); }
+    catch (e) { snap = await imageAssetRef(kind, id).get(); }
+    if (!snap || !snap.exists) return null;
+    const value = snap.data() || {};
+    if (!value.storagePath && !value.sourceUrl) return null;
+    return { storagePath: String(value.storagePath || ''), sourceUrl: String(value.sourceUrl || '') };
+  } catch (e) {
+    console.warn('Could not read report image manifest:', kind, id, e);
+    return null;
+  }
+}
+
 async function getOrSyncReportImage(kind, id, storagePath, sourceUrl, deterministicPath) {
   const key = imageCacheKey(kind, id);
   let data = await getCachedLocalImageAsync(key);
   if (data) return data;
+  if (!FIREBASE_ENABLED || !currentSchoolId) return '';
 
-  // If background synchronization has not completed yet, a report can still
-  // obtain its required image without reopening the authentication gate.
-  const source = storagePath || sourceUrl || deterministicPath || '';
-  if (!source || !FIREBASE_ENABLED || !currentSchoolId) return '';
+  const tryDescriptor = async (path, url) => {
+    if (!path && !url) return '';
+    clearMissingCloudImage(kind, id);
+    const result = await syncOneCloudImage(kind, id, path || '', url || '', false);
+    if (result && result.ok) return await getCachedLocalImageAsync(key);
+    return '';
+  };
 
-  try {
-    const result = await syncOneCloudImage(kind, id, source.indexOf('schools/') === 0 ? source : storagePath, sourceUrl, false);
-    if (result && result.ok) {
-      data = await getCachedLocalImageAsync(key);
+  if (storagePath || sourceUrl) {
+    try {
+      data = await tryDescriptor(storagePath, sourceUrl);
       if (data) return data;
+    } catch (e) {
+      console.warn('Report image metadata lookup failed:', kind, id, e);
     }
-  } catch (e) {
-    console.warn('On-demand report image sync failed:', kind, id, e);
+  }
+
+  // Manifest lookup is record-ID based. It still finds a student's photo after
+  // promotion/class movement even when an older Storage path contains the old class.
+  const manifest = await reportImageManifestDescriptor(kind, id);
+  if (manifest) {
+    try {
+      data = await tryDescriptor(manifest.storagePath, manifest.sourceUrl);
+      if (data) return data;
+    } catch (e) {
+      console.warn('Report image manifest lookup failed:', kind, id, e);
+    }
+  }
+
+  if (deterministicPath) {
+    try {
+      data = await tryDescriptor(deterministicPath, '');
+      if (data) return data;
+    } catch (e) {
+      console.warn('On-demand report image sync failed:', kind, id, e);
+    }
   }
   return '';
+}
+
+let reportTeacherMemberCache = { schoolId: '', at: 0, members: [] };
+async function resolveAssignedTeacherForReport(classId) {
+  if (!classId) return null;
+  if (isTeacher() && currentAssignedClassIds.includes(classId)) {
+    const own = (currentUserData && currentUserData.staffId ? getStaffById(currentUserData.staffId) : null)
+      || getStaffForUserUid(currentUid);
+    if (own) return own;
+  }
+  if (!isHeadTeacher() || !FIREBASE_ENABLED || !currentSchoolId || navigator.onLine === false) return null;
+  try {
+    const now = Date.now();
+    if (reportTeacherMemberCache.schoolId !== currentSchoolId || now - reportTeacherMemberCache.at > 60000) {
+      reportTeacherMemberCache = { schoolId: currentSchoolId, at: now, members: await fetchSchoolMembers() };
+    }
+    const matches = reportTeacherMemberCache.members.filter(member =>
+      member && member.role === 'teacher' && member.status === 'active'
+      && Array.isArray(member.assignedClassIds) && member.assignedClassIds.includes(classId)
+    ).map(member => member.staffId ? getStaffById(member.staffId) : getStaffForUserUid(member.uid)).filter(Boolean);
+    const unique = Array.from(new Map(matches.map(staff => [String(staff.id), staff])).values());
+    return unique.length === 1 ? unique[0] : null;
+  } catch (e) {
+    console.warn('Could not infer report class teacher:', classId, e);
+    return null;
+  }
 }
 
 async function prepareReportAssets(result, settings, classInfo) {
@@ -7805,11 +7878,10 @@ async function prepareReportAssets(result, settings, classInfo) {
   let classTeacher = classInfo && classInfo.classTeacherId
     ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
 
-  // Keep the existing role-based fallback for schools whose class assignment
-  // was created before classTeacherId was stored.
   if (!classTeacher && classId) {
     const cls = DB.get(KEYS.classes, []).find(c => c.id === classId);
     if (cls && cls.classTeacherId) classTeacher = staffList.find(s => s.id === cls.classTeacherId) || null;
+    if (!classTeacher) classTeacher = await resolveAssignedTeacherForReport(classId);
   }
 
   let headTeacher = settings && settings.headTeacherId
@@ -11249,12 +11321,35 @@ function subjectGradeRefHasScoreV40(entry){
   };
   return hasPart(entry.c) || hasPart(entry.e);
 }
-function subjectDepsV40(id){
-  let g=0;
-  Object.values(DB.get(KEYS.grades,{})).forEach(record=>{
-    Object.values(record||{}).forEach(student=>{if(student && subjectGradeRefHasScoreV40(student[id]))g++;});
+function subjectGradeReferencesV40(ids){
+  const wanted=new Set((ids||[]).map(String)),refs=[];
+  const classes=new Map(DB.get(KEYS.classes,[]).map(c=>[String(c.id),c.name||c.id]));
+  const students=new Map(DB.get(KEYS.students,[]).map(s=>[String(s.id),s.name||s.id]));
+  Object.entries(DB.get(KEYS.grades,{})).forEach(([key,record])=>{
+    const parts=String(key).split('__'),classId=parts[0]||'',term=parts[1]||'',year=parts.slice(2).join('__')||'';
+    Object.entries(record||{}).forEach(([studentId,student])=>{
+      wanted.forEach(subjectId=>{
+        if(student && subjectGradeRefHasScoreV40(student[subjectId]))refs.push({key,classId,term,year,studentId,subjectId,className:classes.get(String(classId))||classId,studentName:students.get(String(studentId))||studentId});
+      });
+    });
   });
-  return {g,total:g};
+  return refs;
+}
+function subjectDepsV40(id){const refs=subjectGradeReferencesV40([id]);return{g:refs.length,total:refs.length};}
+function removeSubjectGradeRefsLocalV40(ids){
+  const wanted=new Set((ids||[]).map(String)),grades=DB.get(KEYS.grades,{}),changedKeys=[];let removed=0;
+  Object.entries(grades).forEach(([key,record])=>{
+    if(!record||typeof record!=='object')return;
+    let changed=false;
+    Object.keys(record).forEach(studentId=>{
+      const student=record[studentId];if(!student||typeof student!=='object')return;
+      wanted.forEach(id=>{if(Object.hasOwn(student,id)){delete student[id];removed++;changed=true;}});
+      if(!Object.keys(student).length){delete record[studentId];changed=true;}
+    });
+    if(changed)changedKeys.push(key);
+  });
+  if(changedKeys.length){DB.set(KEYS.grades,grades,{skipCloudSync:true});clearSyncDirty(KEYS.grades,changedKeys);}
+  return {removed,changedKeys};
 }
 function pruneEmptySubjectGradeRefsV40(ids){
   const wanted=new Set((ids||[]).map(String));
@@ -11315,20 +11410,36 @@ async function deleteRecordsV40(kind,selectedIds){
     if(chosen.some(x=>!requireClassAccess(x.classId)))return;
   }
   if(kind==='classes'&&ids.some(id=>classDepsV40(id).total)){alert('Safe Delete blocked: selected classes still contain students, grades, attendance or remarks.');return;}
-  if(kind==='subjects'&&ids.some(id=>subjectDepsV40(id).total)){alert('Safe Delete blocked: selected subjects still have grade references.');return;}
+  let cascadeSubjectGrades=false,subjectRefs=[];
+  if(kind==='subjects'){
+    subjectRefs=subjectGradeReferencesV40(ids);
+    if(subjectRefs.length){
+      const locations=Array.from(new Set(subjectRefs.map(ref=>[ref.className,ref.term,ref.year].filter(Boolean).join(' · ')))).slice(0,5);
+      const extra=locations.length?`\n\nFound in:\n• ${locations.join('\n• ')}${subjectRefs.length>locations.length?'\n• …':''}`:'';
+      const ok=confirm(`This subject still has ${subjectRefs.length} saved score reference${subjectRefs.length===1?'':'s'}, including possible older terms/years.${extra}\n\nDelete the subject AND permanently remove those linked scores?\n\nA local recovery snapshot will be saved first. Cancel to keep the grades.`);
+      if(!ok)return;
+      if(!backupLocalSchoolData('before-subject-grade-cascade-delete')){alert('Deletion stopped because the recovery snapshot could not be saved on this device.');return;}
+      cascadeSubjectGrades=true;
+    }
+  }
   // A single batch is atomic; never report a partial multi-batch delete as a failure.
   if(ids.length>220){alert('Select at most 220 records per deletion.');return;}
   const detail=kind==='students'?'Their grades, attendance entries and remarks will also be removed.':kind==='staff'?'Class and Head Teacher signature assignments will be cleared. Historical staff attendance is retained. Teacher login access stays active; use Manage Teachers → Disable to revoke it.':'Only records without linked academic data can be deleted.';
-  if(!confirm(`Delete ${ids.length} ${kind} record(s)?\n\n${detail}\n\nThis action cannot be undone.`))return;
+  if(!cascadeSubjectGrades && !confirm(`Delete ${ids.length} ${kind} record(s)?\n\n${detail}\n\nThis action cannot be undone.`))return;
   const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
   let cloudDeleted=false;deletionBusyV40=true;
   try{
     if(FIREBASE_ENABLED&&currentSchoolId){
       if(navigator.onLine===false || offlineAuthenticatedMode)throw new Error('Reconnect before deleting school records.');
       if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');
-      await checkCloudDeletionDependenciesV40(kind,ids);
-      if(!isCurrentSession(token,userId,schoolId))return;
-      await commitChunks(ids.map(id=>batch=>batch.delete(schoolRef().collection(kind).doc(id))));
+      if(kind==='subjects'&&cascadeSubjectGrades){
+        const cascadeResult=await safetyCall('deleteSubjectsWithGrades',{subjectIds:ids});
+        if(cascadeResult&&Array.isArray(cascadeResult.deletions))rememberDeletions(cascadeResult.deletions);
+      }else{
+        await checkCloudDeletionDependenciesV40(kind,ids);
+        if(!isCurrentSession(token,userId,schoolId))return;
+        await commitChunks(ids.map(id=>batch=>batch.delete(schoolRef().collection(kind).doc(id))));
+      }
       cloudDeleted=true;
       if(!isCurrentSession(token,userId,schoolId))return;
     }
@@ -11344,9 +11455,8 @@ async function deleteRecordsV40(kind,selectedIds){
     const remaining=DB.get(KEYS[kind],[]).filter(x=>!ids.includes(String(x.id)));
     if(kind==='subjects'){
       remaining.forEach((x,i)=>{x.order=i;});
-      // Existing builds could leave {} under a subject after both score parts
-      // were cleared. Remove those harmless stale containers after deletion.
-      pruneEmptySubjectGradeRefsV40(ids);
+      if(cascadeSubjectGrades)removeSubjectGradeRefsLocalV40(ids);
+      else pruneEmptySubjectGradeRefsV40(ids);
     }
     DB.set(KEYS[kind],remaining,{skipCloudSync:true});
     auditAction('delete',kind,ids.length===1?ids[0]:'bulk',`Deleted ${ids.length} ${kind} record(s)`);

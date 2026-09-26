@@ -16,7 +16,7 @@ function fixture(){
   if(r.path.split('/').length%2===1){const docs=[...records].filter(([k])=>k.startsWith(r.path+'/')&&k.split('/').length===r.path.split('/').length+1).map(([k,v])=>({id:k.split('/').at(-1),data:()=>structuredClone(v)}));return {docs};}
   return {exists:records.has(r.path),data:()=>structuredClone(records.get(r.path))};
  };
- const db={collection:ref,runTransaction:async fn=>{const writes=[];const tx={get,set:(r,v)=>writes.push([r.path,v]),create:(r,v)=>{if(records.has(r.path))throw Error('already exists');writes.push([r.path,v]);},update:(r,v)=>writes.push([r.path,{...records.get(r.path),...v}])};const result=await fn(tx);if(failCommit)throw Error('injected commit failure');writes.forEach(([k,v])=>records.set(k,v));return result;}};
+ const db={collection:ref,runTransaction:async fn=>{const writes=[];const tx={get,set:(r,v)=>writes.push(['set',r.path,v]),create:(r,v)=>{if(records.has(r.path))throw Error('already exists');writes.push(['set',r.path,v]);},update:(r,v)=>writes.push(['set',r.path,{...records.get(r.path),...v}]),delete:r=>writes.push(['delete',r.path])};const result=await fn(tx);if(failCommit)throw Error('injected commit failure');writes.forEach(([op,k,v])=>{if(op==='delete')records.delete(k);else records.set(k,v);});return result;}};
  const firestore={FieldValue:{serverTimestamp:()=>123}};
  const handlers=register({db,onCall:(_,fn)=>fn,HttpsError,admin:{firestore}});
  return {records,handlers,setFail:()=>failCommit=true,req:(data,uid='head')=>({auth:{uid},data})};
@@ -206,4 +206,16 @@ test('personal changes preserve concurrent school changes and reject same-field 
  assert.equal(f.records.get('schools/s/staff/t').rank,'New rank');
  await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{phone:'0123'},changes:{phone:'0789'}},'teacher')),e=>e.code==='aborted');
  assert.equal(f.records.get('schools/s/staff/t').phone,'0456');
+});
+
+test('head teacher can atomically delete a subject with hidden historical grade references',async()=>{
+ const f=fixture(),key='c1__Term 2__2025/2026',path='schools/s/grades/'+encodeURIComponent(key);
+ f.records.set('schools/s/subjects/rme-old',{id:'rme-old',name:'Religious and Moral Education'});
+ f.records.set(path,{classId:'c1',entries:{p1:{'rme-old':{c:20,e:70},math:{e:80}},p2:{'rme-old':{e:60}}}});
+ const result=await f.handlers.deleteSubjectsWithGrades(f.req({subjectIds:['rme-old']}));
+ assert.equal(result.gradeReferences,2);assert.equal(result.gradeDocuments,1);
+ assert.equal(f.records.has('schools/s/subjects/rme-old'),false);
+ assert.deepEqual(f.records.get(path).entries,{p1:{math:{e:80}}});
+ assert.equal(f.records.get('schools/s/deletedRecords/subjects__rme-old').collection,'subjects');
+ await assert.rejects(f.handlers.deleteSubjectsWithGrades(f.req({subjectIds:['math']},'teacher')),e=>e.code==='permission-denied');
 });
