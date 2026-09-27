@@ -4525,6 +4525,9 @@ function calendarLabel(type) {
 }
 
 function attendanceDayType(term, year, date) {
+  const parsed = parseDateOnly(date);
+  if (!parsed) return 'outside';
+  if (!isWeekdayDate(parsed)) return 'weekend';
   const rec = calendarRecord(term, year, date);
   return rec && rec.type ? String(rec.type).toLowerCase() : 'open';
 }
@@ -6025,7 +6028,7 @@ document.getElementById('saveAttendanceBtn').addEventListener('click', () => {
   if (!settings.currentTerm || !settings.currentYear) { alert('Set the current Term and Academic Year in Setup first.'); return; }
   const date = document.getElementById('attendanceDate').value;
   if (!date) { alert('Select an attendance date.'); return; }
-  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Attendance cannot be recorded on a Holiday or Midterm day.'); return; }
+  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Attendance cannot be recorded on weekends, holidays or midterm days.'); return; }
   const statuses = {};
   document.querySelectorAll('#attendanceFormWrap .attendance-status').forEach(select => { if (select.value) statuses[select.dataset.student] = select.value; });
   const key = attendanceKey(classId, settings.currentTerm, settings.currentYear, date);
@@ -6054,7 +6057,7 @@ document.getElementById('saveTeacherAttendanceBtn').addEventListener('click', ()
   if (!settings.currentTerm || !settings.currentYear) { alert('Set the current Term and Academic Year in Setup first.'); return; }
   const date = document.getElementById('teacherAttendanceDate').value;
   if (!date) { alert('Select a teacher attendance date.'); return; }
-  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Teacher attendance cannot be recorded on a Holiday or Midterm day.'); return; }
+  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Teacher attendance cannot be recorded on weekends, holidays or midterm days.'); return; }
   const entries = {};
   document.querySelectorAll('#teacherAttendanceFormWrap .teacher-attendance-status').forEach(select => { if (select.value) entries[select.dataset.staff] = select.value; });
   const key = teacherAttendanceKey(settings.currentTerm, settings.currentYear, date);
@@ -7434,6 +7437,11 @@ const RED_INK = [150, 55, 40];
 // Looks up the assigned Class Teacher (per class) and Head Teacher (per
 // school, from Setup) staff records, returning their names and uploaded
 // signature images (if any) for use on the report card.
+function reportPupilAttendance(student, settings, remarks) {
+  const data = attendanceSummary(student.classId, settings.currentTerm, settings.currentYear);
+  return data.records.length ? (data.summary[student.id]?.total || 0) : (remarks.attendance || 0);
+}
+
 function getStaffSignatures(classInfo, settings, resolvedAssets) {
   const staffList = DB.get(KEYS.staff, []);
   const classTeacherId = classInfo && classInfo.classTeacherId ? classInfo.classTeacherId : '';
@@ -7651,7 +7659,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 
   const attOutOf = calculateTimesOpen(settings.currentTerm, settings.currentYear) || settings.attendanceOutOf || '-';
   infoPanel(left, 'SCHOOL INFORMATION', [
-    ['Attendance:', `${studentRemarks.attendance || 0} out of ${attOutOf}`],
+    ['Attendance:', `${reportPupilAttendance(result.student, settings, studentRemarks)} out of ${attOutOf}`],
     ['Number on Roll:', numOnRoll],
     ['Promoted/Repeated:', studentRemarks.promoted || '-'],
     ['Fees Due:', `GH¢ ${studentRemarks.feesDue || '0.00'}`],
