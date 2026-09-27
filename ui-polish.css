@@ -417,3 +417,6 @@
     padding-inline:8px;
   }
 }
+
+/* Keep PIN confirmation visually separate from its action. */
+#app #pinStatusWrap #setPinBtn { margin-top: 16px; }
