@@ -96,6 +96,28 @@ function register({onCall,HttpsError,db,admin}) {
   if(!record||record.userUid!==request.auth.uid)fail('failed-precondition','Your Staff link has changed. Ask your Head Teacher to check it.');
   return {u,ref,record};
  }
+ exports.saveSchoolProfile=callable(async request=>db.runTransaction(async tx=>{
+  const u=await member(tx,request,true),school=db.collection('schools').doc(u.schoolId);
+  const {changes,base}=request.data||{};
+  if(!object(changes)||!object(base)||Object.keys(changes).length>60)fail('invalid-argument','Invalid Setup changes.');
+  const snap=await tx.get(school);
+  if(!snap.exists)fail('not-found','School not found.');
+  const current=snap.data().profile||{},next={...current};
+  for(const [key,value] of Object.entries(changes)){
+   if(badKey(key)||key.includes('.')||key.includes('/')||['teacherName','logo'].includes(key))fail('invalid-argument','Invalid Setup field.');
+   if(!Object.hasOwn(base,key))fail('invalid-argument','Original Setup value is required.');
+   const blank=x=>x==null||x==='';
+   const same=(a,b)=>equal(a,b)||(blank(a)&&blank(b));
+   if(!same(current[key],base[key])&&!same(current[key],value))fail('aborted','School Setup changed on another device. Sync to review the current settings before saving. Your local edits are preserved.');
+   if(['schoolName','currentYear','currentTerm'].includes(key)&&String(current[key]||'').trim()&&!String(value||'').trim())fail('failed-precondition','Saved school name, term and academic year cannot be replaced with blanks.');
+   next[key]=value;
+  }
+  if(typeof next.schoolName!=='string'||!next.schoolName.trim())fail('failed-precondition','Enter or recover the school name in Setup before syncing settings.');
+  if(Buffer.byteLength(JSON.stringify(next))>200000)fail('resource-exhausted','Setup data is too large.');
+  if(!equal(current,next)&&typeof current.schoolName==='string'&&current.schoolName.trim())tx.set(school.collection('profileRecovery').doc('previous'),{schoolId:u.schoolId,profile:current,savedAt:admin.firestore.FieldValue.serverTimestamp()});
+  tx.update(school,{profile:next,schemaVersion:4,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+  return {saved:true};
+ }));
  exports.getMyStaffProfile=callable(async request=>db.runTransaction(async tx=>{
   const {u,record}=await linkedTeacher(tx,request);
   return {staffRecordId:u.staffId,profile:ownProfile(record)};

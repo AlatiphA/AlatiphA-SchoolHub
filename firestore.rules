@@ -133,7 +133,15 @@ service cloud.firestore {
         && request.auth.uid == request.resource.data.ownerUid
         && request.resource.data.profile.schoolName is string;
 
-      allow update: if isHeadTeacher(schoolId) && request.resource.data.ownerUid == resource.data.ownerUid;
+      // Older clients must not publish blank startup defaults over real Setup.
+      allow update: if isHeadTeacher(schoolId) && request.resource.data.ownerUid == resource.data.ownerUid
+        && (!(resource.data.get('profile', {}).get('schoolName', '') != '') || request.resource.data.get('profile', {}).get('schoolName', '') != '')
+        && (!(resource.data.get('profile', {}).get('currentYear', '') != '') || request.resource.data.get('profile', {}).get('currentYear', '') != '')
+        && (!(resource.data.get('profile', {}).get('currentTerm', '') != '') || request.resource.data.get('profile', {}).get('currentTerm', '') != '');
+      match /profileRecovery/{backupId} {
+        allow read: if isHeadTeacher(schoolId);
+        allow write: if false;
+      }
       allow delete: if false;
 
       match /deletedRecords/{markerId} {

@@ -218,17 +218,17 @@
   <!-- SETUP -->
   <section id="view-setup" class="view hidden">
     <h2>School Setup</h2>
-    <label>Head Teacher welcome name (optional)
-      <input type="text" id="teacherName" placeholder="e.g. Abdul-Latif Ahmed">
-    </label>
     <label>School Name
-      <input type="text" id="schoolName" placeholder="e.g. Zoozugu T. I. Ahmadiyya Pri/KG">
+      <input type="text" id="schoolName" placeholder="e.g. AlatiphA SchoolHub Basic School">
+    </label>
+    <label>Registered / EMIS number (optional)
+      <input type="text" id="schoolRegistrationNumber" placeholder="TMA/P000 / – 11212100000">
     </label>
     <label>Address
-      <input type="text" id="schoolAddress" placeholder="e.g. P. O. Box 799, Tamale, N/R">
+      <input type="text" id="schoolAddress" placeholder="e.g. P. O. Box 000, Tamale, N/R, Ghana">
     </label>
     <label>Email
-      <input type="text" id="schoolEmail" placeholder="e.g. school@gmail.com">
+      <input type="text" id="schoolEmail" placeholder="e.g. schoolemail@gmail.com">
     </label>
     <label>School Logo
       <input type="file" id="schoolLogo" accept="image/*">
@@ -246,7 +246,7 @@
         </select>
       </label>
       <label>Academic Year
-        <input type="text" id="currentYear" placeholder="e.g. 2025/2026">
+        <input type="text" id="currentYear" placeholder="e.g. 2026/2027">
       </label>
     </div>
     <div class="row">
@@ -286,6 +286,8 @@
     <label>Head Teacher (for signatures on report cards)
       <select id="headTeacherSelect"></select>
     </label>
+    <button type="button" id="recoverSetupBtn" class="btn-secondary">Check saved Setup copies</button>
+    <div id="setupRecoveryPreview" class="hidden" aria-live="polite"></div>
     <button id="saveSettings" class="btn-primary">Save Settings</button>
     <p class="hint">Grade: 80–100=1 · 75–79=2 · 70–74=3 · 65–69=4 · 60–64=5 · 50–59=6 · 45–49=7 · 40–44=8 · 0–39=9. Remark: 80–100 Highly Proficient · 54–79 Proficient · 46–53 Approaching Proficiency · 40–45 Developing · 0–39 Emerging. The school name only appears on report cards after you tap Save Settings.</p>
 

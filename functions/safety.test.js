@@ -219,3 +219,59 @@ test('head teacher can atomically delete a subject with hidden historical grade 
  assert.equal(f.records.get('schools/s/deletedRecords/subjects__rme-old').collection,'subjects');
  await assert.rejects(f.handlers.deleteSubjectsWithGrades(f.req({subjectIds:['math']},'teacher')),e=>e.code==='permission-denied');
 });
+
+test('profile relinking during editing rejects the old record and reads the new link',async()=>{
+ const f=personalFixture();
+ f.records.set('schools/s/staff/relinked',{name:'New linked record',userUid:'teacher',phone:'0999'});
+ f.records.get('users/teacher').staffId='relinked';
+ await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{phone:'0123'},changes:{phone:'0456'}},'teacher')),e=>e.code==='failed-precondition');
+ assert.equal(f.records.get('schools/s/staff/t').phone,'0123');
+ const result=await f.handlers.getMyStaffProfile(f.req({staffRecordId:'t',schoolId:'other'},'teacher'));
+ assert.equal(result.staffRecordId,'relinked');assert.equal(result.profile.phone,'0999');
+});
+
+test('profile retry is idempotent and does not change account email or staff linkage',async()=>{
+ const f=personalFixture(),user=structuredClone(f.records.get('users/teacher'));
+ const request=f.req({staffRecordId:'t',base:{phone:'0123',email:''},changes:{phone:' 0456 ',email:'contact@example.com'}},'teacher');
+ await f.handlers.updateMyStaffProfile(request);await f.handlers.updateMyStaffProfile(request);
+ assert.equal(f.records.get('schools/s/staff/t').phone,'0456');
+ assert.equal(f.records.get('schools/s/staff/t').userUid,'teacher');
+ assert.deepEqual(f.records.get('users/teacher'),user);
+});
+
+test('profile validation and commit failure never save a partial update',async()=>{
+ const f=personalFixture(),before=structuredClone(f.records.get('schools/s/staff/t'));
+ for(const changes of [{phone:'0456',role:'Head Teacher'},{phone:'0456',email:'invalid'},{phone:'0456',dob:'2999-01-01'}]){
+  await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{phone:'0123'},changes},'teacher')));
+  assert.deepEqual(f.records.get('schools/s/staff/t'),before);
+ }
+ f.setFail();await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{phone:'0123'},changes:{phone:'0456'}},'teacher')),/injected/);
+ assert.deepEqual(f.records.get('schools/s/staff/t'),before);
+});
+
+test('pending and rejected accounts cannot access My Details',async()=>{
+ for(const status of ['pending','rejected']){
+  const f=personalFixture();f.records.get('users/teacher').status=status;
+  await assert.rejects(f.handlers.getMyStaffProfile(f.req({},'teacher')),e=>e.code==='permission-denied');
+  await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{},changes:{}},'teacher')),e=>e.code==='permission-denied');
+ }
+});
+
+test('Setup partial updates preserve cloud fields and retain a recovery copy',async()=>{
+ const f=fixture();
+ await f.handlers.saveSchoolProfile(f.req({changes:{registeredEmisNumber:'TMA/P123'},base:{registeredEmisNumber:null}}));
+ assert.equal(f.records.get('schools/s').profile.currentYear,'2026/2027');
+ assert.equal(f.records.get('schools/s').profile.registeredEmisNumber,'TMA/P123');
+ assert.equal(f.records.get('schools/s/profileRecovery/previous').profile.schoolName,'Test');
+});
+test('Setup rejects stale defaults, destructive blanks and unauthorized changes',async()=>{
+ const f=fixture(),before=structuredClone(f.records.get('schools/s'));
+ for(const [base,changes,uid,code] of [
+ [{schoolName:null},{schoolName:''},'head','aborted'],
+ [{schoolName:'Test'},{schoolName:''},'head','failed-precondition'],
+ [{currentYear:'2026/2027'},{currentYear:''},'head','failed-precondition'],
+ [{schoolName:'Test'},{schoolName:'Changed'},'teacher','permission-denied'],
+ [{schoolName:'Old'},{schoolName:'Changed'},'head','aborted']
+ ])await assert.rejects(f.handlers.saveSchoolProfile(f.req({base,changes},uid)),e=>e.code===code);
+ assert.deepEqual(f.records.get('schools/s'),before);
+});

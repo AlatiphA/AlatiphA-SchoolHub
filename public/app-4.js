@@ -726,11 +726,11 @@ function ensureDefaults() {
     if (Array.isArray(subjects) && ensureSubjectOrder(subjects)) DB.set(KEYS.subjects, subjects);
   }
   if (DB.get(KEYS.settings, null) === null) {
-    DB.set(KEYS.settings, {
-      teacherName: '', schoolName: '', address: '', email: '', logo: '',
+    DB.set(KEYS.settings, FIREBASE_ENABLED ? {} : {
+      registeredEmisNumber: '', schoolName: '', address: '', email: '', logo: '',
       currentTerm: 'Term 1', currentYear: '', attendanceOutOf: '', nextTermBegins: '',
       reportLayout: 'standard', reportTheme: 'bw', headTeacherId: '', termDates: {}
-    });
+    }, {skipCloudSync:true});
   }
   if (DB.get(KEYS.classes, null) === null) DB.set(KEYS.classes, []);
   if (DB.get(KEYS.students, null) === null) DB.set(KEYS.students, []);
@@ -1060,11 +1060,6 @@ function currentWelcomeName() {
   const accountName = String(currentUserData && (currentUserData.displayName || currentUserData.name) || '').trim();
   if (accountName) return accountName;
 
-  // The optional Setup value is a Head Teacher/Guest fallback only.
-  // It must never identify a different signed-in teacher.
-  if (isHeadTeacher() || isActiveGuest()) {
-    return String(DB.get(KEYS.settings, {}).teacherName || '').trim();
-  }
   return '';
 }
 
@@ -1627,7 +1622,7 @@ document.addEventListener('click', e => {
 /* ---------- Setup ---------- */
 function loadSettingsForm() {
   const s = DB.get(KEYS.settings, {});
-  document.getElementById('teacherName').value = s.teacherName || '';
+  document.getElementById('schoolRegistrationNumber').value = s.registeredEmisNumber || '';
   document.getElementById('schoolName').value = s.schoolName || '';
   document.getElementById('schoolAddress').value = s.address || '';
   document.getElementById('schoolEmail').value = s.email || '';
@@ -1646,6 +1641,41 @@ function loadSettingsForm() {
   if (s.logo) { img.src = s.logo; wrap.classList.remove('hidden'); }
   else { wrap.classList.add('hidden'); }
 }
+
+document.getElementById('recoverSetupBtn')?.addEventListener('click',async()=>{
+  if(!requireHeadTeacher('recover school Setup'))return;
+  const host=document.getElementById('setupRecoveryPreview'),school=currentSchoolId,token=sessionGeneration,user=currentUid;
+  host.classList.remove('hidden');host.textContent='Checking saved Setup copies for this school…';
+  const candidates=[];
+  const add=(profile,label)=>{if(profile&&typeof profile.schoolName==='string'&&profile.schoolName.trim())candidates.push({profile,label});};
+  const prefix=recoveryKey(school);
+  for(let i=0;i<localStorage.length;i++){
+    const key=localStorage.key(i);
+    if(key!==prefix && !key.startsWith(prefix+'__'))continue;
+    try{const snapshot=JSON.parse(localStorage.getItem(key));if(snapshot.schoolId===school)add(snapshot.data?.settings,'Device backup · '+(snapshot.createdAt||'date unavailable'));}catch(e){}
+  }
+  let cloudError='';
+  if(FIREBASE_ENABLED&&school){try{const saved=await schoolRef().collection('profileRecovery').doc('previous').get({source:'server'});if(saved.exists&&saved.data().schoolId===school)add(saved.data().profile,'Previous cloud Setup');}catch(e){cloudError=' Cloud backup could not be checked: '+(e.message||e);}}
+  if(!isCurrentSession(token,user,school))return;
+  host.replaceChildren();
+  if(!candidates.length){host.textContent='No named Setup copy was found for this school on this device.'+cloudError+' Try this on a device that previously had the correct Setup, or enter the correct school details. No data has been changed.';return;}
+  candidates.forEach(({profile,label})=>{
+    const card=document.createElement('div'),description=document.createElement('p'),button=document.createElement('button');
+    description.textContent=label+' — '+profile.schoolName+' · '+(profile.currentTerm||'Term not saved')+' · '+(profile.currentYear||'Year not saved');
+    button.type='button';button.className='btn-secondary';button.textContent='Load this Setup for review';
+    button.onclick=()=>{
+      if(!isCurrentSession(token,user,school))return;
+      const fields={schoolName:'schoolName',registeredEmisNumber:'schoolRegistrationNumber',address:'schoolAddress',email:'schoolEmail',currentYear:'currentYear',currentTerm:'currentTerm',nextTermBegins:'nextTermBegins',reportLayout:'reportLayout',reportTheme:'reportThemeSelect',headTeacherId:'headTeacherSelect'};
+      Object.entries(fields).forEach(([key,id])=>{const input=document.getElementById(id);if(input&&profile[key]!==undefined)input.value=profile[key];});
+      const dates=profile.termDates?.[termYearKey(profile.currentTerm,profile.currentYear)]||{};
+      document.getElementById('termStartDate').value=dates.start||profile.termStartDate||'';
+      document.getElementById('termEndDate').value=dates.end||profile.termEndDate||'';
+      host.textContent='Saved copy loaded into the form only. Review the details above, then choose Save Settings. No cloud data has been changed.';
+      document.getElementById('schoolName').focus();
+    };
+    card.append(description,button);host.append(card);
+  });
+});
 
 document.getElementById('schoolLogo').addEventListener('change', async e => {
   if (!requireHeadTeacher('upload the school logo')) return;
@@ -1713,8 +1743,9 @@ document.getElementById('removeLogo').addEventListener('click', () => {
 document.getElementById('saveSettings').addEventListener('click', () => {
   if (!requireHeadTeacher('change school settings')) return;
   const s = DB.get(KEYS.settings, {});
-  s.teacherName = document.getElementById('teacherName').value.trim();
+  s.registeredEmisNumber = document.getElementById('schoolRegistrationNumber').value.trim();
   s.schoolName = document.getElementById('schoolName').value.trim();
+  if(!s.schoolName){alert('Enter the school name before saving Setup. No settings were changed.');return;}
   s.address = document.getElementById('schoolAddress').value.trim();
   s.email = document.getElementById('schoolEmail').value.trim();
   s.currentTerm = document.getElementById('currentTerm').value;
@@ -9692,12 +9723,23 @@ function mergeKeyedData(localValue, cloudValue) {
   return Object.assign({}, local, cloud);
 }
 
+// Older builds queued fresh-device defaults as user edits. Discard only
+// entries with a null original value and an unchanged initialization default.
+function discardUneditedSetupDefaults(){
+  const defaults={teacherName:'',registeredEmisNumber:'',schoolName:'',address:'',email:'',logo:'',currentTerm:'Term 1',currentYear:'',attendanceOutOf:'',nextTermBegins:'',reportLayout:'standard',reportTheme:'bw',headTeacherId:'',termDates:{}};
+  const value=DB.get(KEYS.settings,{}),bases=syncBaseValues.get(KEYS.settings)||{};
+  if(String(value.schoolName||'').trim())return;
+  const discard=dirtyIdsFor(KEYS.settings).filter(id=>Object.hasOwn(defaults,id)&&bases[id]===null&&JSON.stringify(value[id])===JSON.stringify(defaults[id]));
+  if(discard.length)clearSyncDirty(KEYS.settings,discard);
+}
+
 function mergeCloudCollection(field, cloudItems, authoritative) {
   // v40 systemic data-loss guard:
   // Firestore absence is NOT proof of intentional deletion. Every hydration is
   // therefore a merge. Pending local edits win for matching IDs/keys, while
   // local-only records remain available for recovery instead of disappearing.
   if (field === 'settings') {
+    discardUneditedSetupDefaults();
     const local = DB.get(KEYS.settings, {});
     const merged = Object.assign({}, local, cloudItems || {});
     if (!isTeacher()) dirtyIdsFor(KEYS.settings).forEach(id => { if (Object.prototype.hasOwnProperty.call(local, id)) merged[id] = local[id]; });
@@ -10091,12 +10133,16 @@ function performFieldPush(match) {
     promise = Promise.all(pushedIds.map(key => safetyCall('saveSchoolRecord', {field,key,base:bases[key] || {},value:entries[key],deletionVersion:recordDeletionVersion(field,key)})));
   } else if (field === 'settings') {
     if (!isHeadTeacher()) return Promise.resolve();
-    pushedIds = dirtyIds.slice();
-    promise = schoolRef().set({
-      profile: stripImagesForCloud('settings', value),
-      schemaVersion: CLOUD_SCHEMA_VERSION,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    discardUneditedSetupDefaults();
+    const clean=stripImagesForCloud('settings',value);
+    const bases=syncBaseValues.get(match.key)||{};
+    pushedIds=dirtyIdsFor(match.key).filter(id=>Object.hasOwn(clean,id)&&id!=='teacherName');
+    const ignored=dirtyIdsFor(match.key).filter(id=>!pushedIds.includes(id));
+    if(ignored.length)clearSyncDirty(match.key,ignored);
+    if(!pushedIds.length)return Promise.resolve();
+    const changes=Object.fromEntries(pushedIds.map(id=>[id,clean[id]]));
+    const base=Object.fromEntries(pushedIds.map(id=>[id,bases[id]??null]));
+    promise=safetyCall('saveSchoolProfile',{changes,base});
   } else if (field === 'classes') {
     if (!isHeadTeacher()) return Promise.resolve();
     const items = dirtyArrayRecords(match.key, value);

@@ -105,3 +105,18 @@ test('school teachers can read entitlements but cannot alter billing or read pur
   await assertFails(getDoc(doc(db,'schools/s/billingTransactions/ref')));
   for(const uid of ['disabled','outsider']) await assertFails(getDoc(doc(env.authenticatedContext(uid).firestore(),'schools/s/billing/account')));
 });
+
+test('teachers cannot bypass My Details protections by rewriting their link or Staff record',async()=>{
+  const db=env.authenticatedContext('teacher').firestore();
+  await assertFails(setDoc(doc(db,'users/teacher'),{staffId:'h'},{merge:true}));
+  await assertFails(setDoc(doc(db,'users/teacher'),{role:'headteacher'},{merge:true}));
+  await assertFails(setDoc(doc(db,'schools/s/staff/h'),{phone:'new',userUid:'teacher'},{merge:true}));
+});
+
+test('old clients cannot blank existing Setup and recovery copies are head-only',async()=>{
+ const db=env.authenticatedContext('head').firestore();
+ await assertFails(setDoc(doc(db,'schools/s'),{profile:{schoolName:''}},{merge:true}));
+ await assertSucceeds(getDoc(doc(db,'schools/s/profileRecovery/previous')));
+ for(const uid of ['teacher','outsider'])await assertFails(getDoc(doc(env.authenticatedContext(uid).firestore(),'schools/s/profileRecovery/previous')));
+ await assertFails(setDoc(doc(db,'schools/s/profileRecovery/previous'),{profile:{schoolName:'fake'}}));
+});
