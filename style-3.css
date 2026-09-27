@@ -1777,3 +1777,24 @@ html.disabledAccess #schoolHubFloatingPill{
   border-color:var(--rule);
   opacity:1;
 }
+
+
+/* v40 hydration/report asset stability */
+.report-asset-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 8px}
+.report-asset-tools .hint{margin:0;flex:1 1 260px}
+.report-asset-check-wrap{margin:0 0 12px}
+.report-asset-check-card{background:var(--card);color:var(--paper);border:1px solid var(--border);border-radius:14px;padding:14px;box-shadow:0 8px 20px rgba(0,0,0,.08)}
+.report-asset-check-card.ready{border-color:color-mix(in srgb,var(--primary) 55%,var(--border))}
+.report-asset-check-card.warning{border-color:color-mix(in srgb,var(--gold) 70%,var(--border))}
+.report-asset-check-head,.report-asset-status-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.report-asset-check-head{padding-bottom:10px;border-bottom:1px solid var(--border);margin-bottom:2px}
+.report-asset-check-head div,.report-asset-status-row div{min-width:0;display:flex;flex-direction:column;gap:3px}
+.report-asset-check-head span,.report-asset-status-row span{color:var(--muted);font-size:.86rem;line-height:1.35;overflow-wrap:anywhere}
+.report-asset-check-head>b,.report-asset-status-row>b{flex:0 0 auto;font-size:.78rem;line-height:1;border-radius:999px;padding:7px 9px;background:var(--surface-alt);color:var(--paper)}
+.report-asset-check-card.ready .report-asset-check-head>b,.report-asset-status-row.ready>b{background:var(--primary);color:#fff}
+.report-asset-check-card.warning .report-asset-check-head>b,.report-asset-status-row.warning>b{background:var(--gold);color:var(--on-accent)}
+.report-asset-status-row{padding:10px 0;border-bottom:1px solid var(--border)}
+.report-asset-status-row:last-of-type{border-bottom:0}
+.report-asset-missing{margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:9px 11px;background:var(--surface-alt)}
+.report-asset-missing summary{cursor:pointer;font-weight:700}.report-asset-missing ul{margin:9px 0 0;padding-left:20px}.report-asset-missing li{margin:7px 0}.report-asset-missing li span{display:block;color:var(--muted);font-size:.84rem;overflow-wrap:anywhere}.report-asset-note{margin:10px 0 0}
+@media(max-width:600px){.report-asset-check-head,.report-asset-status-row{gap:8px}.report-asset-check-head>b,.report-asset-status-row>b{font-size:.72rem;padding:6px 8px}}

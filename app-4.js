@@ -168,6 +168,8 @@ let sessionReady = false;
 let sessionDataReady = false; // Core school data has finished loading for this session.
 let cloudHydrationInProgress = false; // Suppresses cloud pushes caused by Firestore-to-local writes.
 let cloudHydrationStatusError = ''; // Last core cloud-load error shown by the sync badge.
+const CORE_HYDRATION_SOFT_WARNING_MS = 12000;
+const CORE_HYDRATION_HARD_DEADLINE_MS = 30000;
 let manualSignOutInProgress = false; // Prevent Firebase auth transitions from re-blocking the login form during logout.
 
 function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}${currentRole === 'teacher' ? '__user_' + currentUid : ''}` : base; }
@@ -6843,7 +6845,11 @@ function renderClassStatistics() {
   });
 }
 
+const reportAssetCheckBtn=document.getElementById('reportAssetCheckBtn');
+if(reportAssetCheckBtn){reportAssetCheckBtn.addEventListener('click',async()=>{const classId=document.getElementById('reportsClassSelect')?.value||'',original=reportAssetCheckBtn.textContent;reportAssetCheckBtn.disabled=true;reportAssetCheckBtn.textContent='Checking report assets…';try{await runReportAssetCheck(classId);}catch(error){console.warn('Report Asset Check failed:',error);const wrap=document.getElementById('reportAssetCheckWrap');if(wrap){wrap.classList.remove('hidden');wrap.innerHTML=`<div class="report-asset-check-card warning"><strong>Report Asset Check</strong><p>Check failed: ${escapeHtml(error&&error.message?error.message:String(error||'Unknown error'))}</p></div>`;}}finally{reportAssetCheckBtn.disabled=false;reportAssetCheckBtn.textContent=original;}});}
+
 document.getElementById('reportsClassSelect').addEventListener('change', () => {
+  clearReportAssetCheck();
   renderReportsStudentList();
   renderClassStatistics();
 });
@@ -7898,20 +7904,16 @@ async function resolveAssignedTeacherForReport(classId) {
   }
 }
 
-async function prepareReportAssets(result, settings, classInfo) {
+async function resolveReportStaffForClass(settings, classInfo, fallbackClassId) {
   const staffList = DB.get(KEYS.staff, []);
-  const studentList = DB.get(KEYS.students, []);
-  const classId = classInfo ? classInfo.id : (result && result.student ? result.student.classId : '');
-
+  const classId = classInfo ? classInfo.id : (fallbackClassId || '');
   let classTeacher = classInfo && classInfo.classTeacherId
     ? staffList.find(s => s.id === classInfo.classTeacherId) : null;
-
   if (!classTeacher && classId) {
     const cls = DB.get(KEYS.classes, []).find(c => c.id === classId);
     if (cls && cls.classTeacherId) classTeacher = staffList.find(s => s.id === cls.classTeacherId) || null;
     if (!classTeacher) classTeacher = await resolveAssignedTeacherForReport(classId);
   }
-
   let headTeacher = settings && settings.headTeacherId
     ? staffList.find(s => s.id === settings.headTeacherId) : null;
   if (!headTeacher) {
@@ -7920,6 +7922,16 @@ async function prepareReportAssets(result, settings, classInfo) {
       return role === 'headteacher';
     }) || null;
   }
+  return { classId, classTeacher, headTeacher };
+}
+
+async function prepareReportAssets(result, settings, classInfo) {
+  const studentList = DB.get(KEYS.students, []);
+  const fallbackClassId = result && result.student ? result.student.classId : '';
+  const resolvedStaff = await resolveReportStaffForClass(settings, classInfo, fallbackClassId);
+  const classId = resolvedStaff.classId;
+  const classTeacher = resolvedStaff.classTeacher;
+  const headTeacher = resolvedStaff.headTeacher;
 
   // Never trust the stale student object captured by an earlier render.
   // Resolve the current local record by ID immediately before printing.
@@ -7940,6 +7952,76 @@ async function prepareReportAssets(result, settings, classInfo) {
     headTeacherName: headTeacher ? headTeacher.name : ''
   };
 }
+
+async function withReportAssetDeadline(promise, label, timeoutMs = 15000) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      Promise.resolve(promise),
+      new Promise(resolve => {
+        timer = setTimeout(() => resolve({ ready:false, source:'timeout', message:`${label} check exceeded ${Math.round(timeoutMs/1000)} seconds.` }), timeoutMs);
+      })
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
+
+async function checkReportImageAsset(kind, id, inlineValue, storagePath, sourceUrl, deterministicPath, label) {
+  if (isDataImage(inlineValue)) return { ready:true, source:'record', message:'Ready in the current record.' };
+  const key=imageCacheKey(kind,id);
+  const local=await getCachedLocalImageAsync(key);
+  if(local) return { ready:true, source:'local-cache', message:'Ready in this device cache.' };
+  if(!FIREBASE_ENABLED||!currentSchoolId) return { ready:false, source:'local-only', message:'Not available in this device cache and cloud sync is unavailable.' };
+  const failures=[];
+  const tryDescriptor=async(sourceLabel,path,url)=>{
+    if(!path&&!url)return null;
+    clearMissingCloudImage(kind,id);
+    const result=await syncOneCloudImage(kind,id,path||'',url||'',false);
+    if(result&&result.ok){const cached=await getCachedLocalImageAsync(key);if(cached)return {ready:true,source:sourceLabel,message:`Recovered from ${sourceLabel}.`};}
+    if(result&&result.errorMessage)failures.push(`${sourceLabel}: ${result.errorMessage}`);
+    return null;
+  };
+  if(storagePath||sourceUrl){const result=await tryDescriptor('saved image metadata',storagePath,sourceUrl);if(result)return result;}
+  const manifest=await reportImageManifestDescriptor(kind,id);
+  if(manifest){const result=await tryDescriptor('cloud image manifest',manifest.storagePath,manifest.sourceUrl);if(result)return result;}
+  else failures.push('cloud image manifest: no usable entry');
+  if(deterministicPath){const result=await tryDescriptor('expected Storage path',deterministicPath,'');if(result)return result;}
+  return { ready:false, source:'missing', message:failures.length?failures.join(' | '):`${label||'Asset'} was not found locally or in cloud storage.` };
+}
+
+async function mapReportAssetsWithLimit(items,limit,worker){
+  const output=new Array(items.length);let nextIndex=0;
+  const runners=Array.from({length:Math.max(1,Math.min(limit,items.length||1))},async()=>{while(nextIndex<items.length){const index=nextIndex++;output[index]=await worker(items[index],index);}});
+  await Promise.all(runners);return output;
+}
+function clearReportAssetCheck(){const wrap=document.getElementById('reportAssetCheckWrap');if(!wrap)return;wrap.innerHTML='';wrap.classList.add('hidden');}
+function reportAssetStatusHtml(label,result,detail){const ready=!!(result&&result.ready),state=ready?'Ready':'Needs attention',cls=ready?'ready':'warning';return `<div class="report-asset-status-row ${cls}"><div><strong>${escapeHtml(label)}</strong>${detail?`<span>${escapeHtml(detail)}</span>`:''}</div><b>${state}</b></div>`;}
+
+async function runReportAssetCheck(classId){
+  const wrap=document.getElementById('reportAssetCheckWrap');if(!wrap)return null;
+  if(!classId||!canAccessClass(classId)){wrap.classList.remove('hidden');wrap.innerHTML='<div class="report-asset-check-card warning"><strong>Report Asset Check</strong><p>Select a class you can access first.</p></div>';return null;}
+  const settings=DB.get(KEYS.settings,{}),classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId)||null;
+  const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);
+  const reportable=results.filter(r=>Array.isArray(r.entries)&&r.entries.length>0);
+  const resolvedStaff=await resolveReportStaffForClass(settings,classInfo,classId);
+  const logoCheck=await withReportAssetDeadline(checkReportImageAsset('logo','school',settings.logo||'',settings.logoStoragePath||'',settings.logoUrl||'',currentSchoolId?`schools/${currentSchoolId}/logos/school-logo`:'','School logo'),'School logo');
+  const classTeacherCheck=resolvedStaff.classTeacher?await withReportAssetDeadline(checkReportImageAsset('staff',resolvedStaff.classTeacher.id,resolvedStaff.classTeacher.signature||'',resolvedStaff.classTeacher.signatureStoragePath||'',resolvedStaff.classTeacher.signatureUrl||'',currentSchoolId?`schools/${currentSchoolId}/signatures/${resolvedStaff.classTeacher.id}`:'','Class Teacher signature'),'Class Teacher signature'):{ready:false,source:'assignment',message:'No Class Teacher Staff record could be resolved for this class. Link the class to a teacher or verify the teacher account ↔ Staff record.'};
+  const headTeacherCheck=resolvedStaff.headTeacher?await withReportAssetDeadline(checkReportImageAsset('staff',resolvedStaff.headTeacher.id,resolvedStaff.headTeacher.signature||'',resolvedStaff.headTeacher.signatureStoragePath||'',resolvedStaff.headTeacher.signatureUrl||'',currentSchoolId?`schools/${currentSchoolId}/signatures/${resolvedStaff.headTeacher.id}`:'','Head Teacher signature'),'Head Teacher signature'):{ready:false,source:'assignment',message:'No Head Teacher Staff record could be resolved. Check Setup → Head Teacher and the Staff record.'};
+  const studentRecords=DB.get(KEYS.students,[]);
+  const photoChecks=await mapReportAssetsWithLimit(reportable,4,async result=>{const currentStudent=studentRecords.find(s=>s.id===result.student.id)||result.student;const check=await withReportAssetDeadline(checkReportImageAsset('student',currentStudent.id,currentStudent.photo||'',currentStudent.photoStoragePath||'',currentStudent.photoUrl||'',currentStudent.classId&&currentSchoolId?`schools/${currentSchoolId}/student-photos/${currentStudent.classId}/${currentStudent.id}`:'',`${currentStudent.name||'Student'} photo`),`${currentStudent.name||'Student'} photo`);return {student:currentStudent,check};});
+  const missingPhotos=photoChecks.filter(item=>!item.check.ready),readyPhotos=photoChecks.length-missingPhotos.length;
+  const criticalMissing=(!classTeacherCheck.ready?1:0)+(!headTeacherCheck.ready?1:0)+missingPhotos.length;
+  let html=`<div class="report-asset-check-card ${criticalMissing?'warning':'ready'}"><div class="report-asset-check-head"><div><strong>Report Asset Check</strong><span>${escapeHtml(classInfo?classInfo.name:'Selected class')} · ${escapeHtml(settings.currentTerm||'')} ${escapeHtml(settings.currentYear||'')}</span></div><b>${criticalMissing?`${criticalMissing} issue${criticalMissing===1?'':'s'}`:'Ready'}</b></div>`;
+  html+=reportAssetStatusHtml('School logo',logoCheck,logoCheck.ready?logoCheck.message:`Optional · ${logoCheck.message}`);
+  html+=reportAssetStatusHtml('Class Teacher signature',classTeacherCheck,resolvedStaff.classTeacher?`${resolvedStaff.classTeacher.name||'Class Teacher'} · ${classTeacherCheck.message}`:classTeacherCheck.message);
+  html+=reportAssetStatusHtml('Head Teacher signature',headTeacherCheck,resolvedStaff.headTeacher?`${resolvedStaff.headTeacher.name||'Head Teacher'} · ${headTeacherCheck.message}`:headTeacherCheck.message);
+  html+=`<div class="report-asset-status-row ${missingPhotos.length?'warning':'ready'}"><div><strong>Student photos</strong><span>${readyPhotos}/${photoChecks.length} reportable student photo${photoChecks.length===1?'':'s'} ready</span></div><b>${missingPhotos.length?`${missingPhotos.length} missing`:'Ready'}</b></div>`;
+  if(!reportable.length)html+='<p class="hint report-asset-note">No students currently have reportable grades in this class, so no student photos were checked.</p>';
+  if(missingPhotos.length){html+=`<details class="report-asset-missing"><summary>Show ${missingPhotos.length} student photo issue${missingPhotos.length===1?'':'s'}</summary><ul>`;missingPhotos.forEach(item=>{html+=`<li><strong>${escapeHtml(item.student.name||item.student.id||'Student')}</strong><span>${escapeHtml(item.check.message||'Photo unavailable.')}</span></li>`;});html+='</ul></details>';}
+  html+=`<p class="hint report-asset-note">${criticalMissing?'Resolve the items marked Needs attention before generating official reports. You may still generate a report, but SchoolHub will warn you first.':'All critical photos and signatures needed for the selected class are ready.'}</p></div>`;
+  wrap.innerHTML=html;wrap.classList.remove('hidden');return {classId,criticalMissing,logoCheck,classTeacherCheck,headTeacherCheck,photoChecks};
+}
+function reportAssetIssuesForPrepared(result,assets){const issues=[],studentName=result&&result.student?(result.student.name||result.student.id||'Student'):'Student';if(!assets||!assets.photo)issues.push(`${studentName}: student photo is unavailable`);if(!assets||!assets.classTeacherName)issues.push('Class Teacher: no Staff/assignment record could be resolved');else if(!assets.classTeacherSignature)issues.push(`${assets.classTeacherName}: Class Teacher signature is unavailable`);if(!assets||!assets.headTeacherName)issues.push('Head Teacher: no Staff record could be resolved');else if(!assets.headTeacherSignature)issues.push(`${assets.headTeacherName}: Head Teacher signature is unavailable`);return issues;}
+function confirmReportAssetIssues(issues){const unique=Array.from(new Set((issues||[]).filter(Boolean)));if(!unique.length)return true;const shown=unique.slice(0,8),more=unique.length>shown.length?`\n…plus ${unique.length-shown.length} more issue(s).`:'';return confirm(`Report Asset Check found ${unique.length} issue${unique.length===1?'':'s'}:\n\n`+shown.map(item=>`• ${item}`).join('\n')+more+'\n\nGenerate the report anyway? No credits are deducted if you cancel here.');}
 
 async function runReportAction(button, action) {
   const label = button.textContent;
@@ -8043,6 +8125,8 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
     console.warn('Report image preparation failed:', assetError);
     assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
   }
+  const assetIssues = typeof reportAssetIssuesForPrepared === 'function' ? reportAssetIssuesForPrepared(result, assets) : [];
+  if (typeof confirmReportAssetIssues === 'function' && !confirmReportAssetIssues(assetIssues)) return;
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
   await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, 1, reportUsesCredits(settings) ? 'paid' : 'bw-single');
   } finally { reportGenerationBusy = false; }
@@ -8062,20 +8146,19 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   // every report that will be generated.
   if (!await ensureCreditsAvailable(usable.length, 'generating the class report batch')) return;
 
+  const prepared = [];
+  const assetIssues = [];
+  for (const r of usable) {
+    let assets;
+    try { assets = await prepareReportAssets(r, settings, classInfo); }
+    catch (assetError) { console.warn('Report image preparation failed:', assetError); assets = { logo:'',photo:'',classTeacherSignature:'',headTeacherSignature:'',classTeacherName:'',headTeacherName:'' }; }
+    prepared.push({ result:r, assets });
+    if (typeof reportAssetIssuesForPrepared === 'function') assetIssues.push(...reportAssetIssuesForPrepared(r, assets));
+  }
+  if (typeof confirmReportAssetIssues === 'function' && !confirmReportAssetIssues(assetIssues)) return;
   const Pdf = reportPdfConstructor();
   const doc = new Pdf();
-  for (let i = 0; i < usable.length; i++) {
-    if (i > 0) doc.addPage();
-    const r = usable[i];
-    let assets;
-    try {
-      assets = await prepareReportAssets(r, settings, classInfo);
-    } catch (assetError) {
-      console.warn('Report image preparation failed:', assetError);
-      assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
-    }
-    drawReportPage(doc, r, settings, positions, numOnRoll, classInfo, remarksAll[r.student.id] || {}, assets);
-  }
+  prepared.forEach((item,index)=>{if(index>0)doc.addPage();drawReportPage(doc,item.result,settings,positions,numOnRoll,classInfo,remarksAll[item.result.student.id]||{},item.assets);});
   await downloadGeneratedReport(doc, 'class_report_cards.pdf', usable.length);
   } finally { reportGenerationBusy = false; }
 }
@@ -9644,6 +9727,8 @@ function pullCloudData(sessionToken) {
   const uid = currentUid;
   const schoolId = currentSchoolId;
   const valid = () => isCurrentSession(token, uid, schoolId);
+  let hydrationAttemptActive = true;
+  const hydrationValid = () => hydrationAttemptActive && valid();
   let duplicateRepair = null;
   if (!valid()) return Promise.resolve();
   cloudHydrationInProgress = true;
@@ -9651,7 +9736,7 @@ function pullCloudData(sessionToken) {
   cloudHydrationStatusError = '';
   updateOfflineModeBanner();
   const hydrationWatchdog = setTimeout(() => {
-    if (!valid() || !cloudHydrationInProgress || sessionDataReady) return;
+    if (!hydrationValid() || !cloudHydrationInProgress || sessionDataReady) return;
     const statusButton = document.getElementById('syncStatusBtn');
     if (statusButton) {
       statusButton.dataset.state = 'pending';
@@ -9659,7 +9744,8 @@ function pullCloudData(sessionToken) {
       statusButton.title = 'The initial cloud check is taking longer than expected. Your local data remains available.';
       statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
     }
-  }, 12000);
+  }, CORE_HYDRATION_SOFT_WARNING_MS);
+  let hydrationDeadlineTimer = null;
   // A timer from before hydration could otherwise delete cloud records using
   // the temporarily empty local cache. Cancel every pending delayed push.
   Object.keys(pushTimers).forEach(rawKey => {
@@ -9671,10 +9757,11 @@ function pullCloudData(sessionToken) {
   backupLocalSchoolData('before-cloud-pull');
   repairTeacherDefaultQueue();
 
-  return migrateLegacyImageLocalStorage()
+  const hydrationWork = migrateLegacyImageLocalStorage()
     .then(() => migrateInlineImagesFromLocalRecords())
     .then(() => migrateLegacySchoolDocument())
     .then(() => {
+    if (!hydrationValid()) return;
     const all = isHeadTeacher();
     const classIds = all ? null : classIdsForCloudSync();
     const subjectIds = all ? null : new Set(currentAssignedSubjectIds || []);
@@ -9691,9 +9778,9 @@ function pullCloudData(sessionToken) {
       pullSchoolCalendarForAccess(),
       pullRemarksForAccess(all, classIds)
     ]).then(async results => {
-      if (!valid()) return;
+      if (!hydrationValid()) return;
       const deleted = await schoolRef().collection('deletedRecords').get();
-      if (!valid()) return;
+      if (!hydrationValid()) return;
       const tombstones = {};
       const deletionItems = [];
       deleted.forEach(doc => { const item=doc.data(); deletionItems.push(item); (tombstones[item.collection] ||= new Set()).add(localKeyFromCloudId(item.id)); });
@@ -9777,6 +9864,7 @@ function pullCloudData(sessionToken) {
         try { await ensureHeadTeacherStaffRecord(); }
         catch (e) { console.warn('Could not ensure Head Teacher Staff record:', e); }
       }
+      if (!hydrationValid()) return;
 
       // v27: image synchronization is deliberately NOT part of the login
       // critical path. The account, role, and core school data must become
@@ -9845,7 +9933,7 @@ function pullCloudData(sessionToken) {
         if (all || classIds.has(classId)) remarks[key] = (d.data() || {}).entries || {};
       });
       mergeCloudCollection('remarks', remarks, all);
-      if (!valid()) return;
+      if (!hydrationValid()) return;
       Object.entries(tombstones).forEach(([field, ids]) => {
         if (!KEYS[field]) return;
         const collectionResults = {classes:classSnap,subjects:subjectSnap,students:studentSnap,staff:staffSnap,grades:gradeSnap,attendance:attendanceSnap,teacherAttendance:teacherAttendanceSnap,schoolCalendar:schoolCalendarSnap,remarks:remarkSnap};
@@ -9860,22 +9948,34 @@ function pullCloudData(sessionToken) {
       rememberDeletions(deletionItems.filter(item => !dirtyIdsFor(KEYS[item.collection]).includes(localKeyFromCloudId(item.id))));
       setLastSyncedNow();
     });
-  }).catch(error => {
+  });
+
+  const hydrationDeadline = new Promise((_, reject) => {
+    hydrationDeadlineTimer = setTimeout(() => {
+      if (!hydrationValid()) return;
+      hydrationAttemptActive = false;
+      const error = new Error('Cloud data check exceeded 30 seconds and was stopped. Your saved local data is still available.');
+      error.code = 'schoolhub/hydration-timeout';
+      reject(error);
+    }, CORE_HYDRATION_HARD_DEADLINE_MS);
+  });
+
+  return Promise.race([hydrationWork, hydrationDeadline]).catch(error => {
     if (valid()) cloudHydrationStatusError = String(error && error.message || error || 'Cloud data check failed.');
     throw error;
   }).finally(() => {
+    hydrationAttemptActive = false;
     clearTimeout(hydrationWatchdog);
-    // Whether the read succeeded or failed, the user may make intentional
-    // changes only after this hydration attempt has reached a safe endpoint.
+    clearTimeout(hydrationDeadlineTimer);
+    // Whether the read succeeded, failed, or reached the hard deadline,
+    // the barrier now has a real terminal state. Late Firestore responses
+    // are ignored because hydrationValid() becomes false.
     if (valid()) {
       cloudHydrationInProgress = false;
       sessionDataReady = true;
       syncableFields().forEach(field => {
         if (dirtyIdsFor(field.key).length) scheduleCloudPush(field.key);
       });
-      // The repair made only safe score transfers, but it was intentionally
-      // performed while cloud writes were paused. Queue the now-complete
-      // collections after the hydration barrier opens.
       if (duplicateRepair && duplicateRepair.changed) {
         scheduleCloudPush(KEYS.grades);
         scheduleCloudPush(KEYS.subjects);

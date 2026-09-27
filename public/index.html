@@ -12,7 +12,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-theme-system-fix-6">
+<link rel="stylesheet" href="style-3.css?v=v40-hydration-report-assets-fix-7">
 <link rel="stylesheet" href="ui-polish.css?v=v40-student-freeze-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
@@ -670,6 +670,11 @@
     <label>Class
       <select id="reportsClassSelect"></select>
     </label>
+    <div class="report-asset-tools">
+      <button type="button" id="reportAssetCheckBtn" class="btn-secondary">Check Report Assets</button>
+      <span class="hint">Checks student photos and teacher signatures for the selected class before official PDF generation.</span>
+    </div>
+    <div id="reportAssetCheckWrap" class="report-asset-check-wrap hidden" aria-live="polite"></div>
     <div class="stack">
       <button id="generateAllBtn" class="btn-primary">Generate Class Batch PDF (Credits Required)</button>
       <button id="exportCsvBtn" class="btn-primary">Export Results as CSV</button>
@@ -1040,7 +1045,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
-<script src="app-4.js?v=v40-teacher-sync-ui-fix-5"></script>
+<script src="app-4.js?v=v40-hydration-report-assets-fix-7"></script>
 <script src="install.js"></script>
 </body>
 </html>
