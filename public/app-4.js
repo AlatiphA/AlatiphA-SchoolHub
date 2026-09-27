@@ -3833,7 +3833,7 @@ const STAFF_FIELDS = [
   { key: 'notionalDate', label: 'Notional Date', type: 'date' },
   { key: 'substantiveDate', label: 'Substantive Date', type: 'date' },
   { key: 'academicQualification', label: 'Academic Qualification', type: 'select', options: [
-    ['SSCE/WACCE','SSCE/WACCE'],["O'Level/A' Level","O'Level/A' Level"],['Certificate','Certificate'],['Diploma','Diploma'],['HND','HND'],["Bachelor's Degree","Bachelor's Degree"],['Postgraduate Diploma','Postgraduate Diploma'],["Master's Degree","Master's Degree"],['PhD','PhD'],['Other','Other']
+    ['SSCE/WACCE','SSCE/WACCE'],["O'Level/A' Level","O'Level/A' Level"],['Diploma','Diploma'],['HND','HND'],["Bachelor's Degree","Bachelor's Degree"],['Postgraduate Diploma','Postgraduate Diploma'],["Master's Degree","Master's Degree"],['PhD','PhD'],['Other','Other']
   ] },
   { key: 'professionalQualification', label: 'Professional Qualification', type: 'select', options: [
     ["Teacher's Certificate","Teacher's Certificate"],['Diploma in Basic Education','Diploma in Basic Education'],['Bachelor of Education','Bachelor of Education'],['Postgraduate teaching qualification','Postgraduate teaching qualification'],['Other','Other']
