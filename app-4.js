@@ -7909,32 +7909,6 @@ async function getOrSyncReportImage(kind, id, storagePath, sourceUrl, determinis
   return '';
 }
 
-let reportTeacherMemberCache = { schoolId: '', at: 0, members: [] };
-async function resolveAssignedTeacherForReport(classId) {
-  if (!classId) return null;
-  if (isTeacher() && currentAssignedClassIds.includes(classId)) {
-    const own = (currentUserData && currentUserData.staffId ? getStaffById(currentUserData.staffId) : null)
-      || getStaffForUserUid(currentUid);
-    if (own) return own;
-  }
-  if (!isHeadTeacher() || !FIREBASE_ENABLED || !currentSchoolId || navigator.onLine === false) return null;
-  try {
-    const now = Date.now();
-    if (reportTeacherMemberCache.schoolId !== currentSchoolId || now - reportTeacherMemberCache.at > 60000) {
-      reportTeacherMemberCache = { schoolId: currentSchoolId, at: now, members: await fetchSchoolMembers() };
-    }
-    const matches = reportTeacherMemberCache.members.filter(member =>
-      member && member.role === 'teacher' && member.status === 'active'
-      && Array.isArray(member.assignedClassIds) && member.assignedClassIds.includes(classId)
-    ).map(member => member.staffId ? getStaffById(member.staffId) : getStaffForUserUid(member.uid)).filter(Boolean);
-    const unique = Array.from(new Map(matches.map(staff => [String(staff.id), staff])).values());
-    return unique.length === 1 ? unique[0] : null;
-  } catch (e) {
-    console.warn('Could not infer report class teacher:', classId, e);
-    return null;
-  }
-}
-
 async function resolveReportStaffForClass(settings, classInfo, fallbackClassId) {
   const staffList = DB.get(KEYS.staff, []);
   const classId = classInfo ? classInfo.id : (fallbackClassId || '');
@@ -7943,7 +7917,6 @@ async function resolveReportStaffForClass(settings, classInfo, fallbackClassId) 
   if (!classTeacher && classId) {
     const cls = DB.get(KEYS.classes, []).find(c => c.id === classId);
     if (cls && cls.classTeacherId) classTeacher = staffList.find(s => s.id === cls.classTeacherId) || null;
-    if (!classTeacher) classTeacher = await resolveAssignedTeacherForReport(classId);
   }
   let headTeacher = settings && settings.headTeacherId
     ? staffList.find(s => s.id === settings.headTeacherId) : null;
@@ -8035,7 +8008,7 @@ async function runReportAssetCheck(classId){
   const reportable=results.filter(r=>Array.isArray(r.entries)&&r.entries.length>0);
   const resolvedStaff=await resolveReportStaffForClass(settings,classInfo,classId);
   const logoCheck=await withReportAssetDeadline(checkReportImageAsset('logo','school',settings.logo||'',settings.logoStoragePath||'',settings.logoUrl||'',currentSchoolId?`schools/${currentSchoolId}/logos/school-logo`:'','School logo'),'School logo');
-  const classTeacherCheck=resolvedStaff.classTeacher?await withReportAssetDeadline(checkReportImageAsset('staff',resolvedStaff.classTeacher.id,resolvedStaff.classTeacher.signature||'',resolvedStaff.classTeacher.signatureStoragePath||'',resolvedStaff.classTeacher.signatureUrl||'',currentSchoolId?`schools/${currentSchoolId}/signatures/${resolvedStaff.classTeacher.id}`:'','Class Teacher signature'),'Class Teacher signature'):{ready:false,source:'assignment',message:'No Class Teacher Staff record could be resolved for this class. Link the class to a teacher or verify the teacher account ↔ Staff record.'};
+  const classTeacherCheck=resolvedStaff.classTeacher?await withReportAssetDeadline(checkReportImageAsset('staff',resolvedStaff.classTeacher.id,resolvedStaff.classTeacher.signature||'',resolvedStaff.classTeacher.signatureStoragePath||'',resolvedStaff.classTeacher.signatureUrl||'',currentSchoolId?`schools/${currentSchoolId}/signatures/${resolvedStaff.classTeacher.id}`:'','Class Teacher signature'),'Class Teacher signature'):{ready:false,source:'assignment',message:'Ask the Head Teacher to select a Class Teacher under Classes → Edit. Report signatures use only that designated staff member.'};
   const headTeacherCheck=resolvedStaff.headTeacher?await withReportAssetDeadline(checkReportImageAsset('staff',resolvedStaff.headTeacher.id,resolvedStaff.headTeacher.signature||'',resolvedStaff.headTeacher.signatureStoragePath||'',resolvedStaff.headTeacher.signatureUrl||'',currentSchoolId?`schools/${currentSchoolId}/signatures/${resolvedStaff.headTeacher.id}`:'','Head Teacher signature'),'Head Teacher signature'):{ready:false,source:'assignment',message:'No Head Teacher Staff record could be resolved. Check Setup → Head Teacher and the Staff record.'};
   const studentRecords=DB.get(KEYS.students,[]);
   const photoChecks=await mapReportAssetsWithLimit(reportable,4,async result=>{const currentStudent=studentRecords.find(s=>s.id===result.student.id)||result.student;const check=await withReportAssetDeadline(checkReportImageAsset('student',currentStudent.id,currentStudent.photo||'',currentStudent.photoStoragePath||'',currentStudent.photoUrl||'',currentStudent.classId&&currentSchoolId?`schools/${currentSchoolId}/student-photos/${currentStudent.classId}/${currentStudent.id}`:'',`${currentStudent.name||'Student'} photo`),`${currentStudent.name||'Student'} photo`);return {student:currentStudent,check};});
@@ -8051,7 +8024,7 @@ async function runReportAssetCheck(classId){
   html+=`<p class="hint report-asset-note">${criticalMissing?'Resolve the items marked Needs attention before generating official reports. You may still generate a report, but SchoolHub will warn you first.':'All critical photos and signatures needed for the selected class are ready.'}</p></div>`;
   wrap.innerHTML=html;wrap.classList.remove('hidden');return {classId,criticalMissing,logoCheck,classTeacherCheck,headTeacherCheck,photoChecks};
 }
-function reportAssetIssuesForPrepared(result,assets){const issues=[],studentName=result&&result.student?(result.student.name||result.student.id||'Student'):'Student';if(!assets||!assets.photo)issues.push(`${studentName}: student photo is unavailable`);if(!assets||!assets.classTeacherName)issues.push('Class Teacher: no Staff/assignment record could be resolved');else if(!assets.classTeacherSignature)issues.push(`${assets.classTeacherName}: Class Teacher signature is unavailable`);if(!assets||!assets.headTeacherName)issues.push('Head Teacher: no Staff record could be resolved');else if(!assets.headTeacherSignature)issues.push(`${assets.headTeacherName}: Head Teacher signature is unavailable`);return issues;}
+function reportAssetIssuesForPrepared(result,assets){const issues=[],studentName=result&&result.student?(result.student.name||result.student.id||'Student'):'Student';if(!assets||!assets.photo)issues.push(`${studentName}: student photo is unavailable`);if(!assets||!assets.classTeacherName)issues.push('Class Teacher: ask the Head Teacher to select a Class Teacher under Classes → Edit');else if(!assets.classTeacherSignature)issues.push(`${assets.classTeacherName}: Class Teacher signature is unavailable`);if(!assets||!assets.headTeacherName)issues.push('Head Teacher: no Staff record could be resolved');else if(!assets.headTeacherSignature)issues.push(`${assets.headTeacherName}: Head Teacher signature is unavailable`);return issues;}
 function confirmReportAssetIssues(issues){const unique=Array.from(new Set((issues||[]).filter(Boolean)));if(!unique.length)return true;const shown=unique.slice(0,8),more=unique.length>shown.length?`\n…plus ${unique.length-shown.length} more issue(s).`:'';return confirm(`Report Asset Check found ${unique.length} issue${unique.length===1?'':'s'}:\n\n`+shown.map(item=>`• ${item}`).join('\n')+more+'\n\nGenerate the report anyway? No credits are deducted if you cancel here.');}
 
 async function runReportAction(button, action) {
