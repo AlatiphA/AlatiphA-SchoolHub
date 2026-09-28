@@ -20,7 +20,7 @@ async function renderSchoolFees(){
   <p id="feeMessage" role="status"></p><button id="feeRefresh" type="button" class="btn-secondary">Refresh balances</button>
   <h3>Pupil balances</h3><p>Earlier unpaid terms remain here as arrears. They are not added again to a new term’s charge.</p>
   <label>Search pupil, class or term<input id="feeSearch" type="search" placeholder="Name, class, term or year"></label>
-  <div id="feeTotals"></div><div class="table-scroll"><table><thead><tr><th>Pupil / class</th><th>Term</th><th>Charged</th><th>Paid</th><th>Balance</th><th></th></tr></thead><tbody id="feeRows"></tbody></table></div>
+  <div id="feeTotals"></div><div class="table-scroll fee-table-scroll" role="region" aria-label="Pupil fee balances, scroll horizontally for more columns" tabindex="0"><table class="fee-balances-table"><thead><tr><th>Pupil / class</th><th>Term</th><th>Charged</th><th>Paid</th><th>Balance</th><th>Actions</th></tr></thead><tbody id="feeRows"></tbody></table></div>
   <div id="feePupil"></div><button id="feeExport" type="button" class="btn-secondary">Export fees backup (JSON)</button>`;
   const msg=host.querySelector('#feeMessage');
   const clearPending=()=>localStorage.removeItem(pendingKey);

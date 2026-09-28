@@ -434,3 +434,48 @@
 
 #feeReceiptDialog .about-box { width: min(560px, calc(100vw - 40px)); text-align: left; }
 #feeReceiptDialog button { margin: 12px 8px 0 0; }
+
+/* Fees: consistent fields, readable balances and a pinned pupil column. */
+#app #view-fees #feesWrap label {
+  display:block; width:100%; margin:20px 0; font-weight:500;
+}
+#app #view-fees #feesWrap :is(input,select,textarea) {
+  display:block; box-sizing:border-box; width:100%; max-width:100%; min-width:0;
+  margin:10px 0 0; min-height:48px;
+}
+#app #view-fees #feesWrap details, #app #view-fees #feePupil {
+  border-color:var(--rule); background:var(--surface); padding:22px; border-radius:16px;
+}
+#app #view-fees #feePupil:empty { display:none; }
+#app #view-fees #feesWrap summary { cursor:pointer; font-weight:600; line-height:1.5; }
+#app #view-fees #feesWrap details[open] summary { margin-bottom:18px; }
+#app #view-fees #feesWrap p { line-height:1.65; }
+#app #view-fees #feesWrap h3 { margin-top:28px; }
+#app #view-fees #feesWrap h4 { margin:28px 0 16px; }
+#app #view-fees #feeTotals {
+  margin:20px 0; padding:16px 18px; border:1px solid var(--rule);
+  border-radius:12px; background:var(--surface-alt); line-height:1.8;
+}
+#app #view-fees #feeMessage:empty { display:none; }
+#app #view-fees .fee-table-scroll { max-width:100%; overflow-x:auto; isolation:isolate; }
+#app #view-fees .fee-balances-table { width:100%; min-width:760px; border-collapse:separate; border-spacing:0; }
+#app #view-fees .fee-balances-table :is(th,td) {
+  padding:16px; vertical-align:middle; border-bottom:1px solid var(--rule); background:var(--surface);
+}
+#app #view-fees .fee-balances-table th { background:var(--surface-alt); font-weight:600; }
+#app #view-fees .fee-balances-table :is(th,td):first-child {
+  position:sticky; left:0; z-index:1; width:240px; min-width:240px; max-width:240px;
+  box-sizing:border-box; overflow-wrap:anywhere; box-shadow:2px 0 0 var(--rule);
+}
+#app #view-fees .fee-balances-table th:first-child { z-index:2; }
+#app #view-fees .fee-balances-table td[colspan] { position:static; max-width:none; box-shadow:none; }
+#app #view-fees .fee-balances-table :is(th,td):nth-child(n+3):nth-child(-n+5) { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+#app #view-fees .fee-balances-table small { display:block; margin-top:5px; color:var(--muted); }
+#app #view-fees .fee-balances-table button { margin:0; }
+#app #view-fees #feeReceipts > div { padding:16px 0; border-bottom:1px solid var(--rule); }
+@media(max-width:600px) {
+  #app #view-fees #feesWrap details, #app #view-fees #feePupil { padding:14px; }
+  #app #view-fees .fee-balances-table :is(th,td):first-child { width:136px; min-width:136px; max-width:136px; padding:12px; }
+  #app #view-fees #feeSearch { font-size:15px; }
+  #app #view-fees #feesWrap > button, #app #view-fees #feePupil > button { width:100%; margin-right:0; }
+}
