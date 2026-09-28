@@ -24,7 +24,7 @@ async function renderSchoolFees(){
  const active=()=>generation===feeViewGeneration&&isCurrentSession(session,user,school)&&isHeadTeacher();
  if(!isHeadTeacher()||!FIREBASE_ENABLED){host.textContent='Sign in as Head Teacher to manage fees.';return;}
  const pendingKey='schoolhub_fee_queue_'+school+'_'+user,cacheKey='schoolhub_fee_cache_'+school+'_'+user;
- const legacyKey='schoolhub_fee_pending_'+school+'_'+user,legacy=localStorage.getItem(legacyKey);if(legacy){await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey),request=JSON.parse(legacy);if(!q.some(x=>x.request.requestId===request.requestId))const names={classFee:'Class fee',reviseClass:'Class fee correction',cancelClass:'Class fee removal',edit:'Fee correction',cancel:'Fee removal',adjust:'Adjustment',payment:'Payment',void:'Receipt reversal'};const account=data.accounts.find(a=>a.id===request.accountId);q.push({request,label:(names[request.action]||request.action)+' — '+(account?account.studentName+' · '+account.term+' '+account.year:(classes.find(c=>c.id===request.classId)?.name||'')+' · '+(request.term||'')+' '+(request.year||''))});localStorage.setItem(pendingKey,JSON.stringify(q));localStorage.removeItem(legacyKey);});}
+ const legacyKey='schoolhub_fee_pending_'+school+'_'+user,legacy=localStorage.getItem(legacyKey);if(legacy){await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey),request=JSON.parse(legacy);if(!q.some(x=>x.request.requestId===request.requestId))q.push({request});localStorage.setItem(pendingKey,JSON.stringify(q));localStorage.removeItem(legacyKey);});}
  host.textContent='Loading fees and receipts…';
  try{
   await feeFlush(pendingKey,active);if(!active())return;
