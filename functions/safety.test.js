@@ -275,3 +275,9 @@ test('Setup rejects stale defaults, destructive blanks and unauthorized changes'
  ])await assert.rejects(f.handlers.saveSchoolProfile(f.req({base,changes},uid)),e=>e.code===code);
  assert.deepEqual(f.records.get('schools/s'),before);
 });
+
+test('server preserves marks but rejects stale writes to a school strike date',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027__2026-09-25',cal=encodeURIComponent('Term 1__2026/2027__2026-09-25');
+ f.records.set('schools/s/schoolCalendar/'+cal,{type:'strike'});
+ const before=structuredClone([...f.records]);await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'attendance',key,base:{},value:{entries:{p1:'P'}}},'teacher')),e=>e.code==='failed-precondition');assert.deepEqual([...f.records],before);
+});

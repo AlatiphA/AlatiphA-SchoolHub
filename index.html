@@ -578,7 +578,7 @@
       </div>
       <div id="attendanceFormWrap"></div>
       <button id="saveAttendanceBtn" class="btn-primary">Save Student Attendance</button>
-      <p class="hint">Record daily student attendance as Present, Absent, or Late. Late is counted as present in the term total. Holidays and Midterm days are excluded from attendance and Times Open. The attendance total is automatically reflected on report cards.</p>
+      <p class="hint">Record daily student attendance as Present, Absent, or Late. Late is counted as present in the term total. Holidays, Midterm and Strike days are excluded from attendance and Times Open. The attendance total is automatically reflected on report cards.</p>
     </div>
 
     <div id="teacherAttendancePanel" class="hidden">
@@ -589,7 +589,7 @@
       </div>
       <div id="teacherAttendanceFormWrap"></div>
       <button id="saveTeacherAttendanceBtn" class="btn-primary">Save Teacher Attendance</button>
-      <p class="hint">Head Teacher only. Record teacher attendance as Present, Absent, Late, Excused, or On Leave. Holidays and Midterm days are excluded from attendance and Times Open. Teacher attendance is separate from student attendance.</p>
+      <p class="hint">Head Teacher only. Record teacher attendance as Present, Absent, Late, Excused, On Leave, or On Strike. Holidays, Midterm and Strike days are excluded from attendance and Times Open. Teacher attendance is separate from student attendance.</p>
     </div>
     <div id="schoolCalendarPanel" class="hidden">
       <div id="schoolCalendarWrap"></div>
@@ -733,7 +733,7 @@
   <!-- MANAGE TEACHERS (Head Teacher only) -->
   <section id="view-manage-teachers" class="view hidden">
     <h2>Manage Teachers</h2>
-    <p class="hint">Approve pending requests (assigning their classes as you go), or disable/reactivate a teacher already in the school. Disabling never deletes their data — it just blocks their access.</p>
+    <p class="hint">Approve pending requests and link each account to its existing Staff record where possible. Disable temporarily suspends access. Remove from School ends membership and requires a new join request. Staff details and historical school records are kept.</p>
     <ul id="manageTeachersList" class="list"></ul>
   </section>
 

@@ -1091,17 +1091,26 @@ function renderHome() {
     ? `Here's what's happening in ${settings.currentTerm}, ${settings.currentYear}.`
     : "Here's what's happening with your classes.";
 
-  const totalStudents = DB.get(KEYS.students, []).length;
-  const totalClasses = DB.get(KEYS.classes, []).length;
+  const totalStudents = (isTeacher()?getAccessibleStudents():DB.get(KEYS.students, [])).length;
+  const totalClasses = DB.get(KEYS.classes, []).filter(c=>!isTeacher()||canAccessClass(c.id)).length;
   const totalStaff = DB.get(KEYS.staff, []).length;
   document.getElementById('statsSummary').innerHTML =
     `<span>TOTAL STUDENTS: ${totalStudents}</span><span class="stats-dot">•</span>`
     + `<span>CLASSES: ${totalClasses}</span><span class="stats-dot">•</span>`
-    + `<span>STAFF: ${totalStaff}</span>`;
+    + `<span id="homePersonnelCount">${isTeacher()?'TEACHERS: …':'STAFF: '+totalStaff}</span>`;
+  if(isTeacher())refreshTeacherHomeCount();
 
   renderQuickAccessList();
 
   if (!localStorage.getItem(TOUR_SEEN_KEY)) showTour();
+}
+
+async function refreshTeacherHomeCount(){
+ const session=sessionGeneration,user=currentUid,school=currentSchoolId;
+ const key='schoolhub_teacher_count_'+school+'_'+user;
+ const el=document.getElementById('homePersonnelCount');
+ try{const result=await safetyCall('getTeacherHomeSummary',{});if(!isCurrentSession(session,user,school)||!isTeacher())return;localStorage.setItem(key,JSON.stringify(result));if(el?.isConnected)el.textContent='TEACHERS: '+result.teachers;}
+ catch(e){if(isCurrentSession(session,user,school)&&el?.isConnected){const cached=JSON.parse(localStorage.getItem(key)||'null');el.textContent=cached?'TEACHERS: '+cached.teachers+' (last synced)':'TEACHERS: unavailable';}}
 }
 
 /* ---------- Profile menu ---------- */
@@ -1831,7 +1840,7 @@ function rolloverDecisionLabel(value) {
 }
 
 function rolloverCounts(draft) {
-  const counts = { promote:0, repeat:0, graduate:0, leave:0, unresolved:0 };
+  const counts = { promote:0, repeat:0, graduate:0, leave:0, strike:0, unresolved:0 };
   const students = rolloverStudents();
   students.forEach(student => {
     const d = draft.decisions[student.id] || {};
@@ -4514,7 +4523,7 @@ function calculateTimesOpen(term, year, throughDate) {
   for (let d = new Date(start); d <= limit; d = addDaysDateOnly(d, 1)) {
     if (!isWeekdayDate(d)) continue;
     const type = exceptions.get(dateOnlyString(d));
-    if (type === 'holiday' || type === 'midterm') continue;
+    if (type === 'holiday' || type === 'midterm' || type === 'strike') continue;
     count++;
   }
   return count;
@@ -4523,6 +4532,7 @@ function calculateTimesOpen(term, year, throughDate) {
 function calendarLabel(type) {
   if (type === 'holiday') return 'Holiday';
   if (type === 'midterm') return 'Midterm';
+  if (type === 'strike') return 'Strike';
   if (type === 'weekend') return 'Weekend';
   if (type === 'outside') return 'Outside Term';
   return 'School Open';
@@ -4669,7 +4679,7 @@ function teacherAttendanceSummary(term, year) {
   const staff = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
   const records = teacherAttendanceRecordsForTerm(term, year);
   const summary = {};
-  staff.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, total: 0, excused: 0, leave: 0, recorded: 0 });
+  staff.forEach(st => summary[st.id] = { present: 0, absent: 0, late: 0, total: 0, excused: 0, leave: 0, strike: 0, recorded: 0 });
   records.forEach(({ record, date }) => {
     if (attendanceDayType(term, year, date) !== 'open') return;
     const entries = record.entries || record;
@@ -4682,6 +4692,7 @@ function teacherAttendanceSummary(term, year) {
       else if (status === 'A') summary[st.id].absent++;
       else if (status === 'E') summary[st.id].excused++;
       else if (status === 'O') summary[st.id].leave++;
+      else if (status === 'S') summary[st.id].strike++;
       summary[st.id].total = summary[st.id].present + summary[st.id].late;
     });
   });
@@ -4696,6 +4707,7 @@ function attendanceRatio(summary, timesOpen, isTeacher) {
   // expected to attend, so remove them from the individual denominator.
   if (isTeacher && summary) {
     denominator -= Number(summary.excused || 0) + Number(summary.leave || 0);
+    if(Number(summary.strike||0)>0){const policy=DB.get(KEYS.settings,{}).teacherStrikeRatioPolicy;if(!['include','exclude'].includes(policy))return null;if(policy==='exclude')denominator-=Number(summary.strike);}
   }
 
   return denominator > 0 ? Math.min(100, (attended / denominator) * 100) : null;
@@ -4736,14 +4748,14 @@ function attendanceOpenDates(term, year, throughDate) {
     if (!isWeekdayDate(d)) continue;
     const date = dateOnlyString(d);
     const type = exceptions.get(date);
-    if (type === 'holiday' || type === 'midterm') continue;
+    if (type === 'holiday' || type === 'midterm' || type === 'strike') continue;
     out.push(date);
   }
   return out;
 }
 
 function attendanceStatusLabel(status) {
-  return ({P:'Present', L:'Late', A:'Absent', E:'Excused', O:'On Leave'})[String(status || '').toUpperCase()] || 'Not recorded';
+  return ({P:'Present', L:'Late', A:'Absent', E:'Excused', O:'On Leave', S:'On Strike'})[String(status || '').toUpperCase()] || 'Not recorded';
 }
 
 function attendanceStatusCodeForStudent(classId, term, year, date, studentId) {
@@ -4817,15 +4829,16 @@ function attendanceReportTeacherStats(staff, term, year, timesOpen) {
   // could show Present/Late totals while the Reports tab showed zeros.
   const history = attendanceReportTeacherHistory(staff, term, year);
   const summaryMap = teacherAttendanceSummary(term, year).summary || {};
-  const sm = summaryMap[staff.id] || {present:0, late:0, absent:0, excused:0, leave:0, recorded:0};
+  const sm = summaryMap[staff.id] || {present:0, late:0, absent:0, excused:0, leave:0, strike:0, recorded:0};
   const present = Number(sm.present || 0);
   const late = Number(sm.late || 0);
   const absent = Number(sm.absent || 0);
   const excused = Number(sm.excused || 0);
   const leave = Number(sm.leave || 0);
+  const strike = Number(sm.strike || 0);
   const total = present + late;
   const recorded = Number(sm.recorded || 0);
-  const ratio = attendanceRatio({present, late, total, absent, excused, leave}, timesOpen, true);
+  const ratio = attendanceRatio({present, late, total, absent, excused, leave, strike}, timesOpen, true);
 
   // Streaks are still derived from the chronological history so they reflect
   // the actual dates on which the teacher was marked Absent.
@@ -4839,7 +4852,7 @@ function attendanceReportTeacherStats(staff, term, year, timesOpen) {
     }
   });
   current = run;
-  return {present, late, total, absent, excused, leave, recorded, ratio,
+  return {present, late, total, absent, excused, leave, strike, recorded, ratio,
           currentAbsenceStreak:current, longestAbsenceStreak:longest, history};
 }
 
@@ -4889,23 +4902,23 @@ function renderAttendanceReports() {
 
   if(mode==='term') {
     const students=attendanceReportOverallStudent(term,year,timesOpen), teachers=attendanceReportOverallTeacher(term,year,timesOpen);
-    html+=`<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>String(x.record.type||'').toLowerCase()==='holiday').length}</strong></div><div><span>Midterm</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>String(x.record.type||'').toLowerCase()==='midterm').length}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher()?`<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>`:''}</div>`;
+    html+=`<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>String(x.record.type||'').toLowerCase()==='holiday').length}</strong></div><div><span>Midterm</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>String(x.record.type||'').toLowerCase()==='midterm').length}</strong></div><div><span>Strike Days</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>x.record.type==='strike').length}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher()?`<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>`:''}</div>`;
     html+='<h4 class="attendance-report-section-title">Class Attendance</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
     getAccessibleClasses().forEach(c=>{const x=attendanceSummaryClassStats(c.id,term,year,timesOpen);html+=`<tr><td>${escapeHtml(c.name)}</td><td>${x.pupils}</td><td>${x.present}</td><td>${x.late}</td><td>${x.total}</td><td>${x.absent}</td><td>${formatAttendanceRatio(x.averageRatio)}</td></tr>`;});
     html+='</tbody></table></div>';
-    if(isHeadTeacher()){html+='<h4 class="attendance-report-section-title">Teacher Attendance</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Ratio</th></tr></thead><tbody>';attendanceReportTeacherRows(term,year,timesOpen).forEach(x=>html+=`<tr><td>${escapeHtml(x.staff.name)}</td><td>${escapeHtml(x.staff.role||'Teacher')}</td><td>${x.stats.present}</td><td>${x.stats.late}</td><td>${x.stats.total}</td><td>${x.stats.absent}</td><td>${x.stats.excused}</td><td>${x.stats.leave}</td><td>${formatAttendanceRatio(x.stats.ratio)}</td></tr>`);html+='</tbody></table></div>';}
+    if(isHeadTeacher()){html+='<h4 class="attendance-report-section-title">Teacher Attendance</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>On Strike</th><th>Ratio</th></tr></thead><tbody>';attendanceReportTeacherRows(term,year,timesOpen).forEach(x=>html+=`<tr><td>${escapeHtml(x.staff.name)}</td><td>${escapeHtml(x.staff.role||'Teacher')}</td><td>${x.stats.present}</td><td>${x.stats.late}</td><td>${x.stats.total}</td><td>${x.stats.absent}</td><td>${x.stats.excused}</td><td>${x.stats.leave}</td><td>${x.stats.strike||0}</td><td>${formatAttendanceRatio(x.stats.ratio)}</td></tr>`);html+='</tbody></table></div>';}
   } else if(mode==='daily-students' || mode==='daily-teachers') {
     const date=savedDate; const kind=mode==='daily-teachers'?'teachers':'students'; const data=attendanceReportDaily(date,term,year,savedClass,kind); const d=parseDateOnly(date); const day=d?d.toLocaleDateString(undefined,{weekday:'long',year:'numeric',month:'long',day:'numeric'}):date;
     html+=`<div class="attendance-report-note"><strong>${escapeHtml(day)}</strong> · ${escapeHtml(calendarLabel(data.dayType))}${data.dayType==='open'?'':' · Attendance is not recorded on this date.'}</div>`;
-    if(data.dayType==='open'){let p=0,l=0,a=0,e=0,o=0,m=0;data.rows.forEach(r=>{if(r.status)m++;if(r.status==='P')p++;else if(r.status==='L')l++;else if(r.status==='A')a++;else if(r.status==='E')e++;else if(r.status==='O')o++;});html+=`<div class="attendance-report-cards"><div><span>Recorded</span><strong>${m} / ${data.rows.length}</strong></div><div><span>Present</span><strong>${p}</strong></div><div><span>Late</span><strong>${l}</strong></div><div><span>Absent</span><strong>${a}</strong></div>${kind==='teachers'?`<div><span>Excused</span><strong>${e}</strong></div><div><span>On Leave</span><strong>${o}</strong></div>`:''}</div>`;html+='<div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Name</th>'+ (kind==='students'?'<th>Class</th>':'<th>Role</th>') +'<th>Status</th></tr></thead><tbody>';data.rows.forEach(r=>html+=`<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(kind==='students'?r.className:r.role)}</td><td>${escapeHtml(r.status?attendanceStatusLabel(r.status):'Not recorded')}</td></tr>`);html+='</tbody></table></div>';}
+    if(data.dayType==='open'){let p=0,l=0,a=0,e=0,o=0,strike=0,m=0;data.rows.forEach(r=>{if(r.status)m++;if(r.status==='P')p++;else if(r.status==='L')l++;else if(r.status==='A')a++;else if(r.status==='E')e++;else if(r.status==='O')o++;else if(r.status==='S')strike++;});html+=`<div class="attendance-report-cards"><div><span>Recorded</span><strong>${m} / ${data.rows.length}</strong></div><div><span>Present</span><strong>${p}</strong></div><div><span>Late</span><strong>${l}</strong></div><div><span>Absent</span><strong>${a}</strong></div>${kind==='teachers'?`<div><span>Excused</span><strong>${e}</strong></div><div><span>On Leave</span><strong>${o}</strong></div><div><span>On Strike</span><strong>${strike}</strong></div>`:''}</div>`;html+='<div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Name</th>'+ (kind==='students'?'<th>Class</th>':'<th>Role</th>') +'<th>Status</th></tr></thead><tbody>';data.rows.forEach(r=>html+=`<tr><td>${escapeHtml(r.name)}</td><td>${escapeHtml(kind==='students'?r.className:r.role)}</td><td>${escapeHtml(r.status?attendanceStatusLabel(r.status):'Not recorded')}</td></tr>`);html+='</tbody></table></div>';}
   } else if(mode==='class') {
     const cls=DB.get(KEYS.classes,[]).find(c=>c.id===savedClass); if(!cls) html+='<p class="empty">Select a class to generate the report.</p>'; else {const rows=attendanceReportClassRows(cls.id,term,year,timesOpen);const avg=rows.map(x=>x.stats.ratio).filter(Number.isFinite);const ar=avg.length?avg.reduce((a,b)=>a+b,0)/avg.length:null;html+=`<div class="attendance-report-cards"><div><span>Class</span><strong>${escapeHtml(cls.name)}</strong></div><div><span>Pupils</span><strong>${rows.length}</strong></div><div><span>Times Open</span><strong>${timesOpen}</strong></div><div><span>Average Ratio</span><strong>${formatAttendanceRatio(ar)}</strong></div></div><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Pupil</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Ratio</th><th>Current Streak</th><th>Longest Streak</th></tr></thead><tbody>`;rows.forEach(x=>html+=`<tr><td>${escapeHtml(x.student.name)}</td><td>${x.stats.present}</td><td>${x.stats.late}</td><td>${x.stats.total}</td><td>${x.stats.absent}</td><td>${formatAttendanceRatio(x.stats.ratio)}</td><td>${x.stats.currentAbsenceStreak}</td><td>${x.stats.longestAbsenceStreak}</td></tr>`);html+='</tbody></table></div>';}
   } else if(mode==='pupil') {
     const st=DB.get(KEYS.students,[]).find(s=>s.id===savedPerson && canAccessClass(s.classId)); if(!st) html+='<p class="empty">Select a class and pupil to generate the report.</p>'; else {const cls=DB.get(KEYS.classes,[]).find(c=>c.id===st.classId);const x=attendanceReportPupilStats(st,term,year,timesOpen);html+=`<div class="attendance-report-cards"><div><span>Pupil</span><strong>${escapeHtml(st.name)}</strong></div><div><span>Class</span><strong>${escapeHtml(cls?cls.name:'')}</strong></div><div><span>Times Open</span><strong>${timesOpen}</strong></div><div><span>Present</span><strong>${x.present}</strong></div><div><span>Late</span><strong>${x.late}</strong></div><div><span>Absent</span><strong>${x.absent}</strong></div><div><span>Attendance Ratio</span><strong>${formatAttendanceRatio(x.ratio)}</strong></div><div><span>Current Absence Streak</span><strong>${x.currentAbsenceStreak}</strong></div><div><span>Longest Absence Streak</span><strong>${x.longestAbsenceStreak}</strong></div></div><h4 class="attendance-report-section-title">Attendance History</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Status</th></tr></thead><tbody>`;x.history.forEach(r=>{const d=parseDateOnly(r.date);html+=`<tr><td>${escapeHtml(r.date)}</td><td>${d?escapeHtml(d.toLocaleDateString(undefined,{weekday:'short'})):''}</td><td>${escapeHtml(r.label)}</td></tr>`;});html+='</tbody></table></div>';}
   } else if(mode==='teacher') {
-    const st=DB.get(KEYS.staff,[]).find(s=>s.id===savedPerson && isTeacherStaffRecord(s)); if(!st) html+='<p class="empty">Select a teacher to generate the report.</p>'; else {const x=attendanceReportTeacherStats(st,term,year,timesOpen);html+=`<div class="attendance-report-cards"><div><span>Teacher</span><strong>${escapeHtml(st.name)}</strong></div><div><span>Role</span><strong>${escapeHtml(st.role||'Teacher')}</strong></div><div><span>Times Open</span><strong>${timesOpen}</strong></div><div><span>Present</span><strong>${x.present}</strong></div><div><span>Late</span><strong>${x.late}</strong></div><div><span>Absent</span><strong>${x.absent}</strong></div><div><span>Excused</span><strong>${x.excused}</strong></div><div><span>On Leave</span><strong>${x.leave}</strong></div><div><span>Attendance Ratio</span><strong>${formatAttendanceRatio(x.ratio)}</strong></div><div><span>Current Absence Streak</span><strong>${x.currentAbsenceStreak}</strong></div><div><span>Longest Absence Streak</span><strong>${x.longestAbsenceStreak}</strong></div></div><h4 class="attendance-report-section-title">Attendance History</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Status</th></tr></thead><tbody>`;x.history.forEach(r=>{const d=parseDateOnly(r.date);html+=`<tr><td>${escapeHtml(r.date)}</td><td>${d?escapeHtml(d.toLocaleDateString(undefined,{weekday:'short'})):''}</td><td>${escapeHtml(r.label)}</td></tr>`;});html+='</tbody></table></div>';}
+    const st=DB.get(KEYS.staff,[]).find(s=>s.id===savedPerson && isTeacherStaffRecord(s)); if(!st) html+='<p class="empty">Select a teacher to generate the report.</p>'; else {const x=attendanceReportTeacherStats(st,term,year,timesOpen);html+=`<div class="attendance-report-cards"><div><span>Teacher</span><strong>${escapeHtml(st.name)}</strong></div><div><span>Role</span><strong>${escapeHtml(st.role||'Teacher')}</strong></div><div><span>Times Open</span><strong>${timesOpen}</strong></div><div><span>Present</span><strong>${x.present}</strong></div><div><span>Late</span><strong>${x.late}</strong></div><div><span>Absent</span><strong>${x.absent}</strong></div><div><span>Excused</span><strong>${x.excused}</strong></div><div><span>On Leave</span><strong>${x.leave}</strong></div><div><span>On Strike</span><strong>${x.strike||0}</strong></div><div><span>Attendance Ratio</span><strong>${formatAttendanceRatio(x.ratio)}</strong></div><div><span>Current Absence Streak</span><strong>${x.currentAbsenceStreak}</strong></div><div><span>Longest Absence Streak</span><strong>${x.longestAbsenceStreak}</strong></div></div><h4 class="attendance-report-section-title">Attendance History</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Status</th></tr></thead><tbody>`;x.history.forEach(r=>{const d=parseDateOnly(r.date);html+=`<tr><td>${escapeHtml(r.date)}</td><td>${d?escapeHtml(d.toLocaleDateString(undefined,{weekday:'short'})):''}</td><td>${escapeHtml(r.label)}</td></tr>`;});html+='</tbody></table></div>';}
   }
-  html+=`<p class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Holidays, Midterm and weekends are excluded from Times Open. Unrecorded attendance is shown as Not recorded and is not counted as Present or Absent.</p></div>`;
+  html+=`<p class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Holidays, Midterm, Strike and weekends are excluded from Times Open. Unrecorded attendance is shown as Not recorded and is not counted as Present or Absent.</p></div>`;
   wrap.innerHTML=html;
   const type=document.getElementById('attendanceReportType'); if(type)type.addEventListener('change',renderAttendanceReports);
   const cls=document.getElementById('attendanceReportClass'); if(cls)cls.addEventListener('change',()=>{ if(mode==='pupil') { renderAttendanceReports(); } else renderAttendanceReports(); });
@@ -5069,7 +5082,7 @@ function renderAttendanceForm() {
     </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm, timesOpen))}</strong></td></tr>`;
   });
   html += '</tbody></table></div>';
-  html += `<p class="hint">${attendanceRecordsForTerm(classId, settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays and midterm.</p>`;
+  html += `<p class="hint">${attendanceRecordsForTerm(classId, settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays, midterm and strike days.</p>`;
   wrap.innerHTML = html;
   document.getElementById('attendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('attendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'A'));
@@ -5102,23 +5115,25 @@ function renderTeacherAttendanceForm() {
   const summary = teacherAttendanceSummary(settings.currentTerm, settings.currentYear).summary;
   const averageRatio = averageAttendanceRatio(summary, timesOpen, true);
   let html = attendanceSummaryHeader('Average Teacher Attendance Ratio', timesOpen, averageRatio);
+  html += `<label>Individual On Strike days: attendance ratio<select id="teacherStrikePolicy"><option value="">Choose before recording On Strike</option><option value="include" ${settings.teacherStrikeRatioPolicy==='include'?'selected':''}>Include in expected attendance days</option><option value="exclude" ${settings.teacherStrikeRatioPolicy==='exclude'?'selected':''}>Exclude from expected attendance days</option></select></label><button type="button" id="saveTeacherStrikePolicy">Save strike ratio policy</button><p class="hint">On Strike is always reported separately from Absent. This policy applies to individual teachers while school is open.</p>`;
   html += `<div class="attendance-toolbar"><button type="button" id="teacherAttendanceAllPresent" class="btn-text">Mark All Present</button><button type="button" id="teacherAttendanceAllAbsent" class="btn-text">Mark All Absent</button><button type="button" id="teacherAttendanceUnmarkAll" class="btn-text">Unmark All</button></div>`;
-  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Attendance Ratio</th></tr></thead><tbody>';
+  html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th class="name-col">Teacher</th><th>Status</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>On Strike</th><th>Attendance Ratio</th></tr></thead><tbody>';
   teachers.forEach(st => {
     const status = String(entries[st.id] || '').toUpperCase();
-    const sm = summary[st.id] || { present: 0, absent: 0, late: 0, total: 0, excused: 0, leave: 0 };
+    const sm = summary[st.id] || { present: 0, absent: 0, late: 0, total: 0, excused: 0, leave: 0, strike: 0 };
     html += `<tr><td class="name-col">${escapeHtml(st.name)}</td><td><select class="teacher-attendance-status" data-staff="${st.id}">
       <option value="" ${!status ? 'selected' : ''}>— Not marked —</option>
       <option value="P" ${status === 'P' ? 'selected' : ''}>Present</option>
       <option value="A" ${status === 'A' ? 'selected' : ''}>Absent</option>
       <option value="L" ${status === 'L' ? 'selected' : ''}>Late</option>
       <option value="E" ${status === 'E' ? 'selected' : ''}>Excused</option>
-      <option value="O" ${status === 'O' ? 'selected' : ''}>On Leave</option>
-    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm, timesOpen, true))}</strong></td></tr>`;
+      <option value="O" ${status === 'O' ? 'selected' : ''}>On Leave</option><option value="S" ${status === 'S' ? 'selected' : ''}>On Strike</option>
+    </select></td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td>${sm.strike||0}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm, timesOpen, true))}</strong></td></tr>`;
   });
   html += '</tbody></table></div>';
-  html += `<p class="hint">${teacherAttendanceRecordsForTerm(settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school teacher attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays and midterm.</p>`;
+  html += `<p class="hint">${teacherAttendanceRecordsForTerm(settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school teacher attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays, midterm and strike days.</p>`;
   wrap.innerHTML = html;
+  document.getElementById('saveTeacherStrikePolicy').onclick=()=>{if(!requireHeadTeacher('change the strike ratio policy'))return;const policy=document.getElementById('teacherStrikePolicy').value;if(!policy){alert('Choose how On Strike days affect the attendance ratio.');return;}const settings=DB.get(KEYS.settings,{});settings.teacherStrikeRatioPolicy=policy;DB.set(KEYS.settings,settings);renderTeacherAttendanceForm();};
   document.getElementById('teacherAttendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('teacherAttendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'A'));
   document.getElementById('teacherAttendanceUnmarkAll').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = ''));
@@ -5137,21 +5152,21 @@ function renderSchoolCalendar() {
   const timesOpen = calculateTimesOpen(term, year);
   const holidays = records.filter(x => String(x.record.type).toLowerCase() === 'holiday').length;
   const midterms = records.filter(x => String(x.record.type).toLowerCase() === 'midterm').length;
-  let html = `<div class="attendance-summary-pills"><div class="attendance-summary-pill"><span>Times Open</span><strong>${timesOpen || 0} day${timesOpen === 1 ? '' : 's'}</strong></div><div class="attendance-summary-pill"><span>Holidays</span><strong>${holidays}</strong></div><div class="attendance-summary-pill"><span>Midterm</span><strong>${midterms}</strong></div></div>`;
+  let html = `<div class="attendance-summary-pills"><div class="attendance-summary-pill"><span>Times Open</span><strong>${timesOpen || 0} day${timesOpen === 1 ? '' : 's'}</strong></div><div class="attendance-summary-pill"><span>Holidays</span><strong>${holidays}</strong></div><div class="attendance-summary-pill"><span>Midterm</span><strong>${midterms}</strong></div><div class="attendance-summary-pill"><span>Strike Days</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>x.record.type==='strike').length}</strong></div></div>`;
   html += `<div class="calendar-editor"><h3>School Calendar</h3><p class="hint">${dates ? `Current term: ${escapeHtml(term)} ${escapeHtml(year)} · ${escapeHtml(dates.start)} to ${escapeHtml(dates.end)}` : 'Set the Term Opens and Term Closes dates in Setup first.'}</p>`;
   if (isTeacher()) html += '<p class="hint">School calendar dates are managed by your Head Teacher. Teachers can view the calendar and record pupil attendance in Students.</p>';
-  html += '<div class="row"><label>Date<input type="date" id="calendarDate"></label><label>Day Type<select id="calendarType"><option value="open">School Open</option><option value="holiday">Holiday</option><option value="midterm">Midterm</option></select></label></div>';
+  html += '<div class="row"><label>Date<input type="date" id="calendarDate"></label><label>Day Type<select id="calendarType"><option value="open">School Open</option><option value="holiday">Holiday</option><option value="midterm">Midterm</option><option value="strike">Strike</option></select></label></div>';
   html += '<label>Note / Occasion (optional)<input type="text" id="calendarNote" placeholder="e.g. Independence Day / Midterm Break"></label>';
   html += '<div class="attendance-toolbar"><button type="button" id="saveCalendarDay" class="btn-primary">Save Calendar Day</button><button type="button" id="clearCalendarDay" class="btn-text">Clear / Set School Open</button></div></div>';
   html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Note</th><th>Action</th></tr></thead><tbody>';
-  if (!records.length) html += '<tr><td colspan="5" class="empty">No holidays or midterm days have been added for this term.</td></tr>';
+  if (!records.length) html += '<tr><td colspan="5" class="empty">No holidays, midterm or strike days have been added for this term.</td></tr>';
   records.forEach(x => {
     const d = parseDateOnly(x.date);
     const day = d ? d.toLocaleDateString(undefined, {weekday:'short'}) : '';
     html += `<tr><td>${escapeHtml(x.date)}</td><td>${escapeHtml(day)}</td><td>${escapeHtml(calendarLabel(String(x.record.type || '').toLowerCase()))}</td><td>${escapeHtml(x.record.note || '')}</td><td><div class="calendar-row-actions"><button type="button" class="calendar-edit" data-date="${escapeHtml(x.date)}">Edit</button><button type="button" class="calendar-delete" data-date="${escapeHtml(x.date)}">Remove</button></div></td></tr>`;
   });
   html += '</tbody></table></div>';
-  html += '<p class="hint">Only weekdays inside the term count toward Times Open. Holiday and Midterm days are excluded. Weekends are automatically excluded.</p>';
+  html += '<p class="hint">Only weekdays inside the term count toward Times Open. Holiday, Midterm and Strike days are excluded. Weekends are automatically excluded.</p>';
   wrap.innerHTML = html;
   const canEdit = isHeadTeacher();
   ['calendarDate','calendarType','calendarNote','saveCalendarDay','clearCalendarDay'].forEach(id => { const el=document.getElementById(id); if(el) el.disabled=!canEdit; });
@@ -5287,16 +5302,16 @@ function attendanceReportOverallStudent(term, year, timesOpen) {
 function attendanceReportOverallTeacher(term, year, timesOpen) {
   const teachers = DB.get(KEYS.staff, []).filter(isTeacherStaffRecord);
   const smap = teacherAttendanceSummary(term, year).summary;
-  let present = 0, late = 0, total = 0, absent = 0, excused = 0, leave = 0;
+  let present = 0, late = 0, total = 0, absent = 0, excused = 0, leave = 0, strike = 0;
   const ratios = [];
   teachers.forEach(st => {
-    const sm = smap[st.id] || { present:0, late:0, total:0, absent:0, excused:0, leave:0 };
+    const sm = smap[st.id] || { present:0, late:0, total:0, absent:0, excused:0, leave:0, strike:0 };
     present += Number(sm.present || 0); late += Number(sm.late || 0); total += Number(sm.total || 0);
-    absent += Number(sm.absent || 0); excused += Number(sm.excused || 0); leave += Number(sm.leave || 0);
+    absent += Number(sm.absent || 0); excused += Number(sm.excused || 0); leave += Number(sm.leave || 0); strike += Number(sm.strike || 0);
     const ratio = attendanceRatio(sm, timesOpen, true);
     if (Number.isFinite(ratio)) ratios.push(ratio);
   });
-  return { teachers: teachers.length, present, late, total, absent, excused, leave, averageRatio: ratios.length ? ratios.reduce((a,b)=>a+b,0)/ratios.length : null };
+  return { teachers: teachers.length, present, late, total, absent, excused, leave, strike, averageRatio: ratios.length ? ratios.reduce((a,b)=>a+b,0)/ratios.length : null };
 }
 
 function attendanceSummaryPrintHtml() {
@@ -5316,7 +5331,7 @@ function attendanceSummaryPrintHtml() {
 
   const esc = escapeHtml;
   let html = `<div class="attendance-print-report"><div class="attendance-report-heading"><h2>${esc(school)}</h2><h3>Attendance Summary Report</h3><p>${esc(term)} ${esc(year)}${timesOpen ? ` · Times Open: ${timesOpen} days` : ''}</p></div>`;
-  html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Avg Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div><div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Avg Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div></div>`;
+  html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Strike Days</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>x.record.type==='strike').length}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Avg Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div><div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Avg Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div></div>`;
 
   html += '<h3 class="attendance-report-section-title">Class Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
   if (!classes.length) html += '<tr><td colspan="7" class="empty">No accessible classes.</td></tr>';
@@ -5324,16 +5339,16 @@ function attendanceSummaryPrintHtml() {
   html += '</tbody></table></div>';
 
   if (isHeadTeacher()) {
-    html += '<h3 class="attendance-report-section-title">Teacher Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Ratio</th></tr></thead><tbody>';
+    html += '<h3 class="attendance-report-section-title">Teacher Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>On Strike</th><th>Ratio</th></tr></thead><tbody>';
     if (!staff.length) html += '<tr><td colspan="9" class="empty">No teaching staff.</td></tr>';
-    staff.forEach(st => { const sm=teacherMap[st.id] || {present:0,late:0,total:0,absent:0,excused:0,leave:0}; html += `<tr><td>${esc(st.name)}</td><td>${esc(st.role || 'Teacher')}</td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm,timesOpen,true))}</strong></td></tr>`; });
+    staff.forEach(st => { const sm=teacherMap[st.id] || {present:0,late:0,total:0,absent:0,excused:0,leave:0, strike:0}; html += `<tr><td>${esc(st.name)}</td><td>${esc(st.role || 'Teacher')}</td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td>${sm.strike||0}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm,timesOpen,true))}</strong></td></tr>`; });
     html += '</tbody></table></div>';
   }
 
   html += '<h3 class="attendance-report-section-title">School Calendar Exceptions</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Note</th></tr></thead><tbody>';
-  if (!calendar.filter(x => String(x.record.type || '').toLowerCase() !== 'open').length) html += '<tr><td colspan="4" class="empty">No holidays or midterm days recorded.</td></tr>';
+  if (!calendar.filter(x => String(x.record.type || '').toLowerCase() !== 'open').length) html += '<tr><td colspan="4" class="empty">No holidays, midterm or strike days recorded.</td></tr>';
   calendar.filter(x => String(x.record.type || '').toLowerCase() !== 'open').forEach(x => { const d=parseDateOnly(x.date); const day=d?d.toLocaleDateString(undefined,{weekday:'short'}):''; html += `<tr><td>${esc(x.date)}</td><td>${esc(day)}</td><td>${esc(calendarLabel(String(x.record.type||'').toLowerCase()))}</td><td>${esc(x.record.note||'')}</td></tr>`; });
-  html += '</tbody></table></div><p class="attendance-report-footnote">Generated from SchoolHub attendance records. Late counts as attendance. Holidays, midterm days and weekends are excluded from Times Open.</p></div>';
+  html += '</tbody></table></div><p class="attendance-report-footnote">Generated from SchoolHub attendance records. Late counts as attendance. Holidays, midterm days, strike days and weekends are excluded from Times Open.</p></div>';
   return html;
 }
 
@@ -5445,7 +5460,7 @@ function openSchoolDatesForTerm(term, year) {
     if (!isWeekdayDate(d)) continue;
     const key = dateOnlyString(d);
     const type = exceptions.get(key);
-    if (type === 'holiday' || type === 'midterm') continue;
+    if (type === 'holiday' || type === 'midterm' || type === 'strike') continue;
     const today = parseDateOnly(attendanceDateToday());
     if (today && d > today) continue;
     out.push(key);
@@ -5498,7 +5513,7 @@ function teacherAttendanceAnalysis(term, year, timesOpen) {
   const openDates = openSchoolDatesForTerm(term, year);
   const summary = {};
   teachers.forEach(st => {
-    const sm = { present:0, late:0, total:0, absent:0, excused:0, leave:0, recorded:0, currentAbsenceStreak:0, longestAbsenceStreak:0 };
+    const sm = { present:0, late:0, total:0, absent:0, excused:0, leave:0, strike:0, recorded:0, currentAbsenceStreak:0, longestAbsenceStreak:0 };
     const statusByDate = {};
     records.forEach(({date, record}) => {
       if (attendanceDayType(term, year, date) !== 'open') return;
@@ -5511,6 +5526,7 @@ function teacherAttendanceAnalysis(term, year, timesOpen) {
       else if (status === 'A') sm.absent++;
       else if (status === 'E') sm.excused++;
       else if (status === 'O') sm.leave++;
+      else if (status === 'S') sm.strike++;
     });
     sm.total = sm.present + sm.late;
     let run = 0;
@@ -5588,7 +5604,7 @@ function attendanceAnalyticsBuild(term, year, timesOpen) {
     staff: st,
     summary: teacherData.summary[st.id] || {
       present: 0, late: 0, total: 0, absent: 0,
-      excused: 0, leave: 0, recorded: 0,
+      excused: 0, leave: 0, strike: 0, recorded: 0,
       ratio: null, currentAbsenceStreak: 0, longestAbsenceStreak: 0
     }
   }));
@@ -5608,7 +5624,7 @@ function attendanceAnalyticsBuild(term, year, timesOpen) {
     });
 
     let teacherExpected = isHeadTeacher() ? teacherRows.length : 0;
-    let teacherMarked = 0, teacherAttended = 0, teacherAbsent = 0, teacherLate = 0;
+    let teacherMarked = 0, teacherAttended = 0, teacherAbsent = 0, teacherLate = 0, teacherStrike = 0;
     if (isHeadTeacher()) {
       teacherRows.forEach(({ staff }) => {
         const status = attendanceStatusCodeForTeacher(term, year, date, staff.id);
@@ -5616,6 +5632,7 @@ function attendanceAnalyticsBuild(term, year, timesOpen) {
         if (status === 'P') teacherAttended++;
         else if (status === 'L') { teacherAttended++; teacherLate++; }
         else if (status === 'A') teacherAbsent++;
+        else if (status === 'S'){teacherStrike++;if(DB.get(KEYS.settings,{}).teacherStrikeRatioPolicy==='exclude')teacherExpected--;}
       });
     }
 
@@ -5632,7 +5649,7 @@ function attendanceAnalyticsBuild(term, year, timesOpen) {
       teacherMarked,
       teacherAttended,
       teacherAbsent,
-      teacherLate,
+      teacherLate, teacherStrike,
       teacherCompletion: teacherExpected ? (teacherMarked / teacherExpected) * 100 : null,
       teacherRate: teacherExpected ? (teacherAttended / teacherExpected) * 100 : null
     };
@@ -5650,12 +5667,13 @@ function attendanceAnalyticsBuild(term, year, timesOpen) {
 
   const teacherAttended = teacherRows.reduce((n, x) => n + Number(x.summary.total || 0), 0);
   const teacherAbsent = teacherRows.reduce((n, x) => n + Number(x.summary.absent || 0), 0);
+  const teacherStrike = teacherRows.reduce((n,x)=>n+Number(x.summary.strike||0),0);
   const teacherLate = teacherRows.reduce((n, x) => n + Number(x.summary.late || 0), 0);
   const teacherRecorded = teacherRows.reduce((n, x) => n + Number(x.summary.recorded || 0), 0);
   const teacherExpected = teacherRows.reduce((n, x) =>
-    n + Math.max(0, Number(timesOpen || 0) - Number(x.summary.excused || 0) - Number(x.summary.leave || 0)), 0);
+    n + Math.max(0, Number(timesOpen || 0) - Number(x.summary.excused || 0) - Number(x.summary.leave || 0) - (DB.get(KEYS.settings,{}).teacherStrikeRatioPolicy==='exclude'?Number(x.summary.strike||0):0)), 0);
   const teacherCompletionDenominator = teacherRows.reduce((n, x) =>
-    n + Math.max(0, Number(timesOpen || 0) - Number(x.summary.excused || 0) - Number(x.summary.leave || 0)), 0);
+    n + Math.max(0, Number(timesOpen || 0) - Number(x.summary.excused || 0) - Number(x.summary.leave || 0) - (DB.get(KEYS.settings,{}).teacherStrikeRatioPolicy==='exclude'?Number(x.summary.strike||0):0)), 0);
   const teacherCompletion = teacherCompletionDenominator > 0
     ? Math.min(100, (teacherRecorded / teacherCompletionDenominator) * 100)
     : null;
@@ -5701,6 +5719,7 @@ function attendanceAnalyticsBuild(term, year, timesOpen) {
     teacherAttended,
     teacherAbsent,
     teacherLate,
+    teacherStrike,
     openDates
   };
 }
@@ -5731,8 +5750,8 @@ function renderAttendanceAnalysis() {
   const bestClass = data.classRows.filter(x=>Number.isFinite(x.ratio)&&x.pupils).sort((a,b)=>b.ratio-a.ratio)[0];
   const concernClass = data.classRows.filter(x=>Number.isFinite(x.ratio)&&x.pupils).sort((a,b)=>a.ratio-b.ratio)[0];
 
-  let html = `<div class="attendance-analytics-head"><div><h3>Attendance Analytics</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)} · ${timesOpen} school-open day${timesOpen===1?'':'s'} · data excludes weekends, holidays and midterm.</p></div></div>`;
-  html += `<div class="attendance-analysis-cards"><div><span>Pupil Attendance Rate</span><strong>${formatAttendanceRatio(data.pupilRate)}</strong></div><div><span>Pupil Completion</span><strong>${formatAttendanceRatio(data.pupilCompletion)}</strong></div>${isHeadTeacher()?`<div><span>Teacher Attendance Rate</span><strong>${formatAttendanceRatio(data.teacherRate)}</strong></div><div><span>Teacher Completion</span><strong>${formatAttendanceRatio(data.teacherCompletion)}</strong></div>`:''}<div><span>Total Pupil Absences</span><strong>${data.pupilAbsent}</strong></div><div><span>Total Pupil Late</span><strong>${data.pupilLate}</strong></div>${isHeadTeacher()?`<div><span>Teacher Absences</span><strong>${data.teacherAbsent}</strong></div><div><span>Teacher Late</span><strong>${data.teacherLate}</strong></div>`:''}</div>`;
+  let html = `<div class="attendance-analytics-head"><div><h3>Attendance Analytics</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)} · ${timesOpen} school-open day${timesOpen===1?'':'s'} · data excludes weekends, holidays, midterm and strike days.</p></div></div>`;
+  html += `<div class="attendance-analysis-cards"><div><span>Pupil Attendance Rate</span><strong>${formatAttendanceRatio(data.pupilRate)}</strong></div><div><span>Pupil Completion</span><strong>${formatAttendanceRatio(data.pupilCompletion)}</strong></div>${isHeadTeacher()?`<div><span>Teacher Attendance Rate</span><strong>${formatAttendanceRatio(data.teacherRate)}</strong></div><div><span>Teacher Completion</span><strong>${formatAttendanceRatio(data.teacherCompletion)}</strong></div>`:''}<div><span>Total Pupil Absences</span><strong>${data.pupilAbsent}</strong></div><div><span>Total Pupil Late</span><strong>${data.pupilLate}</strong></div>${isHeadTeacher()?`<div><span>Teacher Absences</span><strong>${data.teacherAbsent}</strong></div><div><span>Teacher Late</span><strong>${data.teacherLate}</strong></div><div><span>Teacher On Strike</span><strong>${data.teacherStrike||0}</strong></div>`:''}</div>`;
 
   html += `<div class="attendance-analytics-grid"><div class="attendance-analytics-panel"><h4>School Performance</h4><p class="hint">Average individual ratios and daily recording completion.</p><div class="attendance-analytics-metric"><span>Average Pupil Ratio</span>${analyticsPercentBar(avgPupilRatio,'Pupils')}</div>${isHeadTeacher()?`<div class="attendance-analytics-metric"><span>Average Teacher Ratio</span>${analyticsPercentBar(avgTeacherRatio,'Teachers')}</div>`:''}<div class="attendance-analytics-metric"><span>Average Pupil Recording Completion</span>${analyticsPercentBar(avgCompletion,'Recorded')}</div>${bestClass?`<div class="attendance-analytics-highlight"><span>Best-performing class</span><strong>${escapeHtml(bestClass.classInfo.name)} · ${formatAttendanceRatio(bestClass.ratio)}</strong></div>`:''}${concernClass&&concernClass!==bestClass?`<div class="attendance-analytics-highlight"><span>Class needing attention</span><strong>${escapeHtml(concernClass.classInfo.name)} · ${formatAttendanceRatio(concernClass.ratio)}</strong></div>`:''}</div>`;
   html += `<div class="attendance-analytics-panel"><h4>Attendance Distribution</h4><div class="attendance-analytics-distribution"><div><strong>${data.pupilAttended}</strong><span>Present + Late</span></div><div><strong>${data.pupilAbsent}</strong><span>Absent</span></div><div><strong>${data.pupilRows.reduce((n,x)=>n+x.summary.recorded,0)}</strong><span>Recorded pupil marks</span></div>${isHeadTeacher()?`<div><strong>${data.teacherAttended}</strong><span>Teacher Present + Late</span></div><div><strong>${data.teacherAbsent}</strong><span>Teacher Absent</span></div>`:''}</div><p class="hint">An unrecorded mark is not treated as Present or Absent, but it reduces the attendance/completion rate.</p></div></div>`;
@@ -5758,7 +5777,7 @@ function renderAttendanceAnalysis() {
     html += '</div></div>';
   }
   html += '</div>';
-  html += `<p class="hint">Analytics uses Present + Late as attendance. Pupil ratios use Times Open as the denominator. Teacher ratios exclude approved Excused and On Leave days from each teacher's denominator. Completion measures whether attendance was actually recorded.</p>`;
+  html += `<p class="hint">Analytics uses Present + Late as attendance. Pupil ratios use Times Open as the denominator. Teacher ratios exclude approved Excused and On Leave days; individual On Strike days follow the saved strike ratio policy. Completion measures whether attendance was actually recorded.</p>`;
   wrap.innerHTML = html;
 }
 
@@ -5810,8 +5829,8 @@ function renderAttendanceSummary() {
   }
   html += '</div>';
   html += `<div class="attendance-summary-report-head"><div><h3>Attendance Summary</h3><p class="hint">${escapeHtml(term)} ${escapeHtml(year)}${timesOpen ? ` · ${timesOpen} school-open day(s)` : ''}</p></div><div class="attendance-summary-report-actions"><button type="button" id="printAttendanceSummaryBtn" class="btn-primary">Print Report</button><button type="button" id="pdfAttendanceSummaryBtn" class="btn-primary">Download Report</button></div></div>`;
-  html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher() ? `<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>` : ''}</div>`;
-  html += '<div class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Approved teacher Excused and On Leave days are excluded from the individual teacher denominator.</div>';
+  html += `<div class="attendance-report-cards"><div><span>Times Open</span><strong>${timesOpen} days</strong></div><div><span>Holidays</span><strong>${holidays}</strong></div><div><span>Midterm</span><strong>${midterms}</strong></div><div><span>Strike Days</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>x.record.type==='strike').length}</strong></div><div><span>Pupils</span><strong>${students.pupils}</strong></div><div><span>Average Pupil Ratio</span><strong>${formatAttendanceRatio(students.averageRatio)}</strong></div>${isHeadTeacher() ? `<div><span>Teachers</span><strong>${teachers.teachers}</strong></div><div><span>Average Teacher Ratio</span><strong>${formatAttendanceRatio(teachers.averageRatio)}</strong></div>` : ''}</div>`;
+  html += '<div class="attendance-report-note">Attendance ratios use Times Open. Present and Late count as attendance. Approved teacher Excused and On Leave days are excluded from the individual teacher denominator. Individual On Strike days follow the saved strike ratio policy.</div>';
   html += '<h3 class="attendance-report-section-title">Class Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Average Ratio</th></tr></thead><tbody>';
   const classes=getAccessibleClasses();
   if (!classes.length) html += '<tr><td colspan="7" class="empty">No accessible classes.</td></tr>';
@@ -5819,14 +5838,14 @@ function renderAttendanceSummary() {
   html += '</tbody></table></div>';
   if (isHeadTeacher()) {
     const staff=DB.get(KEYS.staff,[]).filter(isTeacherStaffRecord); const smap=teacherAttendanceSummary(term,year).summary;
-    html += '<h3 class="attendance-report-section-title">Teacher Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>Ratio</th></tr></thead><tbody>';
+    html += '<h3 class="attendance-report-section-title">Teacher Attendance</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Teacher</th><th>Role</th><th>Present</th><th>Late</th><th>Total</th><th>Absent</th><th>Excused</th><th>Leave</th><th>On Strike</th><th>Ratio</th></tr></thead><tbody>';
     if(!staff.length) html += '<tr><td colspan="9" class="empty">No teaching staff.</td></tr>';
-    staff.forEach(st=>{const sm=smap[st.id]||{present:0,late:0,total:0,absent:0,excused:0,leave:0}; html += `<tr><td>${escapeHtml(st.name)}</td><td>${escapeHtml(st.role||'Teacher')}</td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm,timesOpen,true))}</strong></td></tr>`;});
+    staff.forEach(st=>{const sm=smap[st.id]||{present:0,late:0,total:0,absent:0,excused:0,leave:0, strike:0}; html += `<tr><td>${escapeHtml(st.name)}</td><td>${escapeHtml(st.role||'Teacher')}</td><td>${sm.present}</td><td>${sm.late}</td><td><strong>${sm.total}</strong></td><td>${sm.absent}</td><td>${sm.excused}</td><td>${sm.leave}</td><td>${sm.strike||0}</td><td><strong>${formatAttendanceRatio(attendanceRatio(sm,timesOpen,true))}</strong></td></tr>`;});
     html += '</tbody></table></div>';
   }
   html += '<h3 class="attendance-report-section-title">Calendar Exceptions</h3><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Note</th></tr></thead><tbody>';
   const exceptions=calendar.filter(x=>String(x.record.type||'').toLowerCase()!=='open');
-  if(!exceptions.length) html += '<tr><td colspan="4" class="empty">No holidays or midterm days recorded.</td></tr>';
+  if(!exceptions.length) html += '<tr><td colspan="4" class="empty">No holidays, midterm or strike days recorded.</td></tr>';
   exceptions.forEach(x=>{const d=parseDateOnly(x.date); const day=d?d.toLocaleDateString(undefined,{weekday:'short'}):''; html += `<tr><td>${escapeHtml(x.date)}</td><td>${escapeHtml(day)}</td><td>${escapeHtml(calendarLabel(String(x.record.type||'').toLowerCase()))}</td><td>${escapeHtml(x.record.note||'')}</td></tr>`;});
   html += '</tbody></table></div>';
   wrap.innerHTML=html;
@@ -6032,7 +6051,7 @@ document.getElementById('saveAttendanceBtn').addEventListener('click', () => {
   if (!settings.currentTerm || !settings.currentYear) { alert('Set the current Term and Academic Year in Setup first.'); return; }
   const date = document.getElementById('attendanceDate').value;
   if (!date) { alert('Select an attendance date.'); return; }
-  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Attendance cannot be recorded on weekends, holidays or midterm days.'); return; }
+  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Attendance cannot be recorded on weekends, holidays, midterm or strike days.'); return; }
   const statuses = {};
   document.querySelectorAll('#attendanceFormWrap .attendance-status').forEach(select => { if (select.value) statuses[select.dataset.student] = select.value; });
   const key = attendanceKey(classId, settings.currentTerm, settings.currentYear, date);
@@ -6061,9 +6080,10 @@ document.getElementById('saveTeacherAttendanceBtn').addEventListener('click', ()
   if (!settings.currentTerm || !settings.currentYear) { alert('Set the current Term and Academic Year in Setup first.'); return; }
   const date = document.getElementById('teacherAttendanceDate').value;
   if (!date) { alert('Select a teacher attendance date.'); return; }
-  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Teacher attendance cannot be recorded on weekends, holidays or midterm days.'); return; }
+  if (attendanceDayType(settings.currentTerm, settings.currentYear, date) !== 'open') { alert('Teacher attendance cannot be recorded on weekends, holidays, midterm or strike days.'); return; }
   const entries = {};
   document.querySelectorAll('#teacherAttendanceFormWrap .teacher-attendance-status').forEach(select => { if (select.value) entries[select.dataset.staff] = select.value; });
+  if(Object.values(entries).includes('S')&&!['include','exclude'].includes(settings.teacherStrikeRatioPolicy)){alert('Save the strike ratio policy before recording On Strike.');return;}
   const key = teacherAttendanceKey(settings.currentTerm, settings.currentYear, date);
   const all = DB.get(KEYS.teacherAttendance, {});
   all[key] = { term: settings.currentTerm, year: settings.currentYear, date, entries };
@@ -10275,6 +10295,8 @@ async function revalidateAndSyncAfterReconnect() {
       if (data && data.status === 'pending') {
         currentSchoolId = null; currentRole = data.role || 'teacher'; currentStatus = 'pending';
         hideAuthGate(); hideDisabledGate(); showPendingGate();
+      } else if(data&&['removed','rejected'].includes(data.status)){
+        currentSchoolId=null;currentRole=null;currentStatus=data.status;hideAuthGate();hidePendingGate();hideDisabledGate();showSchoolChoiceGate();
       } else if (data && data.status && data.status !== 'active') {
         currentSchoolId = null; currentRole = data.role || null; currentStatus = data.status;
         hideAuthGate(); hidePendingGate(); showDisabledGate();
@@ -10549,12 +10571,10 @@ function joinSchoolWithCode(code) {
 //   staff/{staffId}.userUid -> users/{uid}
 
 function fetchSchoolMembers() {
-  return firebase.firestore().collection('users').where('schoolId', '==', currentSchoolId).get()
-    .then(snap => {
-      const members = [];
-      snap.forEach(doc => members.push(Object.assign({ uid: doc.id }, doc.data())));
-      return members;
-    });
+  return Promise.all([firebase.firestore().collection('users').where('schoolId','==',currentSchoolId).get(),schoolRef().collection('teacherLinks').get()]).then(([snap,links])=>{
+    const remembered=new Map(links.docs.map(d=>[d.id,d.data().staffId]));
+    return snap.docs.map(doc=>({uid:doc.id,...doc.data(),previousStaffId:remembered.get(doc.id)||''}));
+  });
 }
 
 function getStaffForUserUid(userUid) {
@@ -10575,116 +10595,14 @@ function staffNameFromMember(member) {
   return localPart.replace(/[._-]+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()).trim();
 }
 
-function createLinkedStaffRecord(member, name) {
-  if (!isHeadTeacher()) return Promise.reject(new Error('Only the Head Teacher can create staff records.'));
-  if (!member || !member.uid) return Promise.reject(new Error('Teacher account could not be identified.'));
-
-  const existing = getStaffForUserUid(member.uid);
-  if (existing) return Promise.resolve(existing);
-
-  const cleanName = String(name || '').trim();
-  if (!cleanName) return Promise.reject(new Error('Enter the teacher\'s full name for the Staff record.'));
-
-  const staffId = uid();
-  const record = {
-    id: staffId,
-    userUid: member.uid,
-    email: String(member.email || '').trim(),
-    name: cleanName,
-    role: 'Teacher',
-    dob: '',
-    staffId: '',
-    registeredNo: '',
-    licenseNo: '',
-    ssnitNo: '',
-    ghanaCardId: '',
-    dateOfAppointment: '',
-    rank: '',
-    phone: '',
-    signature: '',
-    signatureUrl: '',
-    createdAt: new Date().toISOString()
-  };
-
-  const staffList = DB.get(KEYS.staff, []);
-  staffList.push(record);
-  DB.set(KEYS.staff, staffList);
-
-  // Keep the relationship in the teacher account as well. The Head Teacher
-  // is allowed to update teacher membership records by Firestore rules.
-  return staffRef(staffId).set(stripImagesForCloud('staff', record))
-    .then(() => firebase.firestore().collection('users').doc(member.uid).update({
-      staffId,
-      staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }))
-    .then(() => record)
-    .catch(err => {
-      // Do not leave a misleading local record if the cloud relationship failed.
-      DB.set(KEYS.staff, DB.get(KEYS.staff, []).filter(s => s.id !== staffId));
-      throw err;
-    });
+function teacherStaffCandidate(member) {
+ const staff=DB.get(KEYS.staff,[]),email=String(member.email||'').trim().toLowerCase();
+ const linked=staff.find(x=>x.id===member.staffId||x.userUid===member.uid||x.id===member.previousStaffId);
+ if(linked)return linked;
+ const matches=staff.filter(x=>email&&String(x.email||'').trim().toLowerCase()===email&&!x.userUid);
+ return matches.length===1?matches[0]:null;
 }
-
-function linkExistingStaffToTeacher(member, staffId) {
-  if (!isHeadTeacher()) return Promise.reject(new Error('Only the Head Teacher can link staff records.'));
-  if (!member || !member.uid) return Promise.reject(new Error('Teacher account could not be identified.'));
-  const staff = getStaffById(staffId);
-  if (!staff) return Promise.reject(new Error('Selected Staff record was not found.'));
-
-  const otherTeacher = DB.get(KEYS.staff, []).find(s => s.id !== staff.id && s.userUid === member.uid);
-  if (otherTeacher) return Promise.reject(new Error('This teacher is already linked to another Staff record.'));
-
-  const previousUserUid = staff.userUid || '';
-  staff.userUid = member.uid;
-  staff.email = String(member.email || staff.email || '').trim();
-  staff.role = 'Teacher';
-  DB.set(KEYS.staff, DB.get(KEYS.staff, []));
-
-  const userRef = firebase.firestore().collection('users').doc(member.uid);
-  const staffWrite = staffRef(staff.id).set(stripImagesForCloud('staff', staff), { merge: true });
-  const userWrite = userRef.update({
-    staffId: staff.id,
-    staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-
-  // If this Staff record used to belong to another account, clear that old
-  // account's link so the relationship remains one-to-one.
-  let oldUserWrite = Promise.resolve();
-  if (previousUserUid && previousUserUid !== member.uid) {
-    oldUserWrite = firebase.firestore().collection('users').doc(previousUserUid).update({
-      staffId: firebase.firestore.FieldValue.delete(),
-      staffLinkedAt: firebase.firestore.FieldValue.delete()
-    }).catch(() => {});
-  }
-
-  return Promise.all([staffWrite, userWrite, oldUserWrite]).then(() => staff);
-}
-
-function unlinkTeacherStaff(member) {
-  if (!isHeadTeacher()) return Promise.reject(new Error('Only the Head Teacher can unlink staff records.'));
-  if (!member || !member.uid) return Promise.resolve();
-  const staff = getStaffForUserUid(member.uid);
-  const userRef = firebase.firestore().collection('users').doc(member.uid);
-
-  if (!staff) {
-    return userRef.update({
-      staffId: firebase.firestore.FieldValue.delete(),
-      staffLinkedAt: firebase.firestore.FieldValue.delete()
-    });
-  }
-
-  staff.userUid = '';
-  staff.email = staff.email || String(member.email || '').trim();
-  DB.set(KEYS.staff, DB.get(KEYS.staff, []));
-
-  return Promise.all([
-    staffRef(staff.id).set(stripImagesForCloud('staff', staff), { merge: true }),
-    userRef.update({
-      staffId: firebase.firestore.FieldValue.delete(),
-      staffLinkedAt: firebase.firestore.FieldValue.delete()
-    })
-  ]);
-}
+function unlinkTeacherStaff(member) {return safetyCall('manageTeacherLifecycle',{action:'unlink',teacherUid:member.uid});}
 
 let editingManageTeacherUid = null;
 
@@ -10718,13 +10636,14 @@ function renderManageTeachers() {
       const assignedClasses = Array.isArray(m.assignedClassIds) ? m.assignedClassIds : [];
       const assignedSubjects = Array.isArray(m.assignedSubjectIds) ? m.assignedSubjectIds : [];
       const linkedStaff = m.staffId ? getStaffById(m.staffId) : getStaffForUserUid(m.uid);
+      const suggestedStaff = linkedStaff || teacherStaffCandidate(m);
       const statusText = m.status === 'pending' ? ' · Pending approval' : m.status === 'disabled' ? ' · Disabled' : ' · Active';
       const displayEmail = String(m.email || '').trim();
       const displayName = String(m.displayName || '').trim();
       const accountLabel = displayName && displayEmail
         ? `${displayName} · ${displayEmail}`
         : (displayEmail || displayName || m.uid);
-      const suggestedName = linkedStaff ? linkedStaff.name : (displayName || staffNameFromMember(m));
+      const suggestedName = suggestedStaff ? suggestedStaff.name : (displayName || staffNameFromMember(m));
       const isExpanded = m.status === 'pending' || editingManageTeacherUid === m.uid;
 
       const classChecks = classes.map(c =>
@@ -10736,7 +10655,7 @@ function renderManageTeachers() {
       ).join('') || '<p class="hint">Create subjects first.</p>';
 
       const staffOptions = ['<option value="">— Create new Staff record —</option>']
-        .concat(staff.map(s => `<option value="${escapeHtml(s.id)}" ${linkedStaff && linkedStaff.id === s.id ? 'selected' : ''}>${escapeHtml(s.name || 'Unnamed Staff')}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}${s.userUid && s.userUid !== m.uid ? ' · Linked' : ''}</option>`))
+        .concat(staff.filter(s=>!s.userUid||s.userUid===m.uid).map(s => `<option value="${escapeHtml(s.id)}" ${suggestedStaff && suggestedStaff.id === s.id ? 'selected' : ''}>${escapeHtml(s.name || 'Unnamed Staff')}${s.role ? ' (' + escapeHtml(s.role) + ')' : ''}${s.userUid && s.userUid !== m.uid ? ' · Linked' : ''}</option>`))
         .join('');
 
       const actionLabel = m.status === 'pending' ? 'Approve & Save' : 'Update Teacher';
@@ -10754,7 +10673,7 @@ function renderManageTeachers() {
           <label>Staff record
             <select class="teacher-staff-select">${staffOptions}</select>
           </label>
-          <p class="hint">An approved teacher must have one linked Staff record. The Staff record stores the person's personnel details and report-card signature. The teacher account stores access and assignments.</p>
+          <p class="hint">${suggestedStaff&&!linkedStaff?'Relink existing Staff is recommended: a previous link or exact email match was found. ':''}An approved teacher must have one linked Staff record. The Staff record stores the person's personnel details and report-card signature. The teacher account stores access and assignments.</p>
           <strong>Classes</strong>
           <div class="teacher-assignment-list">${classChecks}</div>
           <strong>Subjects</strong>
@@ -10763,7 +10682,7 @@ function renderManageTeachers() {
             <button class="save-btn save-teacher-assignment" data-uid="${m.uid}">${actionLabel}</button>
             ${m.status !== 'pending' ? '<button class="cancel-btn cancel-teacher-edit" data-uid="' + m.uid + '">Cancel</button>' : ''}
             ${linkedStaff ? '<button class="cancel-btn unlink-teacher-staff" data-uid="' + m.uid + '">Unlink Staff</button>' : ''}
-            ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton}
+            ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton + `<button class="remove-teacher-btn" data-uid="${m.uid}">Remove from School</button>`}
           </div>
         </div>`;
       } else {
@@ -10777,7 +10696,7 @@ function renderManageTeachers() {
           </div>
           <div class="teacher-summary-actions">
             <button class="edit-teacher-btn" data-uid="${m.uid}">Edit</button>
-            ${disableButton}
+            ${disableButton}${m.status!=='pending'?`<button class="remove-teacher-btn" data-uid="${m.uid}">Remove from School</button>`:''}
           </div>
         </div>`;
       }
@@ -10830,39 +10749,12 @@ function renderManageTeachers() {
           return;
         }
 
-        const existingLinked = member.staffId ? getStaffById(member.staffId) : getStaffForUserUid(member.uid);
-        let staffPromise;
-
-        if (selectedStaffId) {
-          const selectedStaff = getStaffById(selectedStaffId);
-          if (!selectedStaff) {
-            alert('The selected Staff record could not be found.');
-            return;
-          }
-          if (selectedStaff.userUid && selectedStaff.userUid !== member.uid) {
-            const ok = confirm('This Staff record is already linked to another teacher account. Reassign it to this teacher?');
-            if (!ok) return;
-          }
-          staffPromise = linkExistingStaffToTeacher(member, selectedStaffId);
-        } else if (existingLinked) {
-          existingLinked.name = staffName;
-          existingLinked.email = String(member.email || existingLinked.email || '').trim();
-          existingLinked.role = 'Teacher';
-          DB.set(KEYS.staff, DB.get(KEYS.staff, []));
-          staffPromise = staffRef(existingLinked.id).set(stripImagesForCloud('staff', existingLinked), { merge: true }).then(() => existingLinked);
-        } else {
-          staffPromise = createLinkedStaffRecord(member, staffName);
-        }
-
-        staffPromise.then(staffRecord => {
-          return firebase.firestore().collection('users').doc(member.uid).update({
-            assignedClassIds,
-            assignedSubjectIds,
-            status: 'active',
-            staffId: staffRecord.id,
-            staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            assignmentsUpdatedAt: firebase.firestore.FieldValue.serverTimestamp()
-          });
+        const normalName=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
+        const similar=!selectedStaffId&&staff.some(x=>normalName(x.name)===normalName(staffName));
+        if(similar&&!confirm('A Staff record has this name. Select the existing record if it is the same person. Create a record for a different person with this name?'))return;
+        btn.disabled=true;
+        safetyCall('manageTeacherLifecycle',{action:'save',teacherUid:member.uid,staffId:selectedStaffId,name:staffName,assignedClassIds,assignedSubjectIds,confirmSimilarName:similar}).then(() => {
+          return Promise.resolve();
         }).then(() => {
           editingManageTeacherUid = null;
           auditAction('update', 'teacher', member.uid, `Updated teacher access and assignments: ${member.email || member.uid}`);
@@ -10871,7 +10763,7 @@ function renderManageTeachers() {
           renderManageTeachers();
           renderStaff();
           renderClasses();
-        }).catch(err => alert('Could not save teacher and Staff relationship: ' + err.message));
+        }).catch(err => alert('Could not save teacher and Staff relationship: ' + err.message)).finally(()=>btn.disabled=false);
       });
     });
 
@@ -10891,33 +10783,23 @@ function renderManageTeachers() {
     list.querySelectorAll('.reject-teacher-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         if (!confirm('Reject this request? The teacher will need to join again with a school code.')) return;
-        const member = teachers.find(t => t.uid === btn.dataset.uid);
-        const linkedStaff = member ? getStaffForUserUid(member.uid) : null;
-        const updates = {
-          status: 'rejected',
-          assignedClassIds: [],
-          assignedSubjectIds: [],
-          staffId: firebase.firestore.FieldValue.delete(),
-          staffLinkedAt: firebase.firestore.FieldValue.delete()
-        };
-        firebase.firestore().collection('users').doc(btn.dataset.uid).update(updates)
-          .then(() => {
-            // A pending teacher should not have a Staff record, but clean up a
-            // partial relationship if one was created before rejection.
-            if (!linkedStaff) return null;
-            linkedStaff.userUid = '';
-            DB.set(KEYS.staff, DB.get(KEYS.staff, []));
-            return staffRef(linkedStaff.id).set(stripImagesForCloud('staff', linkedStaff), { merge: true });
-          })
-          .then(() => renderManageTeachers())
+        safetyCall('manageTeacherLifecycle',{action:'reject',teacherUid:btn.dataset.uid})
+          .then(() => pullCloudData()).then(() => renderManageTeachers())
           .catch(err => alert('Could not reject: ' + err.message));
       });
     });
 
+    list.querySelectorAll('.remove-teacher-btn').forEach(btn=>btn.addEventListener('click',async()=>{
+      if(!confirm('Remove this teacher from the school? Their access and assignments will be removed. Staff details and historical school records will be kept. They must use the school code to rejoin.'))return;
+      btn.disabled=true;
+      try{await safetyCall('manageTeacherLifecycle',{action:'remove',teacherUid:btn.dataset.uid});await pullCloudData();renderManageTeachers();renderStaff();}
+      catch(e){alert('Could not remove teacher: '+e.message);btn.disabled=false;}
+    }));
+
     list.querySelectorAll('.disable-teacher-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         if (!confirm('Disable this teacher? Their Staff record and school data will remain safe, but account access will be blocked.')) return;
-        firebase.firestore().collection('users').doc(btn.dataset.uid).update({ status: 'disabled' })
+        safetyCall('manageTeacherLifecycle',{action:'disable',teacherUid:btn.dataset.uid})
           .then(() => { auditAction('disable', 'teacher', btn.dataset.uid, `Disabled teacher: ${btn.dataset.uid}`); return renderManageTeachers(); })
           .catch(err => alert('Could not disable teacher: ' + err.message));
       });
@@ -10925,22 +10807,7 @@ function renderManageTeachers() {
 
     list.querySelectorAll('.reactivate-teacher-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const teacher = members.find(m => m.uid === btn.dataset.uid);
-        const ids = Array.isArray(teacher && teacher.assignedClassIds) ? teacher.assignedClassIds : [];
-        const linked = teacher && (teacher.staffId ? getStaffById(teacher.staffId) : getStaffForUserUid(teacher.uid));
-        if (!ids.length) {
-          alert('Assign at least one class before reactivating this teacher.');
-          return;
-        }
-        if (!linked) {
-          alert('Link or create a Staff record before reactivating this teacher.');
-          return;
-        }
-        firebase.firestore().collection('users').doc(btn.dataset.uid).update({
-          status: 'active',
-          staffId: linked.id,
-          staffLinkedAt: firebase.firestore.FieldValue.serverTimestamp()
-        })
+        safetyCall('manageTeacherLifecycle',{action:'reactivate',teacherUid:btn.dataset.uid})
           .then(() => renderManageTeachers())
           .catch(err => alert('Could not reactivate: ' + err.message));
       });
@@ -11153,7 +11020,8 @@ function initAuth() {
         currentAssignedClassIds = data && Array.isArray(data.assignedClassIds) ? data.assignedClassIds : [];
         currentAssignedSubjectIds = data && Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds : [];
 
-        if (!data || !data.schoolId || data.status === 'rejected') {
+        if (!data || !data.schoolId || ['rejected','removed'].includes(data.status)) {
+          clearVerifiedLocalSession(user.uid);
           currentSchoolId = null; currentRole = null; currentStatus = null;
           hideSessionRestoring(); hideSyncingMessage(); hideAuthGate(); hideDisabledGate();
           showSchoolChoiceGate();

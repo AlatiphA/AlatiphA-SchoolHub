@@ -31,6 +31,6 @@ assert(!css.includes('var(--accent,#956433)'),
   'accent controls must use the active theme token');
 
 assert(index.includes('style-3.css?v=v40-hydration-report-assets-fix-7'));
-assert(sw.includes('schoolhub-cache-v40-report-fees-4'));
+assert(sw.includes('schoolhub-cache-v40-teacher-lifecycle-strike-5'));
 
 console.log('whole-app theme consistency regression: PASS');

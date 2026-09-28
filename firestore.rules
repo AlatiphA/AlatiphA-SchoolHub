@@ -69,30 +69,19 @@ service cloud.firestore {
           (
             request.resource.data.role == 'teacher'
             && request.resource.data.status == 'pending'
+            && !('staffId' in request.resource.data)
+            && request.resource.data.assignedClassIds == [] && request.resource.data.assignedSubjectIds == []
             && request.resource.data.schoolId != null
             && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId))
           )
         );
 
-      allow update: if
-        (
-          isHeadTeacher(resource.data.schoolId)
-          && request.resource.data.schoolId == resource.data.schoolId
-          && resource.data.role == 'teacher'
-          && request.resource.data.role == 'teacher'
-          && request.resource.data.status in ['active', 'pending', 'disabled', 'rejected']
-          && request.resource.data.assignedClassIds is list
-          && request.resource.data.assignedSubjectIds is list
-        )
-        ||
-        (
-          signedIn()
-          && request.auth.uid == uid
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email'])
-        );
+      // Membership and account/Staff relationships are changed atomically by the server.
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email']);
 
       allow update: if signedIn() && request.auth.uid == uid
-        && resource.data.status == 'rejected'
+        && resource.data.status in ['rejected', 'removed']
         && request.resource.data.role == 'teacher' && request.resource.data.status == 'pending'
         && request.resource.data.assignedClassIds == [] && request.resource.data.assignedSubjectIds == []
         && request.resource.data.keys().hasOnly(['schoolId','role','status','assignedClassIds','assignedSubjectIds','email','displayName','createdAt'])
@@ -213,10 +202,19 @@ service cloud.firestore {
 
       }
 
+      match /teacherLinks/{teacherUid} {
+        allow read: if isHeadTeacher(schoolId);
+        allow write: if false;
+      }
+
       match /staff/{staffId} {
         allow read: if isHeadTeacher(schoolId);
-        allow create: if isHeadTeacher(schoolId) && notDeleted(schoolId, 'staff', staffId);
-        allow update, delete: if isHeadTeacher(schoolId);
+        allow create: if isHeadTeacher(schoolId) && notDeleted(schoolId, 'staff', staffId)
+          && request.resource.data.get('userUid', '') in ['', request.auth.uid];
+        allow update: if isHeadTeacher(schoolId)
+          && (request.resource.data.get('userUid', '') == resource.data.get('userUid', '')
+            || (request.resource.data.get('userUid', '') == request.auth.uid && resource.data.get('userUid', '') == ''));
+        allow delete: if isHeadTeacher(schoolId);
       }
 
       // v35: school activity/audit log. Head Teachers can read the whole

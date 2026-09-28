@@ -198,6 +198,15 @@ function register({onCall,HttpsError,db,admin}) {
    };
    let merged;
    try{const clean=x=>Object.fromEntries(Object.entries(x||{}).filter(([k])=>k!=='updatedAt'));merged=mergeEdit(clean(withoutDeletedPupils(base)),clean(value),withoutDeletedPupils(remote),validate);}catch(e){if(e instanceof HttpsError)throw e;fail(e.message==='conflict'?'aborted':'invalid-argument',e.message==='conflict'?'Another device changed this record. Your local edit is preserved. Review the current cloud record before retrying.':'Invalid field.');}
+   if(['attendance','teacherAttendance'].includes(field)){
+    const parts=key.split('__'),offset=field==='attendance'?1:0,term=parts[offset],year=parts[offset+1],date=parts[offset+2];
+    if(/^\d{4}-\d{2}-\d{2}$/.test(date||'')){
+     const calendar=(await tx.get(school.collection('schoolCalendar').doc(encodeURIComponent(term+'__'+year+'__'+date)))).data();
+     const weekday=new Date(date+'T12:00:00Z').getUTCDay();
+     if([0,6].includes(weekday)||['holiday','midterm','strike'].includes(calendar?.type))fail('failed-precondition','This date is closed for attendance. Existing records are preserved.');
+    }
+    if(field==='teacherAttendance'&&Object.values(merged.entries||{}).includes('S')){const profile=(await tx.get(school)).data()?.profile||{};if(!['include','exclude'].includes(profile.teacherStrikeRatioPolicy))fail('failed-precondition','Set the individual strike attendance ratio policy first.');}
+   }
    const document=(field==='grades'||field==='remarks')?{classId,entries:merged}:merged;
    if(field==='attendance')document.classId=classId;
    if(Buffer.byteLength(JSON.stringify(document))>750000)fail('resource-exhausted','Record too large.');

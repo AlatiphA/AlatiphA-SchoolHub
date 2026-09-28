@@ -287,3 +287,5 @@ const safetyModule = require('./safety');
 if (safetyModule) Object.assign(exports, safetyModule.register({onCall, HttpsError, db, admin}));
 const feesModule = require('./fees');
 if (feesModule) Object.assign(exports, feesModule.register({onCall, HttpsError, db}));
+const teacherLifecycle = require('./teacher-lifecycle');
+if (teacherLifecycle) Object.assign(exports, teacherLifecycle.register({onCall, HttpsError, db}));

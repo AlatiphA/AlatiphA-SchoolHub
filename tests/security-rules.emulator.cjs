@@ -153,3 +153,30 @@ test('fee transactions serialize concurrent payments and receipt retries',async(
 
  }finally{await app.delete();}
 });
+
+test('atomic teacher lifecycle, concurrent approval, removal and rejoining preserve one staff record',async()=>{
+ const admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'teacher-lifecycle'),db=app.firestore();
+ const {register}=require('../functions/teacher-lifecycle');class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
+ const h=register({db,HttpsError,onCall:(_,fn)=>fn}),assert=require('node:assert/strict'),req=data=>({auth:{uid:'head'},data});
+ const teacherDb=env.authenticatedContext('lifecycle-teacher').firestore();
+ const pending={schoolId:'s',role:'teacher',status:'pending',assignedClassIds:[],assignedSubjectIds:[],email:'life@example.test',displayName:'Lifecycle Teacher'};
+ try{
+  await assertSucceeds(setDoc(doc(teacherDb,'users/lifecycle-teacher'),pending));
+  await db.doc('schools/s/classes/life-class').set({name:'Lifecycle class'});
+  const save={action:'save',teacherUid:'lifecycle-teacher',name:'Lifecycle Teacher',assignedClassIds:['life-class'],assignedSubjectIds:[]};
+  const results=await Promise.all([h.manageTeacherLifecycle(req(save)),h.manageTeacherLifecycle(req(save))]);assert.equal(results[0].staffId,results[1].staffId);
+  const staffId=results[0].staffId,staffRef=db.doc('schools/s/staff/'+staffId);
+  await assertFails(setDoc(doc(env.authenticatedContext('head').firestore(),'schools/s/staff/duplicate-link'),{name:'Duplicate',userUid:'lifecycle-teacher'}));
+  await h.manageTeacherLifecycle(req({action:'unlink',teacherUid:'lifecycle-teacher'}));assert.equal((await staffRef.get()).data().userUid,'');
+  assert.equal((await h.manageTeacherLifecycle(req(save))).staffId,staffId);
+  await h.manageTeacherLifecycle(req({action:'disable',teacherUid:'lifecycle-teacher'}));await h.manageTeacherLifecycle(req({action:'reactivate',teacherUid:'lifecycle-teacher'}));
+  await assertSucceeds(setDoc(doc(env.authenticatedContext('head').firestore(),'schools/s/staff/'+staffId),{phone:'12345'},{merge:true}));
+  await db.doc('schools/s/teacherAttendance/lifecycle-history').set({entries:{[staffId]:'P'}});
+  await h.manageTeacherLifecycle(req({action:'remove',teacherUid:'lifecycle-teacher'}));
+  await assertFails(getDoc(doc(teacherDb,'schools/s/classes/life-class')));
+  assert.equal((await db.doc('schools/s/teacherAttendance/lifecycle-history').get()).data().entries[staffId],'P');
+  assert.equal((await staffRef.get()).data().phone,'12345');
+  await assertSucceeds(setDoc(doc(teacherDb,'users/lifecycle-teacher'),pending));assert.equal((await h.manageTeacherLifecycle(req(save))).staffId,staffId);
+  assert.equal((await db.collection('schools/s/staff').where('userUid','==','lifecycle-teacher').get()).size,1);
+ }finally{await app.delete();}
+});

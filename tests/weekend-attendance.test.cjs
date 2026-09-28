@@ -17,3 +17,20 @@ test('existing weekend marks do not count for pupils, teachers or report cards',
  assert.equal(t.total,1);assert.equal(t.absent,1);assert.equal(t.excused,0);assert.equal(t.leave,0);assert.equal(t.recorded,2);
  assert.equal(c.reportPupilAttendance({id:'p',classId:'c'},{currentTerm:'T',currentYear:'Y'},{attendance:99}),2);
 });
+
+test('school-wide strikes suppress saved marks without erasing them',()=>{
+ const c=fixture();c.calendarRecord=(t,y,date)=>date==='2026-09-25'?{type:'strike'}:null;
+ assert.equal(c.attendanceDayType('T','Y','2026-09-25'),'strike');
+ assert.equal(c.attendanceSummary('c','T','Y').summary.p.total,1);assert.equal(c.teacherAttendanceSummary('T','Y').summary.t.total,0);
+ c.calendarRecord=()=>null;assert.equal(c.attendanceSummary('c','T','Y').summary.p.total,2);assert.equal(c.teacherAttendanceSummary('T','Y').summary.t.total,1);
+});
+test('individual strike is separate from absence and ratio policy is explicit',()=>{
+ const c=fixture();c.teacherAttendanceRecordsForTerm=()=>[{date:'2026-09-25',record:{entries:{t:'S'}}}];
+ const summary=c.teacherAttendanceSummary('T','Y').summary.t;assert.equal(summary.strike,1);assert.equal(summary.absent,0);assert.equal(summary.recorded,1);
+ vm.runInContext(fn('attendanceRatio'),c);let policy='';c.KEYS.settings='settings';c.DB.get=()=>({teacherStrikeRatioPolicy:policy});
+ const sm={...summary,total:1};assert.equal(c.attendanceRatio(sm,2,true),null);policy='include';assert.equal(c.attendanceRatio(sm,2,true),50);policy='exclude';assert.equal(c.attendanceRatio(sm,2,true),100);
+});
+test('all open-date calculations exclude a weekday school strike',()=>{
+ const c=fixture();Object.assign(c,{getTermDates:()=>({start:'2026-09-21',end:'2026-09-25'}),schoolCalendarRecordsForTerm:()=>[{date:'2026-09-23',record:{type:'strike'}}],addDaysDateOnly:(d,n)=>new Date(d.getFullYear(),d.getMonth(),d.getDate()+n),dateOnlyString:d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')});
+ vm.runInContext(fn('calculateTimesOpen'),c);assert.equal(c.calculateTimesOpen('T','Y','2026-09-25'),4);
+});
