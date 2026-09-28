@@ -420,3 +420,17 @@
 
 /* Keep PIN confirmation visually separate from its action. */
 #app #pinStatusWrap #setPinBtn { margin-top: 16px; }
+
+#feesWrap details, #feePupil { margin: 20px 0; padding: 16px; border: 1px solid #b7b7a5; border-radius: 12px; }
+#feesWrap button { margin: 10px 8px 10px 0; }
+#feesWrap td, #feesWrap th { padding: 12px; text-align: left; }
+#feeMessage { white-space: pre-wrap; }
+@media print {
+ body:has(#feeReceiptDialog) > :not(#feeReceiptDialog) { display: none !important; }
+ #feeReceiptDialog { position: static !important; display: block !important; background: white !important; }
+ #feeReceiptDialog .about-box { max-height: none !important; overflow: visible !important; color: black !important; background: white !important; box-shadow: none !important; }
+ #feeReceiptDialog button { display: none !important; }
+}
+
+#feeReceiptDialog .about-box { width: min(560px, calc(100vw - 40px)); text-align: left; }
+#feeReceiptDialog button { margin: 12px 8px 0 0; }

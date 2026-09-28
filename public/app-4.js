@@ -823,14 +823,14 @@ function saveAttendanceTabState(mode) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'history', 'manage-teachers', 'activity'];
+const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
   if (!enforceGuestTrial()) return;
   // Never render role-sensitive views while an authenticated session is still
   // being resolved. Guest mode explicitly marks itself ready before calling
   // proceedToApp().
   if (FIREBASE_ENABLED && !sessionReady) return;
-  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'billing', 'manage-teachers'].indexOf(name) !== -1) {
+  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'billing', 'fees', 'manage-teachers'].indexOf(name) !== -1) {
     name = 'home';
   }
   views.forEach(v => {
@@ -871,6 +871,7 @@ function showView(name) {
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
   if (name === 'billing') renderBilling();
+  if (name === 'fees') renderSchoolFees();
   if (name === 'history') renderHistoryTermYearSelect();
   if (name === 'manage-teachers') renderManageTeachers();
   if (name === 'activity') loadActivityLog();
@@ -889,6 +890,7 @@ function refreshHeadTeacherSelect() {
 }
 
 function sectionTitle(name) {
+  if(name==='fees')return 'Fees & Receipts';
   const titles = {
     setup: 'Setup', staff: 'Staff', classes: 'Classes', students: 'Students', subjects: 'Subjects',
     attendance: 'Attendance', grades: 'Grades', remarks: 'Remarks', reports: 'Reports', billing: 'Billing & Credits', history: 'Term History',
@@ -913,6 +915,7 @@ window.addEventListener('scroll',()=>{if(floatingPillTicking)return;floatingPill
 
 /* ---------- Home dashboard ---------- */
 const QUICK_ACCESS_CARDS = [
+  {view:'fees',title:'Fees & Receipts',description:'Class fees, pupil balances and receipts',headteacherOnly:true,icon:'<path d="M4 4h16v16H4z"/>'},
   { view: 'setup', title: 'Setup', description: 'School info, term, and report layout', headteacherOnly: true,
     icon: '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/>' },
   { view: 'manage-teachers', title: 'Manage Teachers', description: 'Approve, assign classes, disable', headteacherOnly: true,

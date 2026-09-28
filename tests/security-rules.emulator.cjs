@@ -120,3 +120,28 @@ test('old clients cannot blank existing Setup and recovery copies are head-only'
  for(const uid of ['teacher','outsider'])await assertFails(getDoc(doc(env.authenticatedContext(uid).firestore(),'schools/s/profileRecovery/previous')));
  await assertFails(setDoc(doc(db,'schools/s/profileRecovery/previous'),{profile:{schoolName:'fake'}}));
 });
+
+test('fee records cannot be read or rewritten directly by any school account',async()=>{
+ for(const uid of ['head','teacher','outsider'])for(const name of ['feeAccounts','feePayments','feeEvents','feeMeta']){
+  const db=env.authenticatedContext(uid).firestore();
+  await assertFails(getDoc(doc(db,'schools/s/'+name+'/test')));
+  await assertFails(setDoc(doc(db,'schools/s/'+name+'/test'),{paid:999,amount:999}));
+ }
+});
+
+test('fee transactions serialize concurrent payments and receipt retries',async()=>{
+ const admin=require('../functions/node_modules/firebase-admin');const app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'fees-server');const db=app.firestore();
+ const serverRequire=require('node:module').createRequire(require('node:path').resolve('functions/index.js'));
+ const {HttpsError}=serverRequire('firebase-functions/v2/https');const {register,key}=require('../functions/fees');const h=register({db,HttpsError,onCall:(_,fn)=>fn}),assert=require('node:assert/strict');
+ const req=data=>({auth:{uid:'head'},data});
+ try{
+  await db.doc('schools/s/classes/fees-test').set({name:'Fees test'});await db.doc('schools/s/students/fees-pupil').set({name:'Synthetic pupil',classId:'fees-test'});
+  await h.updateSchoolFees(req({action:'classFee',requestId:'fees-emulator-class',classId:'fees-test',term:'Term 1',year:'2026/2027',amount:30000}));
+  const accountId=key('Term 1','2026/2027','fees-pupil'),payment={action:'payment',accountId,amount:20000,method:'Cash',payer:'Synthetic parent'};
+  const results=await Promise.allSettled([h.updateSchoolFees(req({...payment,requestId:'fees-emulator-pay-1'})),h.updateSchoolFees(req({...payment,requestId:'fees-emulator-pay-2'}))]);
+  assert.equal(results.filter(x=>x.status==='fulfilled').length,1);
+  const winner=results[0].status==='fulfilled'?'fees-emulator-pay-1':'fees-emulator-pay-2';await h.updateSchoolFees(req({...payment,requestId:winner}));
+  assert.equal((await db.doc('schools/s/feeAccounts/'+accountId).get()).data().paid,20000);
+  assert.equal((await db.collection('schools/s/feePayments').get()).size,1);
+ }finally{await app.delete();}
+});

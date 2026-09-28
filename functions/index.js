@@ -285,3 +285,5 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
 
 const safetyModule = require('./safety');
 if (safetyModule) Object.assign(exports, safetyModule.register({onCall, HttpsError, db, admin}));
+const feesModule = require('./fees');
+if (feesModule) Object.assign(exports, feesModule.register({onCall, HttpsError, db}));

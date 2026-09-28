@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs');
 const source=fs.readFileSync('app-4.js','utf8'),rules=fs.readFileSync('firestore.rules','utf8'),sw=fs.readFileSync('sw.js','utf8');
-assert.ok(source.includes("'subjects', 'billing', 'manage-teachers'"),'teacher billing route blocked');
+assert.ok(source.includes("'subjects', 'billing', 'fees', 'manage-teachers'"),'teacher billing route blocked');
 assert.match(rules,/match \/billing\/\{billingId\}[\s\S]*?allow read: if isHeadTeacher\(schoolId\);/);
 assert.match(source,/function studentClassIdByName\(name\)[\s\S]*?getAccessibleClasses\(\)/);
 assert.ok(source.includes('Students sheet contains formulas'));
