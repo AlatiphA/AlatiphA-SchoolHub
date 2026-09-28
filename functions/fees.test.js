@@ -56,3 +56,34 @@ test('old term balances survive new term charges and pupil deletion',async()=>{
 test('failed transaction does not issue a receipt or alter balances',async()=>{
  const f=await charged(),before=structuredClone([...f.records]);f.setFail();await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'payment',requestId:reqId(2),accountId,amount:10000,method:'Cash',payer:'Parent'})),/injected/);assert.deepEqual([...f.records],before);
 });
+
+test('fee editing and cancellation preserve paid money and reject stale changes',async()=>{
+ const f=await charged(),call=d=>f.handlers.updateSchoolFees(f.req(d));
+ await call({action:'edit',requestId:reqId(10),accountId,revision:0,amount:20000,reason:'Correct test'});
+ await assert.rejects(call({action:'cancel',requestId:reqId(11),accountId,revision:0,reason:'Stale'}),e=>e.code==='aborted');
+ await call({action:'payment',requestId:reqId(12),accountId,amount:5000,method:'Cash',payer:'Parent'});
+ await assert.rejects(call({action:'cancel',requestId:reqId(13),accountId,revision:2,reason:'Remove'}),e=>e.code==='failed-precondition');
+ await call({action:'void',requestId:reqId(14),accountId,paymentId:reqId(12),reason:'Test payment'});
+ const request={action:'cancel',requestId:reqId(15),accountId,revision:3,reason:'Remove test'};
+ await call(request);await call(request);
+ const a=f.records.get('schools/s/feeAccounts/'+accountId);assert.equal(a.base,0);assert.equal(a.paid,0);assert.equal(a.cancelled,true);assert.equal(a.revision,4);
+});
+test('class edits preserve discounts and cancellation is atomic when one pupil has paid',async()=>{
+ const f=await charged(),call=d=>f.handlers.updateSchoolFees(f.req(d));
+ await call({action:'adjust',requestId:reqId(10),accountId,revision:0,amount:-5000,reason:'Discount'});
+ await call({action:'reviseClass',requestId:reqId(11),classId:'c1',term:'Term 1',year:'2026/2027',amount:25000,reason:'Correction',revisions:{[accountId]:1}});
+ assert.equal(f.records.get('schools/s/feeAccounts/'+accountId).adjustment,-5000);
+ await call({action:'payment',requestId:reqId(12),accountId,amount:5000,method:'Cash',payer:'Parent'});
+ const before=structuredClone([...f.records]);
+ await assert.rejects(call({action:'cancelClass',requestId:reqId(13),classId:'c1',term:'Term 1',year:'2026/2027',reason:'Test',revisions:{[accountId]:3}}),e=>e.code==='failed-precondition');assert.deepEqual([...f.records],before);
+});
+test('new year payments clear oldest debt without duplicating charges and void reverses allocations',async()=>{
+ const f=await charged(),call=d=>f.handlers.updateSchoolFees(f.req(d));
+ await call({action:'classFee',requestId:reqId(10),classId:'c1',term:'Term 1',year:'2027/2028',amount:20000});
+ const current=key('Term 1','2027/2028','p1');
+ const r=await call({action:'payment',requestId:reqId(11),accountId:current,amount:40000,method:'Cash',payer:'Parent'});
+ assert.equal(r.payment.balanceAfter,10000);assert.deepEqual(r.payment.allocations,[{accountId,amount:30000},{accountId:current,amount:10000}]);
+ assert.equal(f.records.get('schools/s/feeAccounts/'+accountId).paid,30000);assert.equal(f.records.get('schools/s/feeAccounts/'+current).paid,10000);
+ await call({action:'void',requestId:reqId(12),accountId:current,paymentId:reqId(11),reason:'Test'});
+ assert.equal(f.records.get('schools/s/feeAccounts/'+accountId).paid,0);assert.equal(f.records.get('schools/s/feeAccounts/'+current).paid,0);
+});

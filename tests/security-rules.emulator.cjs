@@ -143,5 +143,13 @@ test('fee transactions serialize concurrent payments and receipt retries',async(
   const winner=results[0].status==='fulfilled'?'fees-emulator-pay-1':'fees-emulator-pay-2';await h.updateSchoolFees(req({...payment,requestId:winner}));
   assert.equal((await db.doc('schools/s/feeAccounts/'+accountId).get()).data().paid,20000);
   assert.equal((await db.collection('schools/s/feePayments').get()).size,1);
+  await h.updateSchoolFees(req({action:'classFee',requestId:'fees-emulator-next-year',classId:'fees-test',term:'Term 1',year:'2027/2028',amount:20000}));
+  const next=key('Term 1','2027/2028','fees-pupil');
+  const carried=await h.updateSchoolFees(req({...payment,accountId:next,requestId:'fees-emulator-carried',amount:15000}));
+  assert.equal(carried.payment.balanceAfter,15000);assert.equal(carried.payment.allocations.length,2);
+  await h.updateSchoolFees(req({action:'void',accountId:next,requestId:'fees-emulator-void',paymentId:'fees-emulator-carried',reason:'Synthetic reversal'}));
+  assert.equal((await db.doc('schools/s/feeAccounts/'+accountId).get()).data().paid,20000);
+  assert.equal((await db.doc('schools/s/feeAccounts/'+next).get()).data().paid,0);
+
  }finally{await app.delete();}
 });
