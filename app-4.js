@@ -6473,7 +6473,7 @@ function renderRemarksForm() {
         <input type="text" class="rm-promoted" placeholder="e.g. Basic Two (2)" value="${r.promoted ? escapeHtml(r.promoted) : ''}">
       </label>
       <label>Fees Due (GH¢)
-        <input type="number" min="0" step="0.01" class="rm-fees" value="${r.feesDue !== undefined ? escapeHtml(r.feesDue) : ''}">
+        <input type="number" min="0" step="0.01" class="rm-fees" data-manual="${r.feesDue !== undefined ? escapeHtml(r.feesDue) : ''}" value="${r.feesDue !== undefined ? escapeHtml(r.feesDue) : ''}">
       </label>
       <label>Conduct / Character
         <select class="rm-conduct" aria-label="Conduct / Character">
@@ -6496,6 +6496,7 @@ function renderRemarksForm() {
         </select>
       </label>
     </div>`;
+  refreshRemarksFeeBalance(student,classId,settings,wrap.querySelector('.remarks-card-single'));
 }
 
 function navigateRemarks(delta) {
@@ -6531,7 +6532,7 @@ function saveCurrentRemarks(showAlert = true) {
   classRemarks[student.id] = {
     attendance: card.querySelector('.rm-attendance').value.trim(),
     promoted: card.querySelector('.rm-promoted').value.trim(),
-    feesDue: card.querySelector('.rm-fees').value.trim(),
+    feesDue: card.querySelector('.rm-fees').readOnly ? (classRemarks[student.id]?.feesDue || '') : card.querySelector('.rm-fees').value.trim(),
     conduct: card.querySelector('.rm-conduct').value.trim(),
     attitude: card.querySelector('.rm-attitude').value.trim(),
     interest: card.querySelector('.rm-interest').value.trim(),
@@ -6692,7 +6693,7 @@ const REPORT_THEMES={
 function getReportTheme(settings){return REPORT_THEMES[(settings&&settings.reportTheme)||'bw']||REPORT_THEMES.bw;}
 function renderReportThemePicker(){const host=document.getElementById('reportThemePicker');if(!host)return;const activeId=DB.get(KEYS.settings,{}).reportTheme||'bw';host.innerHTML=`<div class="report-theme-active"><div class="report-theme-active-icon">✦</div><div><span class="report-theme-kicker">ACTIVE THEME</span><h3>${escapeHtml(REPORT_THEMES[activeId].title)}</h3><p>${escapeHtml(REPORT_THEMES[activeId].description)}</p></div></div><div class="report-theme-grid">${Object.values(REPORT_THEMES).map(t=>`<article class="report-theme-card ${t.id===activeId?'active':''}"><div class="report-theme-preview" data-theme="${t.id}"><div class="rtp-head"><span></span><b>${escapeHtml(t.title)}</b><i></i></div><div class="rtp-meta"><span></span><span></span></div><div class="rtp-table"><b></b><b></b><b></b><b></b><b></b></div><div class="rtp-bottom"><span></span><span></span></div><div class="rtp-footer"></div></div><div class="report-theme-card-body"><h3>${escapeHtml(t.name)} <small>${escapeHtml(t.title)}</small></h3><p>${escapeHtml(t.description)}</p><div class="report-theme-actions"><button type="button" class="report-theme-preview-btn" data-theme-preview="${t.id}">⌕ Preview</button><button type="button" class="btn-primary report-theme-apply" data-theme-apply="${t.id}">${t.id===activeId?'✓ Active':'Apply'}</button></div></div></article>`).join('')}</div>`;host.querySelectorAll('[data-theme-apply]').forEach(b=>b.addEventListener('click',()=>applyReportTheme(b.dataset.themeApply)));host.querySelectorAll('[data-theme-preview]').forEach(b=>b.addEventListener('click',()=>previewReportTheme(b.dataset.themePreview)));}
 async function applyReportTheme(themeId){if(!enforceGuestTrial())return;if(!REPORT_THEMES[themeId])return;if(isActiveGuest() && themeId!=='bw'){requireSchoolAccountForPaidFeature('using a premium report theme');return;}if(!requireHeadTeacher('change the report card theme'))return;if(themeId!=='bw' && !(await ensureCreditsAvailable(1,'using a premium report theme')))return;const s=DB.get(KEYS.settings,{});s.reportTheme=themeId;DB.set(KEYS.settings,s);const sel=document.getElementById('reportThemeSelect');if(sel)sel.value=themeId;auditAction('update','report-theme',themeId,`Applied report card theme: ${REPORT_THEMES[themeId].title}`);renderReportThemePicker();}
-async function previewReportTheme(themeId){if(!enforceGuestTrial())return;if(isActiveGuest() && themeId!=='bw'){requireSchoolAccountForPaidFeature('previewing a premium report theme');return;}const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,remarksAll[result.student.id]||{},assets);drawReportPreviewWatermark(doc);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
+async function previewReportTheme(themeId){if(!enforceGuestTrial())return;if(isActiveGuest() && themeId!=='bw'){requireSchoolAccountForPaidFeature('previewing a premium report theme');return;}const settings=DB.get(KEYS.settings,{}),classId=document.getElementById('reportsClassSelect')?.value;if(!classId){alert('Select a class first to preview a report card.');return;}const results=computeClassResults(classId,settings.currentTerm,settings.currentYear);if(!results.length){alert('There are no students with results in this class yet.');return;}const result=results[0],positions=computeSubjectPositions(classId,settings.currentTerm,settings.currentYear),numOnRoll=DB.get(KEYS.students,[]).filter(s=>s.classId===classId).length,classInfo=DB.get(KEYS.classes,[]).find(c=>c.id===classId),remarksAll=DB.get(KEYS.remarks,{})[gradeKey(classId,settings.currentTerm,settings.currentYear)]||{},previewSettings=Object.assign({},settings,{reportTheme:themeId});try{const reportFees=await loadReportFeeBalances(classId,previewSettings);const assets=await prepareReportAssets(result,previewSettings,classInfo);const {jsPDF}=window.jspdf;const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});drawReportPage(doc,result,previewSettings,positions,numOnRoll,classInfo,reportFeeRemarks(remarksAll[result.student.id]||{},result.student.id,reportFees),assets);drawReportPreviewWatermark(doc);window.open(doc.output('bloburl'),'_blank');}catch(e){alert('Unable to preview this theme: '+(e.message||e));}}
 
 function drawReportPreviewWatermark(doc) {
   doc.setFont('helvetica', 'bold');
@@ -8134,6 +8135,8 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const doc = new Pdf();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
   if (reportUsesCredits(settings) && !await ensureCreditsAvailable(1, 'generating a premium report card')) return;
+  const reportFees = await loadReportFeeBalances(classInfo?.id || result.student.classId,settings);
+  studentRemarks = reportFeeRemarks(studentRemarks,result.student.id,reportFees);
   let assets;
   try {
     assets = await prepareReportAssets(result, settings, classInfo);
@@ -8162,6 +8165,8 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   // every report that will be generated.
   if (!await ensureCreditsAvailable(usable.length, 'generating the class report batch')) return;
 
+  const reportFees = await loadReportFeeBalances(classInfo?.id || usable[0].student.classId,settings);
+  remarksAll = Object.fromEntries(usable.map(r=>[r.student.id,reportFeeRemarks(remarksAll[r.student.id]||{},r.student.id,reportFees)]));
   const prepared = [];
   const assetIssues = [];
   for (const r of usable) {

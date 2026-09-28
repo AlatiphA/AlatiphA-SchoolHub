@@ -12,12 +12,15 @@ function fixture({ theme = 'premium', failDraw = false, failOutput = false, enou
     ensureCreditsAvailable: async () => enough,
     consumeReportCredits: async (n, id, reportType) => { requests.push({ n, reportType }); if (reportType !== 'bw-single') deductions.push(n); },
     crypto: {randomUUID: () => 'test-generation-id'}, enforceGuestTrial: () => true, isActiveGuest: () => false,
+    loadReportFeeBalances: async () => ({balances:{one:12345}}),
     prepareReportAssets: async () => ({}),
     drawReportPage: () => { if (failDraw) throw Error('render failed'); },
     URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
     document: { createElement: () => ({ click() { downloads.push(this.download); } }) },
     setTimeout: fn => fn(), alert() {}, console
   });
+  const feeSource=fs.readFileSync(`${__dirname}/../fees.js`,'utf8');
+  vm.runInContext(feeSource.slice(feeSource.indexOf('function reportFeeRemarks('),feeSource.indexOf('async function refreshRemarksFeeBalance(')),context);
   vm.runInContext(app.slice(app.indexOf('function reportPdfConstructor('), app.indexOf('/* ---------- utils ---------- */')), context);
   context.showPreparedReport = (url, filename) => downloads.push(filename);
   const student = { entries: [{}], student: { id: 'one', name: 'Test Student' } };
@@ -85,4 +88,17 @@ test('guest generation stops after ten reports without using school credits', as
   assert.equal(used,10);
   assert.equal(f.downloads.length,10);
   assert.equal(f.requests.length,0);
+});
+
+test('single and batch report renderers receive ledger balances instead of stale manual fees',async()=>{
+ const f=fixture(),values=[];f.context.drawReportPage=(doc,result,settings,positions,num,classInfo,remarks)=>values.push(remarks.feesDue);
+ await f.context.generateSinglePDF(f.student,{},1,{}, {feesDue:'0.00'});
+ await f.context.generateBatchPDF([f.student],{},1,{}, {one:{feesDue:'999'}});
+ assert.deepEqual(values,['123.45','123.45']);
+});
+test('unavailable confirmed fee balances block printing before any credit deduction',async()=>{
+ const f=fixture();f.context.loadReportFeeBalances=async()=>{throw Error('Fee service unavailable');};
+ await assert.rejects(f.context.generateSinglePDF(f.student),/Fee service unavailable/);
+ await assert.rejects(f.context.generateBatchPDF([f.student],{},1,{},{}),/Fee service unavailable/);
+ assert.deepEqual(f.deductions,[]);assert.deepEqual(f.downloads,[]);
 });

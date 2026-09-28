@@ -13,6 +13,18 @@ function register({onCall,HttpsError,db}){
  const str=(s,label)=>{if(typeof s!=='string'||!s.trim()||s.length>200)fail('invalid-argument',label+' is required (maximum 200 characters).');return s.trim();};
  const money=(n,signed=false)=>{if(!Number.isSafeInteger(n)||Math.abs(n)>100000000||(!signed&&n<0))fail('invalid-argument','Enter a valid amount with at most two decimal places.');return n;};
  return {
+ getReportFeeBalances:call(async r=>db.runTransaction(async tx=>{
+  if(!r.auth)fail('unauthenticated','Sign in first.');
+  const u=(await tx.get(db.collection('users').doc(r.auth.uid))).data(),d=r.data||{};
+  const classId=str(d.classId,'Class'),term=str(d.term,'Term'),year=str(d.year,'Academic year');
+  if(!u||u.status!=='active'||!u.schoolId||!['headteacher','teacher'].includes(u.role)||(u.role==='teacher'&&!(u.assignedClassIds||[]).includes(classId)))fail('permission-denied','Class access required.');
+  const school=db.collection('schools').doc(u.schoolId);
+  const pupils=(await tx.get(school.collection('students'))).docs.filter(x=>x.data().classId===classId);
+  const ids=new Set(pupils.map(x=>x.id)),balances={};
+  const accounts=(await tx.get(school.collection('feeAccounts'))).docs;
+  for(const doc of accounts){const a=doc.data();if(ids.has(a.studentId)&&(a.year+'__'+a.term)<=(year+'__'+term))balances[a.studentId]=(balances[a.studentId]||0)+a.base+a.adjustment-a.paid;}
+  return {balances};
+ })),
  getSchoolFees:call(async r=>db.runTransaction(async tx=>{
   const school=await schoolFor(tx,r);
   const [a,p,e]=await Promise.all(['feeAccounts','feePayments','feeEvents'].map(c=>tx.get(school.collection(c))));

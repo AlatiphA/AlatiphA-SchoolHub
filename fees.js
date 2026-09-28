@@ -130,3 +130,27 @@ setInterval(async()=>{
   if(active()){const data=await safetyCall('getSchoolFees',{});if(active())localStorage.setItem('schoolhub_fee_cache_'+school+'_'+user,JSON.stringify(data));}
  }catch(e){/* Keep pending entries on this device for the next attempt. */}finally{feeBackgroundBusy=false;}
 },30000);
+
+// Only class balances are exposed to report users, never receipts or payer details.
+async function loadReportFeeBalances(classId,settings){
+ if(!FIREBASE_ENABLED||isActiveGuest())return null;
+ const school=currentSchoolId,user=currentUid,session=sessionGeneration;
+ const key='schoolhub_report_fees_'+school+'_'+user+'_'+classId+'_'+settings.currentYear+'_'+settings.currentTerm;
+ if(navigator.onLine===false){const saved=localStorage.getItem(key);if(saved)return {...JSON.parse(saved),offline:true};throw Error('Connect once to load fee balances for this class before printing offline.');}
+ const data=await safetyCall('getReportFeeBalances',{classId,term:settings.currentTerm,year:settings.currentYear});
+ if(!isCurrentSession(session,user,school))throw Error('Account changed. Reopen this page.');
+ localStorage.setItem(key,JSON.stringify(data));return data;
+}
+function reportFeeRemarks(remarks,studentId,fees){
+ return fees&&Object.prototype.hasOwnProperty.call(fees.balances,studentId)?{...remarks,feesDue:(fees.balances[studentId]/100).toFixed(2)}:remarks;
+}
+async function refreshRemarksFeeBalance(student,classId,settings,card){
+ if(!FIREBASE_ENABLED||isActiveGuest())return;
+ const input=card.querySelector('.rm-fees'),note=document.createElement('small');
+ input.readOnly=true;input.value='';note.textContent='Loading confirmed fee balance…';input.after(note);
+ try{const fees=await loadReportFeeBalances(classId,settings);if(!card.isConnected)return;
+ const managed=Object.prototype.hasOwnProperty.call(fees.balances,student.id);
+ input.value=managed?(fees.balances[student.id]/100).toFixed(2):input.dataset.manual||'';input.readOnly=managed;
+ note.textContent=managed?(fees.offline?'Last confirmed balance saved on this device.':'From Fees & Receipts, including previous unpaid balances. Update fees or payments there.'):'No fee account for this period. You may enter an amount manually.';
+ }catch(e){if(card.isConnected){input.value=input.dataset.manual||'';note.textContent='Fee balance unavailable. '+(e.message||e);}}
+}

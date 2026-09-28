@@ -87,3 +87,19 @@ test('new year payments clear oldest debt without duplicating charges and void r
  await call({action:'void',requestId:reqId(12),accountId:current,paymentId:reqId(11),reason:'Test'});
  assert.equal(f.records.get('schools/s/feeAccounts/'+accountId).paid,0);assert.equal(f.records.get('schools/s/feeAccounts/'+current).paid,0);
 });
+
+test('report balances include arrears and payments, exclude future terms and unrelated pupils',async()=>{
+ const f=await charged(),call=d=>f.handlers.updateSchoolFees(f.req(d));
+ await call({action:'classFee',requestId:reqId(30),classId:'c1',term:'Term 1',year:'2027/2028',amount:20000});
+ await call({action:'payment',requestId:reqId(31),accountId,amount:5000,method:'Cash',payer:'Private parent'});
+ const d={classId:'c1',term:'Term 1',year:'2026/2027'};
+ const result=await f.handlers.getReportFeeBalances(f.req(d,'teacher'));assert.deepEqual(result,{balances:{p1:25000}});
+ assert.deepEqual(await f.handlers.getReportFeeBalances(f.req({...d,year:'2027/2028'})),{balances:{p1:45000}});
+ for(const uid of ['teacher','disabled'])await assert.rejects(f.handlers.getReportFeeBalances(f.req({...d,classId:'c2'},uid)),e=>e.code==='permission-denied');
+});
+test('managed zero balance overrides manual fees and cancellations remain visible',async()=>{
+ const f=await charged();await f.handlers.updateSchoolFees(f.req({action:'cancel',accountId,revision:0,requestId:reqId(32),reason:'Test'}));
+ assert.deepEqual(await f.handlers.getReportFeeBalances(f.req({classId:'c1',term:'Term 1',year:'2026/2027'})),{balances:{p1:0}});
+ const vm=require('node:vm'),fs=require('node:fs'),source=fs.readFileSync(require('node:path').join(__dirname,'../fees.js'),'utf8');const body=source.slice(source.indexOf('function reportFeeRemarks('),source.indexOf('async function refreshRemarksFeeBalance('));
+ const ctx={};vm.createContext(ctx);vm.runInContext(body,ctx);assert.equal(ctx.reportFeeRemarks({feesDue:'90'},'p1',{balances:{p1:0}}).feesDue,'0.00');assert.equal(ctx.reportFeeRemarks({feesDue:'90'},'p2',{balances:{p1:0}}).feesDue,'90');
+});
