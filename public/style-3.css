@@ -902,6 +902,8 @@ html.sessionRestoring #sessionRestoreGate{
 .teacher-summary-actions .edit-teacher-btn{color:var(--gold);}
 .teacher-summary-actions .del-student{color:var(--red);}
 .teacher-summary-actions .edit-student{color:var(--gold);}
+.teacher-summary-actions .remove-teacher-btn{color:var(--red);font-weight:600;}
+.edit-actions .remove-teacher-btn{background:none;border:1px solid var(--red);color:var(--red);font-weight:600;}
 .teacher-edit-panel{gap:8px;}
 .teacher-assignment-list{display:flex;flex-direction:column;gap:1px;margin-top:-2px;margin-bottom:2px;}
 .teacher-assignment-list .checkbox-row{padding:3px 0;min-height:28px;}

@@ -10682,7 +10682,7 @@ function renderManageTeachers() {
             <button class="save-btn save-teacher-assignment" data-uid="${m.uid}">${actionLabel}</button>
             ${m.status !== 'pending' ? '<button class="cancel-btn cancel-teacher-edit" data-uid="' + m.uid + '">Cancel</button>' : ''}
             ${linkedStaff ? '<button class="cancel-btn unlink-teacher-staff" data-uid="' + m.uid + '">Unlink Staff</button>' : ''}
-            ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton + `<button class="remove-teacher-btn" data-uid="${m.uid}">Remove from School</button>`}
+            ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton + `<button class="remove-teacher-btn" data-uid="${m.uid}">Remove</button>`}
           </div>
         </div>`;
       } else {
@@ -10696,7 +10696,7 @@ function renderManageTeachers() {
           </div>
           <div class="teacher-summary-actions">
             <button class="edit-teacher-btn" data-uid="${m.uid}">Edit</button>
-            ${disableButton}${m.status!=='pending'?`<button class="remove-teacher-btn" data-uid="${m.uid}">Remove from School</button>`:''}
+            ${disableButton}${m.status!=='pending'?`<button class="remove-teacher-btn" data-uid="${m.uid}">Remove</button>`:''}
           </div>
         </div>`;
       }

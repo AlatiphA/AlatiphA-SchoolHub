@@ -50,3 +50,13 @@ function yearGuards(){
 }
 for(const reason of ['unresolved','invalid year','stale year','cancelled','hydrating'])test(`Rollover makes no writes when ${reason}`,async()=>{const f=yearGuards();if(reason==='unresolved')f.c.rolloverCounts=()=>({unresolved:1});if(reason==='invalid year')f.c.yearRolloverDraft.toYear='bad';if(reason==='stale year')f.settings.currentYear='2020/2021';if(reason==='cancelled')f.c.confirm=()=>false;if(reason==='hydrating')f.c.cloudHydrationInProgress=true;await f.c.applyYearRollover();assert.equal(f.alerts.length,reason==='cancelled'?0:1);});
 for(const reason of ['hydrating','cancelled','snapshot failure'])test(`Emergency restore makes no data writes when ${reason}`,async()=>{const f=yearGuards();if(reason==='hydrating')f.c.sessionDataReady=false;if(reason==='cancelled')f.c.confirm=()=>false;if(reason==='snapshot failure')f.c.preserveBeforeEmergencyRestore=()=>{throw Error('storage full');};await f.c.applyYearEndEmergencyRestore();assert.equal(f.alerts.length,reason==='cancelled'?0:1);if(reason==='snapshot failure')assert.match(f.alerts[0],/storage full/);});
+
+test('Manage Teachers uses compact red Remove action',()=>{
+ const html=fs.readFileSync('index.html','utf8'),css=fs.readFileSync('style-3.css','utf8');
+ assert.doesNotMatch(source,/>Remove from School<\/button>/);
+ assert.match(source,/class="remove-teacher-btn"[^>]*>Remove<\/button>/);
+ assert.match(css,/\.teacher-summary-actions \.remove-teacher-btn\{color:var\(--red\);font-weight:600;\}/);
+ assert.match(css,/\.edit-actions \.remove-teacher-btn\{[^}]*color:var\(--red\)/);
+ assert.match(html,/Disable temporarily blocks access without deleting data\. Remove takes a teacher out of the school/);
+ assert.match(source,/Remove this teacher from the school\?/);
+});

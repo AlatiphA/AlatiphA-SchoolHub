@@ -31,6 +31,6 @@ assert(storage.includes('isCurrentAssignedStudent(schoolId, fileName)'));
 
 assert(index.includes('Accessible cloud images'));
 assert(index.includes('Cached accessible images'));
-assert(sw.includes('schoolhub-cache-v40-teacher-lifecycle-strike-5'));
+assert(sw.includes('schoolhub-cache-v40-manage-teacher-remove-ui-6'));
 
 console.log('teacher mobile/profile/sync regression: PASS');

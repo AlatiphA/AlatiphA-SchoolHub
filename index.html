@@ -12,7 +12,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-hydration-report-assets-fix-7">
+<link rel="stylesheet" href="style-3.css?v=v40-manage-teacher-remove-ui-8">
 <link rel="stylesheet" href="ui-polish.css?v=v40-student-freeze-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
@@ -733,7 +733,7 @@
   <!-- MANAGE TEACHERS (Head Teacher only) -->
   <section id="view-manage-teachers" class="view hidden">
     <h2>Manage Teachers</h2>
-    <p class="hint">Approve pending requests and link each account to its existing Staff record where possible. Disable temporarily suspends access. Remove from School ends membership and requires a new join request. Staff details and historical school records are kept.</p>
+    <p class="hint">Approve pending teachers and assign their classes and subjects. Disable temporarily blocks access without deleting data. Remove takes a teacher out of the school and clears their assignments, while preserving historical school records and the Staff record for possible future relinking.</p>
     <ul id="manageTeachersList" class="list"></ul>
   </section>
 
@@ -1049,7 +1049,7 @@
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
-<script src="app-4.js?v=v40-hydration-report-assets-fix-7"></script>
+<script src="app-4.js?v=v40-manage-teacher-remove-ui-8"></script>
 <script src="fees.js"></script>
 <script src="install.js"></script>
 </body>
