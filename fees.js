@@ -18,7 +18,7 @@ async function feeFlush(key,active){
   while(active()&&navigator.onLine!==false){
    const queue=feeQueueRead(key),item=queue[0];if(!item||item.error)break;
    try{results[item.request.requestId]=await safetyCall('updateSchoolFees',item.request);localStorage.setItem(key,JSON.stringify(queue.slice(1)));}
-   catch(e){if(feeRejected(e)){item.error=e.message||String(e);localStorage.setItem(key,JSON.stringify(queue));}break;}
+   catch(e){if(feeRejected(e)){item.error=e.message||String(e);localStorage.setItem(key,JSON.stringify(queue));}else if(typeof requestSchoolHubBackgroundSync==='function')requestSchoolHubBackgroundSync('fee-flush-failed');break;}
   }
   return results;
  });
@@ -56,6 +56,14 @@ function feeRestoreDetails(host,state){
  if(!state)return;
  host.querySelectorAll('details').forEach(d=>{const summary=d.querySelector('summary'),key=summary?.textContent.trim();if(key&&Object.prototype.hasOwnProperty.call(state.detailState,key))d.open=state.detailState[key];});
 }
+async function flushPendingSchoolFeeWrites(){
+ if(!isHeadTeacher()||!sessionReady||!currentSchoolId||!currentUid||navigator.onLine===false)return false;
+ const key='schoolhub_fee_queue_'+currentSchoolId+'_'+currentUid,session=sessionGeneration,school=currentSchoolId,user=currentUid;
+ const active=()=>isCurrentSession(session,user,school)&&isHeadTeacher()&&sessionReady;
+ await feeFlush(key,active);
+ return !feeQueueRead(key).some(item=>item&&!item.error);
+}
+if(typeof window!=='undefined')window.flushPendingSchoolFeeWrites=flushPendingSchoolFeeWrites;
 window.addEventListener('online',()=>{if(isHeadTeacher()&&sessionReady)renderSchoolFees({silent:true});});
 let feeViewGeneration=0;
 async function renderSchoolFees(options={}){
@@ -125,7 +133,7 @@ async function renderSchoolFees(options={}){
   }
   function operation(button,build,done=null,label='Fee update'){
    let busy=false;button.onclick=async()=>{if(busy||!active())return;busy=true;button.disabled=true;
-    try{if(migrationBlocked)throw Error('Complete the v40 fee migration first. Connect and press Refresh balances.');const request={...build(),requestId:crypto.randomUUID()};await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey);q.push({request,label});localStorage.setItem(pendingKey,JSON.stringify(q));});msg.textContent='Saved on this device; waiting for server confirmation…';const results=await feeFlush(pendingKey,active);if(!active())return;if(results[request.requestId]){if(done)await done(results[request.requestId]);else await refreshAfterFeeOperation(label+' saved.');}else await renderSchoolFees({silent:true,progressText:'Waiting for server confirmation…'});}
+    try{if(migrationBlocked)throw Error('Complete the v40 fee migration first. Connect and press Refresh balances.');const request={...build(),requestId:crypto.randomUUID()};await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey);q.push({request,label});localStorage.setItem(pendingKey,JSON.stringify(q));});if(typeof requestSchoolHubBackgroundSync==='function')requestSchoolHubBackgroundSync('fee-write');msg.textContent='Saved on this device; waiting for server confirmation…';const results=await feeFlush(pendingKey,active);if(!active())return;if(results[request.requestId]){if(done)await done(results[request.requestId]);else await refreshAfterFeeOperation(label+' saved.');}else await renderSchoolFees({silent:true,progressText:'Waiting for server confirmation…'});}
     catch(e){if(active())msg.textContent=e.message||String(e);}finally{busy=false;if(active())button.disabled=false;}
    };
   }

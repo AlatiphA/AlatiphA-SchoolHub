@@ -9,6 +9,14 @@ const syncDirtyKeys = new Map();
 const syncErrors = new Map();
 const syncBaseValues = new Map();
 const SYNC_JOURNAL_KEY = 'arc_sync_journal_v2';
+const SCHOOLHUB_BACKGROUND_SYNC_TAG = 'schoolhub-pending-sync-v1';
+const SCHOOLHUB_SW_UPDATE_READY_KEY = 'schoolhub_sw_update_ready_v1';
+const SCHOOLHUB_SW_ERROR_KEY = 'schoolhub_sw_error_v1';
+const SCHOOLHUB_SW_LAST_CHECK_KEY = 'schoolhub_sw_last_check_v1';
+const SCHOOLHUB_SW_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+let schoolHubServiceWorkerRegistration = null;
+let schoolHubServiceWorkerUpdateTimer = null;
+let schoolHubServiceWorkerHadController = false;
 function recoverSyncJournal() {
   const raw = localStorage.getItem(SYNC_JOURNAL_KEY);
   if (!raw) return;
@@ -49,6 +57,46 @@ function persistSyncOutbox() {
 }
 
 loadPersistentSyncOutbox();
+
+function hasPendingPrimarySync() {
+  for (const ids of syncDirtyKeys.values()) if (ids && ids.size) return true;
+  return false;
+}
+
+function hasPendingFeeSync() {
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith('schoolhub_fee_queue_')) continue;
+      const queue = JSON.parse(localStorage.getItem(key) || '[]');
+      if (Array.isArray(queue) && queue.some(item => item && !item.error)) return true;
+    }
+  } catch (error) {
+    console.warn('Could not inspect the pending fee queue:', error);
+  }
+  return false;
+}
+
+function hasPendingSchoolHubSync() {
+  return hasPendingPrimarySync() || hasPendingFeeSync();
+}
+
+async function requestSchoolHubBackgroundSync(reason = 'pending-write') {
+  if (!('serviceWorker' in navigator) || !hasPendingSchoolHubSync()) return false;
+  try {
+    const registration = schoolHubServiceWorkerRegistration || await navigator.serviceWorker.ready;
+    schoolHubServiceWorkerRegistration = registration;
+    if (!registration || !registration.sync || typeof registration.sync.register !== 'function') return false;
+    await registration.sync.register(SCHOOLHUB_BACKGROUND_SYNC_TAG);
+    return true;
+  } catch (error) {
+    // Background Sync is an enhancement only. The durable outbox and the
+    // existing online/reopen recovery remain authoritative fallbacks.
+    console.warn(`Background sync registration failed (${reason}):`, error);
+    return false;
+  }
+}
+if (typeof window !== 'undefined') window.requestSchoolHubBackgroundSync = requestSchoolHubBackgroundSync;
 
 function stableSyncJson(value) {
   try { return JSON.stringify(value); } catch (e) { return String(value); }
@@ -139,6 +187,7 @@ const DB = {
     // local edits record only the records that actually changed.
     if (!(options && options.skipCloudSync)) {
       if (typeof scheduleCloudPush === 'function') scheduleCloudPush(key);
+      requestSchoolHubBackgroundSync('local-write');
       updateOfflineModeBanner();
     }
   }
@@ -1470,7 +1519,10 @@ async function checkHealth() {
   // Service worker
   try {
     const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration('./') : null;
-    setStatusRow('healthServiceWorker', reg && reg.active ? 'ok' : 'warn', reg && reg.active ? '✓ Active' : reg ? '⚠ Registered but not active' : '⚠ Not registered');
+    const swError = localStorage.getItem(SCHOOLHUB_SW_ERROR_KEY) || '';
+    const bgSync = !!(reg && reg.sync && typeof reg.sync.register === 'function');
+    if (swError) setStatusRow('healthServiceWorker', 'fail', '✗ Service worker: ' + swError);
+    else setStatusRow('healthServiceWorker', reg && reg.active ? 'ok' : 'warn', reg && reg.active ? `✓ Active · Background Sync ${bgSync ? 'available' : 'fallback mode'}` : reg ? '⚠ Registered but not active' : '⚠ Not registered');
   } catch (e) { setStatusRow('healthServiceWorker', 'fail', '✗ Service worker check failed'); }
 
   if (!FIREBASE_ENABLED || !currentSchoolId) {
@@ -1601,9 +1653,12 @@ document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async (
       status.textContent = 'No SchoolHub service worker is registered in this browser.';
       return;
     }
-    await registration.update();
-    const active = registration.active ? 'active' : registration.installing ? 'installing' : registration.waiting ? 'waiting' : 'registered';
-    status.textContent = `Update check completed. Service worker is ${active}. Reload SchoolHub to apply a new version.`;
+    schoolHubServiceWorkerRegistration = registration;
+    observeSchoolHubServiceWorker(registration);
+    const checked = await checkSchoolHubServiceWorkerUpdate('manual');
+    if (!checked) throw new Error('The service worker could not complete its update check.');
+    const active = registration.waiting ? 'waiting to activate' : registration.installing ? 'installing' : registration.active ? 'active' : 'registered';
+    status.textContent = `Update check completed. Service worker is ${active}. Reload only when an update is reported ready.`;
   } catch (err) {
     const detail = err && err.message ? err.message : String(err || 'Unknown error');
     status.textContent = 'Update check failed: ' + detail;
@@ -10057,6 +10112,7 @@ function scheduleCloudPush(rawKey) {
     if (!isCurrentSession(token, uidAtSchedule, schoolAtSchedule) || cloudHydrationInProgress || !sessionDataReady) return;
     pushFieldToCloud(match).catch(err => {
       console.error('Cloud sync failed for', match.field, err);
+      requestSchoolHubBackgroundSync('cloud-write-failed');
       updateOfflineModeBanner(err.message || 'Sync failed. Your local changes are preserved.');
     });
   }, 800);
@@ -10270,6 +10326,30 @@ async function flushPendingCloudWrites() {
   }
   updateOfflineModeBanner();
 }
+
+async function runSchoolHubBackgroundSync(source = 'service-worker') {
+  if (navigator.onLine === false || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active') return false;
+  try {
+    // If this session crossed an offline boundary, preserve the v40 safeguard:
+    // revalidate membership before any queued write is allowed to leave the device.
+    if (offlineAuthenticatedMode) await revalidateAndSyncAfterReconnect();
+    else await flushPendingCloudWrites();
+    if (typeof window.flushPendingSchoolFeeWrites === 'function') await window.flushPendingSchoolFeeWrites();
+    if (hasPendingSchoolHubSync()) await requestSchoolHubBackgroundSync(`${source}-remaining`);
+    return true;
+  } catch (error) {
+    console.warn('Background synchronization could not finish:', error);
+    if (isLikelyOfflineError(error) || navigator.onLine === false) {
+      await requestSchoolHubBackgroundSync(`${source}-retry`);
+      return false;
+    }
+    // Permission/conflict failures remain in the existing queues for user review;
+    // they are not converted into an automatic retry loop.
+    updateOfflineModeBanner(error.message || 'Some changes still need attention.');
+    return true;
+  }
+}
+if (typeof window !== 'undefined') window.runSchoolHubBackgroundSync = runSchoolHubBackgroundSync;
 
 async function revalidateAndSyncAfterReconnect() {
   if (offlineReconnectInProgress || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active') {
@@ -11319,10 +11399,98 @@ setTimeout(() => updateOfflineModeBanner(), 0);
 initTheme();
 initAuth();
 
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+function setServiceWorkerDiagnostic(message) {
+  try {
+    if (message) localStorage.setItem(SCHOOLHUB_SW_ERROR_KEY, String(message));
+    else localStorage.removeItem(SCHOOLHUB_SW_ERROR_KEY);
+  } catch (_) {}
+}
+
+function markSchoolHubUpdateReady(workerState = 'installed') {
+  try { localStorage.setItem(SCHOOLHUB_SW_UPDATE_READY_KEY, String(Date.now())); } catch (_) {}
+  const status = document.getElementById('aboutUpdateStatus');
+  if (status) status.textContent = `A SchoolHub update is ready (${workerState}). Reload when convenient to use the new version.`;
+  window.dispatchEvent(new CustomEvent('schoolhub-sw-update-ready', { detail: { state: workerState } }));
+}
+
+function observeSchoolHubServiceWorker(registration) {
+  if (!registration || registration.__schoolHubObserved) return;
+  registration.__schoolHubObserved = true;
+  const watchWorker = worker => {
+    if (!worker || worker.__schoolHubObserved) return;
+    worker.__schoolHubObserved = true;
+    worker.addEventListener('statechange', () => {
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) markSchoolHubUpdateReady('installed');
+      if (worker.state === 'redundant') setServiceWorkerDiagnostic('A service worker update became redundant before activation.');
+    });
+  };
+  watchWorker(registration.installing);
+  registration.addEventListener('updatefound', () => watchWorker(registration.installing));
+  if (registration.waiting) markSchoolHubUpdateReady('waiting');
+}
+
+async function checkSchoolHubServiceWorkerUpdate(reason = 'scheduled') {
+  const registration = schoolHubServiceWorkerRegistration || await navigator.serviceWorker.getRegistration('./');
+  if (!registration || navigator.onLine === false) return false;
+  try {
+    schoolHubServiceWorkerRegistration = registration;
+    await registration.update();
+    try { localStorage.setItem(SCHOOLHUB_SW_LAST_CHECK_KEY, String(Date.now())); } catch (_) {}
+    setServiceWorkerDiagnostic('');
+    return true;
+  } catch (error) {
+    setServiceWorkerDiagnostic(error && error.message ? error.message : String(error));
+    console.warn(`SchoolHub service worker update check failed (${reason}):`, error);
+    return false;
+  }
+}
+
+function scheduleSchoolHubServiceWorkerUpdates(registration) {
+  clearInterval(schoolHubServiceWorkerUpdateTimer);
+  schoolHubServiceWorkerUpdateTimer = setInterval(() => checkSchoolHubServiceWorkerUpdate('periodic'), SCHOOLHUB_SW_UPDATE_INTERVAL_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
+    const last = Number(localStorage.getItem(SCHOOLHUB_SW_LAST_CHECK_KEY) || 0);
+    if (!last || Date.now() - last >= SCHOOLHUB_SW_UPDATE_INTERVAL_MS) checkSchoolHubServiceWorkerUpdate('foreground');
   });
+  if (registration) requestSchoolHubBackgroundSync('service-worker-ready');
+}
+
+async function registerSchoolHubServiceWorker() {
+  if (!('serviceWorker' in navigator)) return null;
+  try {
+    schoolHubServiceWorkerHadController = !!navigator.serviceWorker.controller;
+    const registration = await navigator.serviceWorker.register('sw.js', { scope: './', updateViaCache: 'none' });
+    schoolHubServiceWorkerRegistration = registration;
+    setServiceWorkerDiagnostic('');
+    observeSchoolHubServiceWorker(registration);
+    scheduleSchoolHubServiceWorkerUpdates(registration);
+    setTimeout(() => checkSchoolHubServiceWorkerUpdate('startup'), 3000);
+    return registration;
+  } catch (error) {
+    setServiceWorkerDiagnostic(error && error.message ? error.message : String(error));
+    console.error('SchoolHub service worker registration failed:', error);
+    return null;
+  }
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (schoolHubServiceWorkerHadController) markSchoolHubUpdateReady('activated');
+    schoolHubServiceWorkerHadController = true;
+  });
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (!event.data || event.data.type !== 'SCHOOLHUB_BACKGROUND_SYNC') return;
+    const source = event.source;
+    const syncId = event.data.syncId;
+    runSchoolHubBackgroundSync('service-worker').then(ok => {
+      if (source && typeof source.postMessage === 'function') source.postMessage({ type: 'SCHOOLHUB_BACKGROUND_SYNC_RESULT', syncId, ok: ok !== false });
+    }).catch(error => {
+      console.warn('Service worker background sync handler failed:', error);
+      if (source && typeof source.postMessage === 'function') source.postMessage({ type: 'SCHOOLHUB_BACKGROUND_SYNC_RESULT', syncId, ok: false });
+    });
+  });
+  window.addEventListener('load', registerSchoolHubServiceWorker);
 }
 
 setTimeout(() => { try { renderFloatingPill(); } catch (e) { console.warn('Floating pill navigation:', e); } }, 0);
