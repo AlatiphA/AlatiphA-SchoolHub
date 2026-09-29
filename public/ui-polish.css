@@ -542,3 +542,37 @@
   #app #view-fees .fee-editor button,
   #app #view-fees .fee-receipt-row button { width:100%; margin-right:0; }
 }
+
+
+/* FIS financial reports, dashboard analytics and pupil statements. */
+#app #view-fees .fee-dashboard-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); }
+#app #view-fees .fee-report-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:12px; }
+#app #view-fees .fee-report-panel { min-width:0; padding:12px; border:1px solid var(--rule); border-radius:12px; background:var(--surface); }
+#app #view-fees .fee-report-panel h4 { margin:0 0 8px; }
+#app #view-fees .fee-report-table { min-width:560px; }
+#app #view-fees .fee-statement { margin-top:12px; }
+#app #view-fees .fee-statement-head h3, #app #view-fees .fee-statement-head h4 { margin:4px 0; }
+#app #view-fees .fee-statement-head p { margin:5px 0; }
+#app #view-fees .fee-statement-table { min-width:860px; }
+#app #view-fees .fee-statement-note { color:var(--muted); font-size:.86rem; }
+#feePrintDialog .fee-print-box { width:min(980px,calc(100vw - 32px)); max-width:980px; max-height:calc(100vh - 32px); overflow:auto; text-align:left; }
+#feePrintDialog .fee-print-heading { text-align:center; margin-bottom:16px; }
+#feePrintDialog .fee-print-heading h2, #feePrintDialog .fee-print-heading h3 { margin:3px 0; }
+#feePrintDialog .fee-print-heading p { margin:6px 0; color:var(--muted); }
+#feePrintDialog .fee-print-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:12px 0; }
+#feePrintDialog .fee-print-kpis p { margin:0; padding:10px; border:1px solid var(--rule); border-radius:10px; }
+#feePrintDialog .fee-print-actions { margin-top:16px; }
+#feePrintDialog .fee-summary-table { width:100%; border-collapse:collapse; margin:8px 0 16px; }
+#feePrintDialog .fee-summary-table th, #feePrintDialog .fee-summary-table td { padding:8px; border-bottom:1px solid var(--rule); text-align:left; }
+#feePrintDialog .fee-summary-table td:nth-child(n+2) { font-variant-numeric:tabular-nums; }
+@media(max-width:900px){#app #view-fees .fee-dashboard-kpis,#app #view-fees .fee-report-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:600px){#app #view-fees .fee-dashboard-kpis,#app #view-fees .fee-report-grid{grid-template-columns:1fr;}#app #view-fees .fee-report-panel{padding:10px;}#feePrintDialog .fee-print-kpis{grid-template-columns:1fr 1fr;}}
+@media print {
+ body:has(#feePrintDialog) > :not(#feePrintDialog) { display:none!important; }
+ #feePrintDialog { position:static!important; display:block!important; background:white!important; padding:0!important; }
+ #feePrintDialog .fee-print-box { width:100%!important; max-width:none!important; max-height:none!important; overflow:visible!important; color:#111!important; background:#fff!important; box-shadow:none!important; border:0!important; }
+ #feePrintDialog .fee-print-actions { display:none!important; }
+ #feePrintDialog .fee-summary-table { min-width:0!important; font-size:10pt; }
+ #feePrintDialog .fee-summary-table th, #feePrintDialog .fee-summary-table td { color:#111!important; background:#fff!important; border-color:#aaa!important; }
+ #feePrintDialog .fee-print-heading p, #feePrintDialog .fee-statement-note { color:#444!important; }
+}
