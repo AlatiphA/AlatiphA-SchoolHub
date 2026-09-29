@@ -421,7 +421,7 @@
 /* Keep PIN confirmation visually separate from its action. */
 #app #pinStatusWrap #setPinBtn { margin-top: 16px; }
 
-#feesWrap details, #feePupil { margin: 20px 0; padding: 16px; border: 1px solid #b7b7a5; border-radius: 12px; }
+#feesWrap details, #feePupil { margin: 16px 0; padding: 18px; border: 1px solid var(--rule); border-radius: 14px; }
 #feesWrap button { margin: 10px 8px 10px 0; }
 #feesWrap td, #feesWrap th { padding: 12px; text-align: left; }
 #feeMessage { white-space: pre-wrap; }
@@ -437,23 +437,23 @@
 
 /* Fees: consistent fields, readable balances and a pinned pupil column. */
 #app #view-fees #feesWrap label {
-  display:block; width:100%; margin:20px 0; font-weight:500;
+  display:block; width:100%; margin:0; font-weight:500;
 }
 #app #view-fees #feesWrap :is(input,select,textarea) {
   display:block; box-sizing:border-box; width:100%; max-width:100%; min-width:0;
-  margin:10px 0 0; min-height:48px;
+  margin:8px 0 0; min-height:44px;
 }
 #app #view-fees #feesWrap details, #app #view-fees #feePupil {
-  border-color:var(--rule); background:var(--surface); padding:22px; border-radius:16px;
+  border-color:var(--rule); background:var(--surface-alt); padding:18px; border-radius:14px;
 }
 #app #view-fees #feePupil:empty { display:none; }
 #app #view-fees #feesWrap summary { cursor:pointer; font-weight:600; line-height:1.5; }
-#app #view-fees #feesWrap details[open] summary { margin-bottom:18px; }
-#app #view-fees #feesWrap p { line-height:1.65; }
-#app #view-fees #feesWrap h3 { margin-top:28px; }
-#app #view-fees #feesWrap h4 { margin:28px 0 16px; }
+#app #view-fees #feesWrap details[open] summary { margin-bottom:12px; }
+#app #view-fees #feesWrap p { margin:8px 0 14px; line-height:1.55; }
+#app #view-fees #feesWrap h3 { margin:24px 0 12px; }
+#app #view-fees #feesWrap h4 { margin:18px 0 12px; }
 #app #view-fees #feeTotals {
-  margin:20px 0; padding:16px 18px; border:1px solid var(--rule);
+  margin:16px 0; padding:14px 16px; border:1px solid var(--rule);
   border-radius:12px; background:var(--surface-alt); line-height:1.8;
 }
 #app #view-fees #feeMessage:empty { display:none; }
@@ -474,14 +474,14 @@
 #app #view-fees .fee-balances-table button { margin:0; }
 #app #view-fees #feeReceipts > div { padding:16px 0; border-bottom:1px solid var(--rule); }
 @media(max-width:600px) {
-  #app #view-fees #feesWrap details, #app #view-fees #feePupil { padding:14px; }
+  #app #view-fees #feesWrap details, #app #view-fees #feePupil { margin:12px 0; padding:14px; }
+  #app #view-fees .fee-form-grid, #app #view-fees .fee-card-grid, #app #view-fees .fee-allocation-grid { gap:12px; }
   #app #view-fees .fee-balances-table :is(th,td):first-child { width:136px; min-width:136px; max-width:136px; padding:12px; }
   #app #view-fees #feeSearch { font-size:15px; }
   #app #view-fees #feesWrap > button, #app #view-fees #feePupil > button { width:100%; margin-right:0; }
 }
 
 /* v40 FIS: multi-category fee-item system. */
-#app #view-fees .fee-actions,
 #app #view-fees .fee-form-grid,
 #app #view-fees .fee-kpis,
 #app #view-fees .fee-card-grid,
@@ -489,17 +489,18 @@
   display:grid;
   gap:14px;
 }
-#app #view-fees .fee-actions { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin:16px 0; }
+#app #view-fees .fee-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:12px 0 16px; }
+#app #view-fees .fee-actions button { width:auto; margin:0; }
 #app #view-fees .fee-form-grid { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); align-items:end; }
-#app #view-fees .fee-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); margin:18px 0; }
-#app #view-fees .fee-kpis > div { padding:14px; border:1px solid var(--rule); border-radius:12px; background:var(--surface-alt); min-width:0; }
+#app #view-fees .fee-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); margin:16px 0; }
+#app #view-fees .fee-kpis > div { padding:12px 14px; border:1px solid var(--rule); border-radius:12px; background:var(--surface-alt); min-width:0; }
 #app #view-fees .fee-kpis small { display:block; margin-bottom:5px; color:var(--muted); }
 #app #view-fees .fee-kpis strong { display:block; overflow-wrap:anywhere; font-size:1.08rem; font-variant-numeric:tabular-nums; }
-#app #view-fees .fee-card-grid { grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); margin-top:16px; }
+#app #view-fees .fee-card-grid { grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); margin-top:12px; }
 #app #view-fees .fee-card,
 #app #view-fees .fee-charge-card,
 #app #view-fees .fee-receipt-row,
-#app #view-fees .fee-editor { border:1px solid var(--rule); border-radius:14px; padding:16px; background:var(--surface); }
+#app #view-fees .fee-editor { border:1px solid var(--rule); border-radius:12px; padding:14px; background:var(--surface); }
 #app #view-fees .fee-card h4 { margin:0 0 8px; }
 #app #view-fees .fee-card p { margin:7px 0; }
 #app #view-fees .fee-badge { display:inline-block; margin-left:6px; padding:2px 8px; border:1px solid var(--rule); border-radius:999px; font-size:.78rem; font-weight:600; vertical-align:middle; }

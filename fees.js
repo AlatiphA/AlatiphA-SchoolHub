@@ -6,6 +6,11 @@ function feeWithLock(key,work){
  const next=(feeQueueLocks.get(key)||Promise.resolve()).catch(()=>{}).then(work);feeQueueLocks.set(key,next);return next;
 }
 function feeQueueRead(key){try{return JSON.parse(localStorage.getItem(key)||'[]');}catch(_){return [];}}
+function feeReadCompatibleCache(key){
+ const raw=localStorage.getItem(key);if(!raw)return null;
+ try{const data=JSON.parse(raw);if(Number(data?.schemaVersion||0)>=2)return data;}catch(_){}
+ localStorage.removeItem(key);return null;
+}
 function feeRejected(e){return /invalid-argument|failed-precondition|aborted|permission-denied|unauthenticated|not-found|already-exists/.test(e.code||'');}
 async function feeFlush(key,active){
  return feeWithLock(key,async()=>{
@@ -59,17 +64,17 @@ async function renderSchoolFees(options={}){
  if(!host)return;if(!isHeadTeacher()||!FIREBASE_ENABLED){host.textContent='Sign in as Head Teacher to manage fees.';return;}
  const silent=options.silent===true&&host.children.length>0,viewState=silent?feeCaptureViewState(host):null;
  const pendingKey='schoolhub_fee_queue_'+school+'_'+user,cacheKey='schoolhub_fee_cache_'+school+'_'+user,legacyKey='schoolhub_fee_pending_'+school+'_'+user;
- const cachedSnapshot=localStorage.getItem(cacheKey),cacheFirst=options.cacheFirst===true&&!silent&&!!cachedSnapshot;
+ const cachedData=feeReadCompatibleCache(cacheKey),cacheFirst=options.cacheFirst===true&&!silent&&!!cachedData;
  const legacyPending=localStorage.getItem(legacyKey);if(legacyPending){await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey),request=JSON.parse(legacyPending);if(!q.some(x=>x.request.requestId===request.requestId))q.push({request,label:'Pending v40 fee operation'});localStorage.setItem(pendingKey,JSON.stringify(q));localStorage.removeItem(legacyKey);});}
  if(silent){host.setAttribute('aria-busy','true');const currentMessage=host.querySelector('#feeMessage');if(currentMessage)currentMessage.textContent=options.progressText||'Updating fee records…';}
  else if(!cacheFirst)host.textContent='Loading Fees & Receipts…';
  try{
   let data,cached=false,refreshAfterCachedRender=false;
-  if(cacheFirst){data=JSON.parse(cachedSnapshot);cached=true;refreshAfterCachedRender=navigator.onLine!==false;}
+  if(cacheFirst){data=cachedData;cached=true;refreshAfterCachedRender=navigator.onLine!==false;}
   else{
    await feeFlush(pendingKey,active);if(!active())return;
    try{data=await safetyCall('getSchoolFees',{});if(!active())return;data=await feeMigrateLegacy(data,active);if(!active())return;localStorage.setItem(cacheKey,JSON.stringify(data));}
-   catch(e){const saved=localStorage.getItem(cacheKey);if(!saved)throw Error('Connect once to load and upgrade your fee records before working offline.');data=JSON.parse(saved);cached=true;}
+   catch(e){const saved=feeReadCompatibleCache(cacheKey);if(!saved)throw Error('Connect once to load and upgrade your fee records before working offline.');data=saved;cached=true;}
   }
   if(!active())return;if(Number(data.schemaVersion||0)<2)throw Error('This device has an older fee cache. Connect once to complete the FIS upgrade.');
   const settings=DB.get(KEYS.settings,{}),classes=DB.get(KEYS.classes,[]),students=DB.get(KEYS.students,[]).filter(s=>s.isActive!==false),esc=escapeHtml;
