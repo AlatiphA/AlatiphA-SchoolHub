@@ -28,6 +28,27 @@ test('Firestore denies direct access to every FIS financial collection',()=>{
  for(const name of ['feeCategories','feeItems','pupilCharges','feeAccounts','feePayments','feeEvents','feeMeta'])assert.match(rules,new RegExp(`match /${name}/\\{[^}]+\\} \\{ allow read, write: if false; \\}`));
 });
 
+
+test('FIS mutations refresh confirmed data in place without showing the full loading screen',()=>{
+ assert.ok(fees.includes("renderSchoolFees({silent:true"));
+ assert.ok(fees.includes("const silent=options.silent===true&&host.children.length>0"));
+ assert.ok(fees.includes("if(silent){host.setAttribute('aria-busy','true')"));
+ assert.ok(fees.includes("else if(!cacheFirst)host.textContent='Loading Fees & Receipts…'"));
+ assert.ok(fees.includes("pane.dataset.studentId=studentId"));
+ assert.ok(fees.includes("window.scrollTo({top:viewState.scrollY,behavior:'auto'})"));
+});
+
+
+test('opening Fees & Receipts reuses the rendered view and uses confirmed cache before network refresh',()=>{
+ const app=fs.readFileSync('app-4.js','utf8');
+ assert.ok(app.includes("feeHost.dataset.feeContext !== feeContext"));
+ assert.ok(app.includes("renderSchoolFees({ cacheFirst: true })"));
+ assert.ok(fees.includes("const cachedSnapshot=localStorage.getItem(cacheKey),cacheFirst=options.cacheFirst===true&&!silent&&!!cachedSnapshot"));
+ assert.ok(fees.includes("else if(!cacheFirst)host.textContent='Loading Fees & Receipts…'"));
+ assert.ok(fees.includes("host.dataset.feeContext=`${school}|${user}|${session}`"));
+ assert.ok(fees.includes("if(refreshAfterCachedRender&&active())setTimeout"));
+});
+
 test('service worker cache is bumped for the FIS build and caches fees.js',()=>{
- assert.match(sw,/schoolhub-cache-v40-fis-multi-fee-1/);assert.match(sw,/\.\/fees\.js/);
+ assert.match(sw,/schoolhub-cache-v40-fis-multi-fee-3/);assert.match(sw,/\.\/fees\.js/);
 });

@@ -871,7 +871,13 @@ function showView(name) {
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
   if (name === 'billing') renderBilling();
-  if (name === 'fees') renderSchoolFees();
+  if (name === 'fees') {
+    const feeHost = document.getElementById('feesWrap');
+    const feeContext = `${currentSchoolId}|${currentUid}|${sessionGeneration}`;
+    if (!feeHost || !feeHost.children.length || feeHost.dataset.feeContext !== feeContext) {
+      renderSchoolFees({ cacheFirst: true });
+    }
+  }
   if (name === 'history') renderHistoryTermYearSelect();
   if (name === 'manage-teachers') renderManageTeachers();
   if (name === 'activity') loadActivityLog();
