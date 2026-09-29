@@ -1,100 +1,180 @@
 'use strict';
 const crypto=require('node:crypto');
 const key=(...parts)=>crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex');
+
 function register({onCall,HttpsError,db}){
  const fail=(code,message)=>{throw new HttpsError(code,message);};
  const call=fn=>onCall({region:'us-central1',invoker:'public',timeoutSeconds:120},fn);
+ const col=(school,name)=>school.collection(name);
+ const snapshot=doc=>({id:doc.id,...doc.data()});
+ const str=(s,label,max=200)=>{if(typeof s!=='string'||!s.trim()||s.trim().length>max)fail('invalid-argument',`${label} is required (maximum ${max} characters).`);return s.trim();};
+ const optStr=(s,label,max=200)=>{if(s==null||s==='')return '';if(typeof s!=='string'||s.trim().length>max)fail('invalid-argument',`${label} is too long.`);return s.trim();};
+ const money=(n,{signed=false,positive=false}={})=>{if(!Number.isSafeInteger(n)||Math.abs(n)>100000000||(!signed&&n<0)||(positive&&n<=0))fail('invalid-argument','Enter a valid amount with at most two decimal places.');return n;};
+ const termValue=t=>({'Term 1':1,'Term 2':2,'Term 3':3}[t]||99);
+ const periodKey=a=>{const y=String(a.year||''),m=y.match(/(\d{4})/);return `${m?m[1]:y.padStart(20,'0')}__${String(termValue(a.term)).padStart(2,'0')}__${y}`;};
+ const effectiveCharge=a=>a.cancelled?0:Math.max(0,Number(a.baseAmount??a.base??0)+Number(a.adjustment??0));
+ const outstanding=a=>Math.max(0,effectiveCharge(a)-Number(a.paid||0));
+ const legacyId=(term,year,studentId)=>key(term,year,studentId);
+ const validTerm=t=>{const term=str(t,'Term',30);if(!['Term 1','Term 2','Term 3'].includes(term))fail('invalid-argument','Choose Term 1, Term 2 or Term 3.');return term;};
+ const validYear=y=>{const year=str(y,'Academic year',30);if(!/^\d{4}\s*\/\s*\d{4}$/.test(year))fail('invalid-argument','Enter the academic year as YYYY/YYYY.');return year.replace(/\s/g,'');};
  async function schoolFor(tx,r){
   if(!r.auth)fail('unauthenticated','Sign in first.');
-  const u=(await tx.get(db.collection('users').doc(r.auth.uid))).data();
-  if(!u||u.status!=='active'||u.role!=='headteacher'||!u.schoolId)fail('permission-denied','Only the active Head Teacher can manage fees.');
-  return db.collection('schools').doc(u.schoolId);
+  const user=(await tx.get(db.collection('users').doc(r.auth.uid))).data();
+  if(!user||user.status!=='active'||user.role!=='headteacher'||!user.schoolId)fail('permission-denied','Only the active Head Teacher can manage fees.');
+  return {school:db.collection('schools').doc(user.schoolId),user};
  }
- const str=(s,label)=>{if(typeof s!=='string'||!s.trim()||s.length>200)fail('invalid-argument',label+' is required (maximum 200 characters).');return s.trim();};
- const money=(n,signed=false)=>{if(!Number.isSafeInteger(n)||Math.abs(n)>100000000||(!signed&&n<0))fail('invalid-argument','Enter a valid amount with at most two decimal places.');return n;};
- return {
- getReportFeeBalances:call(async r=>db.runTransaction(async tx=>{
+ async function reportSchoolFor(tx,r,classId){
   if(!r.auth)fail('unauthenticated','Sign in first.');
-  const u=(await tx.get(db.collection('users').doc(r.auth.uid))).data(),d=r.data||{};
-  const classId=str(d.classId,'Class'),term=str(d.term,'Term'),year=str(d.year,'Academic year');
-  if(!u||u.status!=='active'||!u.schoolId||!['headteacher','teacher'].includes(u.role)||(u.role==='teacher'&&!(u.assignedClassIds||[]).includes(classId)))fail('permission-denied','Class access required.');
-  const school=db.collection('schools').doc(u.schoolId);
-  const pupils=(await tx.get(school.collection('students'))).docs.filter(x=>x.data().classId===classId);
-  const ids=new Set(pupils.map(x=>x.id)),balances={};
-  const accounts=(await tx.get(school.collection('feeAccounts'))).docs;
-  for(const doc of accounts){const a=doc.data();if(ids.has(a.studentId)&&(a.year+'__'+a.term)<=(year+'__'+term))balances[a.studentId]=(balances[a.studentId]||0)+a.base+a.adjustment-a.paid;}
-  return {balances};
- })),
- getSchoolFees:call(async r=>db.runTransaction(async tx=>{
-  const school=await schoolFor(tx,r);
-  const [a,p,e]=await Promise.all(['feeAccounts','feePayments','feeEvents'].map(c=>tx.get(school.collection(c))));
-  return {accounts:a.docs.map(d=>({id:d.id,...d.data()})),payments:p.docs.map(d=>({id:d.id,...d.data()})),events:e.docs.map(d=>({id:d.id,...d.data()}))};
- })),
- updateSchoolFees:call(async r=>db.runTransaction(async tx=>{
-  const school=await schoolFor(tx,r),d=r.data||{},action=d.action;
-  const requestId=str(d.requestId,'Request identifier');if(!/^[a-zA-Z0-9-]{16,80}$/.test(requestId))fail('invalid-argument','Invalid request identifier.');
-  const eventRef=school.collection('feeEvents').doc(requestId),old=await tx.get(eventRef),fingerprint=key(d);
-  if(old.exists){if(old.data().fingerprint!==fingerprint)fail('already-exists','This request was already used. Refresh before continuing.');return old.data().result;}
-  const period=a=>String(a.year)+'__'+String(a.term);
-  const stamp=new Date().toISOString(),actor=r.auth.uid;let result={saved:true},details={};
-  if(action==='classFee'){
-   const term=str(d.term,'Term'),year=str(d.year,'Academic year'),classId=str(d.classId,'Class'),amount=money(d.amount);
-   if(classId.includes('/'))fail('invalid-argument','Invalid class.');
-   const cls=await tx.get(school.collection('classes').doc(classId));if(!cls.exists)fail('not-found','Class not found.');
-   const pupils=(await tx.get(school.collection('students'))).docs.filter(x=>x.data().classId===classId&&x.data().isActive!==false);
-   if(!pupils.length||pupils.length>400)fail('failed-precondition','Select a class with 1–400 active pupils.');
-   const refs=pupils.map(p=>school.collection('feeAccounts').doc(key(term,year,p.id)));
-   const existing=await Promise.all(refs.map(ref=>tx.get(ref)));
-   existing.forEach((snap,i)=>{
-    // A class fee creates each term charge once. Later individual corrections are audited adjustments.
-    if(!snap.exists)tx.set(refs[i],{studentId:pupils[i].id,studentName:pupils[i].data().name||'',classId,className:cls.data().name||'',term,year,base:amount,adjustment:0,paid:0,revision:0,createdAt:stamp});
-   });
-   result={saved:true,created:existing.filter(x=>!x.exists).length,skipped:existing.filter(x=>x.exists).length};details={classId,term,year,amount};
-  }else if(['reviseClass','cancelClass'].includes(action)){
-   const term=str(d.term,'Term'),year=str(d.year,'Academic year'),classId=str(d.classId,'Class'),reason=str(d.reason,'Reason');
-   const accounts=(await tx.get(school.collection('feeAccounts'))).docs.filter(x=>x.data().classId===classId&&x.data().term===term&&x.data().year===year);
-   if(!accounts.length||accounts.length>400)fail('failed-precondition','No matching fees, or more than 400 accounts.');
-   if(!d.revisions||Object.keys(d.revisions).length!==accounts.length||accounts.some(x=>d.revisions[x.id]!==x.data().revision))fail('aborted','These class balances changed. Refresh and review before editing.');
-   const amount=action==='cancelClass'?0:money(d.amount);
-   for(const x of accounts){const a=x.data(),total=action==='cancelClass'?0:amount+a.adjustment;if(total<a.paid)fail('failed-precondition','The new charge for '+a.studentName+' would be below payments received. Void incorrect payments or adjust that pupil first.');}
-   accounts.forEach(x=>{const a=x.data();tx.set(school.collection('feeAccounts').doc(x.id),{...a,base:amount,adjustment:action==='cancelClass'?0:a.adjustment,cancelled:action==='cancelClass',revision:a.revision+1});});
-   details={accountIds:accounts.map(x=>x.id),classId,term,year,amount,reason};result={saved:true,updated:accounts.length};
-  }else if(['adjust','edit','cancel','payment','void'].includes(action)){
-   const id=str(d.accountId,'Pupil account');if(!/^[a-f0-9]{64}$/.test(id))fail('invalid-argument','Invalid pupil account.');
-   const ref=school.collection('feeAccounts').doc(id),snap=await tx.get(ref);if(!snap.exists)fail('not-found','Pupil fee account not found.');
-   const account=snap.data();let next={...account,revision:account.revision+1};
-   if(action==='edit'||action==='cancel'){
-    if(d.revision!==account.revision)fail('aborted','This fee changed. Refresh and review before editing.');
-    const amount=action==='cancel'?0:money(d.amount),reason=str(d.reason,'Reason');
-    if(amount<account.paid)fail('failed-precondition','Void the payments first before reducing the fee below the amount already paid.');
-    next.base=amount;next.adjustment=0;next.cancelled=action==='cancel';details={accountId:id,amount,previousCharge:account.base+account.adjustment,reason};
-   }else if(action==='adjust'){
-    if(d.revision!==account.revision)fail('aborted','This balance changed. Refresh and review it before adjusting.');
-    const amount=money(d.amount,true),reason=str(d.reason,'Adjustment reason');if(!amount||account.base+account.adjustment+amount<account.paid)fail('failed-precondition','The charge cannot be reduced below payments already received. Void an incorrect payment first.');
-    next.adjustment+=amount;details={accountId:id,amount,reason};
+  const user=(await tx.get(db.collection('users').doc(r.auth.uid))).data();
+  if(!user||user.status!=='active'||!user.schoolId||!['headteacher','teacher'].includes(user.role)||(user.role==='teacher'&&!(user.assignedClassIds||[]).includes(classId)))fail('permission-denied','Class access required.');
+  return db.collection('schools').doc(user.schoolId);
+ }
+ async function getCollections(tx,school,names){
+  const snaps=await Promise.all(names.map(name=>tx.get(col(school,name))));
+  return Object.fromEntries(names.map((name,i)=>[name,snaps[i].docs.map(snapshot)]));
+ }
+ function buildSummary(charges,currentYear,currentTerm){
+  const rows=new Map(),current=periodKey({year:currentYear,term:currentTerm});
+  for(const charge of charges){
+   const due=effectiveCharge(charge),paid=Math.min(Number(charge.paid||0),due),balance=Math.max(0,due-paid);
+   if(!due&&!paid&&!balance)continue;
+   const id=[charge.categoryId||'uncategorised',charge.year||'',charge.term||''].join('__');
+   let row=rows.get(id);
+   if(!row){row={categoryId:charge.categoryId||'',categoryName:charge.categoryName||'Uncategorised',year:charge.year||'',term:charge.term||'',due:0,paid:0,balance:0,pupilIds:new Set(),isArrear:periodKey(charge)<current};rows.set(id,row);}
+   row.due+=due;row.paid+=paid;row.balance+=balance;row.pupilIds.add(charge.studentId);
+  }
+  return [...rows.values()].map(row=>({...row,pupilCount:row.pupilIds.size,pupilIds:undefined})).sort((a,b)=>periodKey(a).localeCompare(periodKey(b))||a.categoryName.localeCompare(b.categoryName));
+ }
+ function legacyItemId(a){return key('legacy-v40-item',a.year||'',a.term||'',a.classId||'',Number(a.base||0),a.isTestData===true);}
+ function legacyCharge(a,id,itemId){return {studentId:a.studentId,studentName:a.studentName||'',classId:a.classId||'',className:a.className||'',feeItemId:itemId,categoryId:'legacy-v40-fees',categoryName:'Migrated v40 Fees',itemName:'Standard class fee (migrated)',term:a.term||'',year:a.year||'',baseAmount:Number(a.base||0),adjustment:Number(a.adjustment||0),paid:Number(a.paid||0),cancelled:a.cancelled===true,revision:Number(a.revision||0),isLegacy:true,legacyAccountId:id,isTestData:a.isTestData===true,createdAt:a.createdAt||'',createdBy:a.createdBy||''};}
+ function eventIsTest(details){return details?.isTestData===true;}
+
+ const handlers={
+  getReportFeeBalances:call(async r=>db.runTransaction(async tx=>{
+   const d=r.data||{},classId=str(d.classId,'Class',100),term=validTerm(d.term),year=validYear(d.year),school=await reportSchoolFor(tx,r,classId);
+   const pupils=(await tx.get(col(school,'students'))).docs.filter(x=>x.data().classId===classId),ids=new Set(pupils.map(x=>x.id)),balances={},managed=new Set();
+   const [chargeSnap,legacySnap]=await Promise.all([tx.get(col(school,'pupilCharges')),tx.get(col(school,'feeAccounts'))]);
+   const migratedIds=new Set(chargeSnap.docs.map(x=>x.id));
+   for(const doc of chargeSnap.docs){const a=doc.data();if(ids.has(a.studentId)&&periodKey(a)<=periodKey({year,term})){managed.add(a.studentId);balances[a.studentId]=(balances[a.studentId]||0)+outstanding(a);}}
+   for(const doc of legacySnap.docs){if(migratedIds.has(doc.id))continue;const a=doc.data();if(ids.has(a.studentId)&&periodKey(a)<=periodKey({year,term})){managed.add(a.studentId);balances[a.studentId]=(balances[a.studentId]||0)+Math.max(0,(a.cancelled?0:Number(a.base||0)+Number(a.adjustment||0))-Number(a.paid||0));}}
+   for(const id of managed)balances[id]=Math.max(0,balances[id]||0);
+   return {balances};
+  })),
+
+  getSchoolFees:call(async r=>db.runTransaction(async tx=>{
+   const {school}=await schoolFor(tx,r),schoolData=(await tx.get(school)).data()||{};
+   const data=await getCollections(tx,school,['feeCategories','feeItems','pupilCharges','feePayments','feeEvents','feeAccounts']);
+   const migratedIds=new Set(data.pupilCharges.map(x=>x.id)),legacyRemaining=data.feeAccounts.filter(x=>!migratedIds.has(x.id)).length;
+   return {schemaVersion:2,categories:data.feeCategories,items:data.feeItems,charges:data.pupilCharges,payments:data.feePayments,events:data.feeEvents,accounts:data.feeAccounts,migration:{legacyRemaining},arrears:buildSummary(data.pupilCharges,schoolData.profile?.currentYear||'',schoolData.profile?.currentTerm||'')};
+  })),
+
+  updateSchoolFees:call(async r=>db.runTransaction(async tx=>{
+   const {school}=await schoolFor(tx,r),d=r.data||{},action=str(d.action,'Fee action',40),requestId=str(d.requestId,'Request identifier',80);
+   if(!/^[a-zA-Z0-9-]{16,80}$/.test(requestId))fail('invalid-argument','Invalid request identifier.');
+   const eventRef=col(school,'feeEvents').doc(requestId),oldEvent=await tx.get(eventRef),fingerprint=key(d);
+   if(oldEvent.exists){if(oldEvent.data().fingerprint!==fingerprint)fail('already-exists','This request identifier was already used for a different fee operation. Refresh before continuing.');return oldEvent.data().result;}
+   const stamp=new Date().toISOString(),actor=r.auth.uid;let result={saved:true},details={};
+
+   if(action==='migrateLegacy'){
+    const data=await getCollections(tx,school,['feeAccounts','pupilCharges','feeItems']);
+    const categoryRef=col(school,'feeCategories').doc('legacy-v40-fees'),categorySnap=await tx.get(categoryRef);
+    const existingCharges=new Set(data.pupilCharges.map(x=>x.id)),existingItems=new Set(data.feeItems.map(x=>x.id));
+    const batch=data.feeAccounts.filter(x=>!existingCharges.has(x.id)).slice(0,100),newItemIds=new Set();
+    if(!categorySnap.exists)tx.set(categoryRef,{name:'Migrated v40 Fees',description:'System category containing fee records migrated from the v40 single-fee ledger.',active:true,revision:0,isSystem:true,isTestData:false,createdAt:stamp,createdBy:actor});
+    for(const a of batch){
+     const itemId=legacyItemId(a);if(!existingItems.has(itemId)&&!newItemIds.has(itemId)){tx.set(col(school,'feeItems').doc(itemId),{categoryId:'legacy-v40-fees',categoryName:'Migrated v40 Fees',name:'Standard class fee (migrated)',term:a.term||'',year:a.year||'',amount:Number(a.base||0),scopeType:'legacy',classIds:a.classId?[a.classId]:[],studentId:'',targetCount:0,active:true,cancelled:false,revision:0,isLegacy:true,isSystem:true,isTestData:a.isTestData===true,createdAt:a.createdAt||stamp,createdBy:a.createdBy||actor});newItemIds.add(itemId);}
+     tx.set(col(school,'pupilCharges').doc(a.id),legacyCharge(a,a.id,itemId));
+    }
+    const remaining=Math.max(0,data.feeAccounts.length-existingCharges.size-batch.length);result={saved:true,migrated:batch.length,remaining};details={count:batch.length,remaining};
+   }else if(action==='createCategory'){
+    const name=str(d.name,'Category name',80),description=optStr(d.description,'Category description',240),isTestData=d.isTestData===true,categories=(await tx.get(col(school,'feeCategories'))).docs.map(snapshot);
+    if(categories.some(x=>x.active!==false&&x.name.toLowerCase()===name.toLowerCase()))fail('already-exists','An active fee category with this name already exists.');
+    const id=key('fee-category',requestId);tx.set(col(school,'feeCategories').doc(id),{name,description,active:true,revision:0,isTestData,createdAt:stamp,createdBy:actor});result={saved:true,categoryId:id};details={categoryId:id,name,isTestData};
+   }else if(action==='editCategory'){
+    const categoryId=str(d.categoryId,'Fee category',80),ref=col(school,'feeCategories').doc(categoryId),snap=await tx.get(ref),items=(await tx.get(col(school,'feeItems'))).docs.map(snapshot);
+    if(!snap.exists)fail('not-found','Fee category not found.');const oldCat=snap.data();if(d.revision!==oldCat.revision)fail('aborted','This fee category changed. Refresh before editing.');if(oldCat.isSystem)fail('failed-precondition','System fee categories cannot be edited.');
+    const name=str(d.name,'Category name',80),description=optStr(d.description,'Category description',240),active=d.active!==false,used=items.some(x=>x.categoryId===categoryId);
+    if(used&&name!==oldCat.name)fail('failed-precondition','A category already used by fee items cannot be renamed. Create a new category instead.');
+    tx.set(ref,{...oldCat,name,description,active,revision:Number(oldCat.revision||0)+1,updatedAt:stamp,updatedBy:actor});details={categoryId,name,active,isTestData:oldCat.isTestData===true};
+   }else if(action==='createFeeItem'){
+    const categoryId=str(d.categoryId,'Fee category',80),categorySnap=await tx.get(col(school,'feeCategories').doc(categoryId));if(!categorySnap.exists||categorySnap.data().active===false||categorySnap.data().isSystem)fail('failed-precondition','Choose an active reusable fee category.');const cat=categorySnap.data();
+    const name=str(d.name,'Fee item name',100),term=validTerm(d.term),year=validYear(d.year),amount=money(d.amount,{positive:true}),scopeType=str(d.scopeType,'Fee scope',20),isTestData=d.isTestData===true||cat.isTestData===true;
+    if(!['class','classes','allClasses','pupil'].includes(scopeType))fail('invalid-argument','Choose a valid fee scope.');
+    const classDocs=(await tx.get(col(school,'classes'))).docs,studentDocs=(await tx.get(col(school,'students'))).docs.filter(x=>x.data().isActive!==false),classMap=new Map(classDocs.map(x=>[x.id,x.data()]));let targets=[],classIds=[],studentId='';
+    if(scopeType==='pupil'){studentId=str(d.studentId,'Pupil',100);const student=studentDocs.find(x=>x.id===studentId);if(!student)fail('not-found','Active pupil not found.');targets=[student];classIds=[student.data().classId].filter(Boolean);}
+    else if(scopeType==='allClasses'){targets=studentDocs;classIds=[...new Set(studentDocs.map(x=>x.data().classId).filter(Boolean))];}
+    else{classIds=Array.isArray(d.classIds)?[...new Set(d.classIds.map(String))]:[];if(scopeType==='class'&&classIds.length!==1)fail('invalid-argument','Choose one class.');if(scopeType==='classes'&&classIds.length<2)fail('invalid-argument','Choose at least two classes.');if(classIds.some(id=>!classMap.has(id)))fail('not-found','One selected class no longer exists.');targets=studentDocs.filter(x=>classIds.includes(x.data().classId));}
+    if(!targets.length)fail('failed-precondition','The selected scope has no active pupils.');if(targets.length>450)fail('failed-precondition','This fee item targets more than 450 pupils. Create it in smaller class groups so every charge remains transaction-safe.');
+    const itemId=key('fee-item',requestId),item={categoryId,categoryName:cat.name,name,term,year,amount,scopeType,classIds,studentId,targetCount:targets.length,active:true,cancelled:false,revision:0,isTestData,createdAt:stamp,createdBy:actor};tx.set(col(school,'feeItems').doc(itemId),item);
+    for(const pupil of targets){const p=pupil.data(),chargeId=key('charge',itemId,pupil.id);tx.set(col(school,'pupilCharges').doc(chargeId),{studentId:pupil.id,studentName:p.name||'',classId:p.classId||'',className:classMap.get(p.classId)?.name||'',feeItemId:itemId,categoryId,categoryName:cat.name,itemName:name,term,year,baseAmount:amount,adjustment:0,paid:0,cancelled:false,revision:0,isTestData,createdAt:stamp,createdBy:actor});}
+    result={saved:true,itemId,created:targets.length};details={itemId,categoryId,name,term,year,amount,scopeType,classIds,studentId,isTestData};
+   }else if(action==='editFeeItem'){
+    const itemId=str(d.itemId,'Fee item',80),ref=col(school,'feeItems').doc(itemId),itemSnap=await tx.get(ref);if(!itemSnap.exists)fail('not-found','Fee item not found.');const item=itemSnap.data();if(d.revision!==item.revision)fail('aborted','This fee item changed. Refresh before editing.');if(item.cancelled)fail('failed-precondition','A cancelled fee item cannot be edited.');if(item.isLegacy)fail('failed-precondition','Migrated v40 fee items are historical. Adjust individual pupil charges instead.');
+    const categoryId=str(d.categoryId||item.categoryId,'Fee category',80),catSnap=await tx.get(col(school,'feeCategories').doc(categoryId));if(!catSnap.exists||catSnap.data().active===false||catSnap.data().isSystem)fail('failed-precondition','Choose an active reusable fee category.');const cat=catSnap.data();
+    const linked=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot).filter(x=>x.feeItemId===itemId),name=str(d.name,'Fee item name',100),amount=money(d.amount,{positive:true}),reason=str(d.reason,'Reason for fee edit',200);if(linked.length>450)fail('failed-precondition','This fee item is too large to edit safely in one transaction.');
+    for(const a of linked)if(!a.cancelled&&amount+Number(a.adjustment||0)<Number(a.paid||0))fail('failed-precondition',`The new charge for ${a.studentName||'a pupil'} would be below payments already received. Void incorrect payments or adjust the pupil first.`);
+    tx.set(ref,{...item,name,amount,categoryId,categoryName:cat.name,revision:Number(item.revision||0)+1,updatedAt:stamp,updatedBy:actor});for(const a of linked)tx.set(col(school,'pupilCharges').doc(a.id),{...a,itemName:name,categoryId,categoryName:cat.name,baseAmount:amount,revision:Number(a.revision||0)+1});details={itemId,name,amount,categoryId,previousAmount:item.amount,reason,isTestData:item.isTestData===true};result={saved:true,updated:linked.length};
+   }else if(action==='cancelFeeItem'){
+    const itemId=str(d.itemId,'Fee item',80),reason=str(d.reason,'Cancellation reason',200),ref=col(school,'feeItems').doc(itemId),itemSnap=await tx.get(ref);if(!itemSnap.exists)fail('not-found','Fee item not found.');const item=itemSnap.data();if(d.revision!==item.revision)fail('aborted','This fee item changed. Refresh before cancelling.');if(item.cancelled)fail('failed-precondition','This fee item is already cancelled.');if(item.isLegacy)fail('failed-precondition','Migrated v40 fee items cannot be cancelled in bulk. Review their pupil charges individually.');
+    const linked=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot).filter(x=>x.feeItemId===itemId&&!x.cancelled);if(linked.length>450)fail('failed-precondition','This fee item is too large to cancel safely in one transaction.');if(linked.some(x=>Number(x.paid||0)>0))fail('failed-precondition','Void payments allocated to this fee item before cancelling it.');
+    tx.set(ref,{...item,cancelled:true,active:false,revision:Number(item.revision||0)+1,cancelledAt:stamp,cancelledBy:actor,cancelReason:reason});for(const a of linked)tx.set(col(school,'pupilCharges').doc(a.id),{...a,cancelled:true,revision:Number(a.revision||0)+1,cancelledAt:stamp,cancelledBy:actor,cancelReason:reason});details={itemId,reason,count:linked.length,isTestData:item.isTestData===true};result={saved:true,cancelled:linked.length};
+   }else if(action==='adjustCharge'||action==='cancelCharge'){
+    const chargeId=str(d.chargeId,'Pupil charge',100),ref=col(school,'pupilCharges').doc(chargeId),chargeSnap=await tx.get(ref);if(!chargeSnap.exists)fail('not-found','Pupil fee charge not found.');const a=chargeSnap.data();if(d.revision!==a.revision)fail('aborted','This pupil charge changed. Refresh before editing.');if(a.cancelled)fail('failed-precondition','This pupil charge is already cancelled.');
+    let legacyRef=null,legacySnap=null;if(a.isLegacy&&a.legacyAccountId){legacyRef=col(school,'feeAccounts').doc(a.legacyAccountId);legacySnap=await tx.get(legacyRef);}let next={...a,revision:Number(a.revision||0)+1,updatedAt:stamp,updatedBy:actor};
+    if(action==='adjustCharge'){const amount=money(d.amount,{signed:true}),reason=str(d.reason,'Adjustment reason',200);if(!amount)fail('invalid-argument','Adjustment cannot be zero.');const nextTotal=effectiveCharge({...a,adjustment:Number(a.adjustment||0)+amount});if(nextTotal<Number(a.paid||0))fail('failed-precondition','The charge cannot be reduced below payments already received. Void an incorrect payment first.');next.adjustment=Number(a.adjustment||0)+amount;if(legacySnap?.exists){const old=legacySnap.data();tx.set(legacyRef,{...old,adjustment:Number(old.adjustment||0)+amount,revision:Number(old.revision||0)+1});}details={chargeId,amount,reason,kind:amount<0?'discount':'adjustment',isTestData:a.isTestData===true};}
+    else{const reason=str(d.reason,'Cancellation reason',200);if(Number(a.paid||0)>0)fail('failed-precondition','Void payments allocated to this charge before cancelling it.');next.cancelled=true;next.cancelReason=reason;next.cancelledAt=stamp;next.cancelledBy=actor;if(legacySnap?.exists){const old=legacySnap.data();tx.set(legacyRef,{...old,base:0,adjustment:0,cancelled:true,revision:Number(old.revision||0)+1});}details={chargeId,reason,isTestData:a.isTestData===true};}
+    tx.set(ref,next);
+   }else if(action==='recordPayment'){
+    const studentId=str(d.studentId,'Pupil',100),allCharges=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot),pupilCharges=allCharges.filter(x=>x.studentId===studentId&&!x.cancelled&&outstanding(x)>0);if(!pupilCharges.length)fail('failed-precondition','This pupil has no outstanding fee charge.');
+    const amount=money(d.amount,{positive:true}),due=pupilCharges.reduce((sum,x)=>sum+outstanding(x),0);if(amount>due)fail('failed-precondition','Payment cannot be more than the pupil’s outstanding balance.');if(!['Cash','Mobile Money','Bank Transfer'].includes(d.method))fail('invalid-argument','Select a payment method.');const payer=str(d.payer,'Payer name',200),reference=optStr(d.reference,'Payment reference',200),mode=d.allocationMode==='manual'?'manual':'oldest-first';let allocations=[];
+    if(mode==='manual'){
+     if(!Array.isArray(d.allocations)||!d.allocations.length||d.allocations.length>100)fail('invalid-argument','Select at least one fee item for manual allocation.');const seen=new Set();let total=0;
+     for(const x of d.allocations){const chargeId=str(x.chargeId,'Allocated fee item',100);if(seen.has(chargeId))fail('invalid-argument','A fee item was selected more than once.');seen.add(chargeId);const charge=pupilCharges.find(a=>a.id===chargeId);if(!charge)fail('failed-precondition','One selected fee item is no longer outstanding for this pupil.');const part=money(x.amount,{positive:true});if(part>outstanding(charge))fail('failed-precondition',`Allocation to ${charge.itemName||'fee item'} exceeds its balance.`);allocations.push({chargeId,amount:part});total+=part;}if(total!==amount)fail('failed-precondition','Manual allocations must add up exactly to the payment amount.');
+    }else{
+     let remaining=amount;for(const a of [...pupilCharges].sort((x,y)=>periodKey(x).localeCompare(periodKey(y))||String(x.createdAt||'').localeCompare(String(y.createdAt||''))||x.id.localeCompare(y.id))){const part=Math.min(remaining,outstanding(a));if(part>0){allocations.push({chargeId:a.id,amount:part});remaining-=part;}if(!remaining)break;}
+    }
+    const legacyAccounts=(await tx.get(col(school,'feeAccounts'))).docs.map(snapshot),schoolData=(await tx.get(school)).data()||{},metaRef=col(school,'feeMeta').doc('receipts'),meta=await tx.get(metaRef),number=(meta.data()?.number||0)+1,receipt='FEE-'+String(number).padStart(6,'0'),snapshots=[];
+    for(const allocation of allocations){const a=allCharges.find(x=>x.id===allocation.chargeId);snapshots.push({chargeId:a.id,accountId:a.id,feeItemId:a.feeItemId||'',categoryId:a.categoryId||'',categoryName:a.categoryName||'Uncategorised',itemName:a.itemName||'Fee',term:a.term||'',year:a.year||'',amount:allocation.amount});tx.set(col(school,'pupilCharges').doc(a.id),{...a,paid:Number(a.paid||0)+allocation.amount,revision:Number(a.revision||0)+1});if(a.isLegacy&&a.legacyAccountId){const legacy=legacyAccounts.find(x=>x.id===a.legacyAccountId);if(legacy)tx.set(col(school,'feeAccounts').doc(legacy.id),{...legacy,paid:Number(legacy.paid||0)+allocation.amount,revision:Number(legacy.revision||0)+1});}}
+    const student=allCharges.find(x=>x.studentId===studentId)||{},balanceAfter=Math.max(0,due-amount),isTestData=allocations.every(x=>allCharges.find(a=>a.id===x.chargeId)?.isTestData===true),payment={allocations:snapshots,allocationMode:mode,accountId:snapshots[0]?.chargeId||'',studentId,receipt,amount,method:d.method,payer,reference,studentName:student.studentName||'',className:student.className||'',term:snapshots[0]?.term||'',year:snapshots[0]?.year||'',schoolName:schoolData.profile?.schoolName||'School',receivedAt:stamp,receivedBy:actor,balanceBefore:due,balanceAfter,voided:false,isTestData};
+    tx.set(metaRef,{number});tx.set(col(school,'feePayments').doc(requestId),payment);result={saved:true,payment:{id:requestId,...payment}};details={studentId,amount,receipt,allocationMode:mode,isTestData};
+   }else if(action==='voidPayment'){
+    const paymentId=str(d.paymentId,'Receipt',80),reason=str(d.reason,'Void reason',200),paymentRef=col(school,'feePayments').doc(paymentId),paymentSnap=await tx.get(paymentRef);if(!paymentSnap.exists)fail('failed-precondition','Receipt is missing.');const payment=paymentSnap.data();if(payment.voided)fail('failed-precondition','Receipt is already voided.');
+    const allCharges=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot),legacyAccounts=(await tx.get(col(school,'feeAccounts'))).docs.map(snapshot),allocations=Array.isArray(payment.allocations)&&payment.allocations.length?payment.allocations:[{chargeId:payment.accountId,accountId:payment.accountId,amount:payment.amount}];
+    for(const allocation of allocations){const chargeId=allocation.chargeId||allocation.accountId,a=allCharges.find(x=>x.id===chargeId),part=Number(allocation.amount||0);if(!a)fail('failed-precondition','Original fee charge is missing. Complete the v40 migration before reversing this receipt.');if(Number(a.paid||0)<part)fail('failed-precondition','The pupil charge no longer contains the original payment allocation. Refresh before reversing.');tx.set(col(school,'pupilCharges').doc(chargeId),{...a,paid:Number(a.paid||0)-part,revision:Number(a.revision||0)+1});if(a.isLegacy&&a.legacyAccountId){const legacy=legacyAccounts.find(x=>x.id===a.legacyAccountId);if(legacy){if(Number(legacy.paid||0)<part)fail('failed-precondition','The migrated v40 account no longer contains the original payment.');tx.set(col(school,'feeAccounts').doc(legacy.id),{...legacy,paid:Number(legacy.paid||0)-part,revision:Number(legacy.revision||0)+1});}}}
+    tx.set(paymentRef,{...payment,voided:true,voidReason:reason,voidedAt:stamp,voidedBy:actor});details={studentId:payment.studentId||'',receipt:payment.receipt,reason,amount:payment.amount,isTestData:payment.isTestData===true};
+   }else if(action==='cleanupTestData'){
+    const confirmText=str(d.confirmText,'Cleanup confirmation',40);if(confirmText!=='CLEAN TEST DATA')fail('failed-precondition','Type CLEAN TEST DATA to confirm.');const data=await getCollections(tx,school,['feeCategories','feeItems','pupilCharges','feePayments','feeEvents','feeAccounts']);
+    const protectedChargeIds=new Set(),protectedLegacyIds=new Set();for(const p of data.feePayments)if(p.isTestData!==true&&!p.voided)for(const a of p.allocations||[]){const id=a.chargeId||a.accountId;if(id){protectedChargeIds.add(id);protectedLegacyIds.add(a.accountId||id);}}
+    const deletions=[];const push=(name,docs,filter=()=>true)=>{for(const doc of docs){if(deletions.length>=300)break;if(doc.isTestData===true&&filter(doc))deletions.push([name,doc.id]);}};
+    push('feePayments',data.feePayments);push('feeEvents',data.feeEvents);push('pupilCharges',data.pupilCharges,x=>!protectedChargeIds.has(x.id));push('feeAccounts',data.feeAccounts,x=>!protectedLegacyIds.has(x.id));
+    const deletingCharges=new Set(deletions.filter(x=>x[0]==='pupilCharges').map(x=>x[1])),remainingCharges=data.pupilCharges.filter(x=>!deletingCharges.has(x.id));push('feeItems',data.feeItems,x=>!x.isSystem&&!remainingCharges.some(c=>c.feeItemId===x.id));
+    const deletingItems=new Set(deletions.filter(x=>x[0]==='feeItems').map(x=>x[1])),remainingItems=data.feeItems.filter(x=>!deletingItems.has(x.id));push('feeCategories',data.feeCategories,x=>!x.isSystem&&!remainingItems.some(i=>i.categoryId===x.id));
+    for(const [name,id] of deletions)tx.delete(col(school,name).doc(id));const testDocs=[...data.feeCategories,...data.feeItems,...data.pupilCharges,...data.feePayments,...data.feeEvents,...data.feeAccounts].filter(x=>x.isTestData===true),remaining=Math.max(0,testDocs.length-deletions.length);result={saved:true,deleted:deletions.length,remaining,protected:protectedChargeIds.size,totalTestRecords:testDocs.length};details={deleted:deletions.length,remaining,protected:protectedChargeIds.size};
+   }else if(action==='classFee'){
+    // v40 compatibility: keep the original single-fee ledger working for older installed clients and queued offline actions.
+    const term=validTerm(d.term),year=validYear(d.year),classId=str(d.classId,'Class',100),amount=money(d.amount,{positive:true});const classSnap=await tx.get(col(school,'classes').doc(classId));if(!classSnap.exists)fail('not-found','Class not found.');const pupils=(await tx.get(col(school,'students'))).docs.filter(x=>x.data().classId===classId&&x.data().isActive!==false);if(!pupils.length||pupils.length>400)fail('failed-precondition','Select a class with 1–400 active pupils.');
+    const accountRefs=pupils.map(p=>col(school,'feeAccounts').doc(legacyId(term,year,p.id))),existing=await Promise.all(accountRefs.map(ref=>tx.get(ref)));existing.forEach((snap,i)=>{if(!snap.exists){const p=pupils[i].data();tx.set(accountRefs[i],{studentId:pupils[i].id,studentName:p.name||'',classId,className:classSnap.data().name||'',term,year,base:amount,adjustment:0,paid:0,revision:0,createdAt:stamp,createdBy:actor});}});result={saved:true,created:existing.filter(x=>!x.exists).length,skipped:existing.filter(x=>x.exists).length};details={classId,term,year,amount};
+   }else if(action==='reviseClass'||action==='cancelClass'){
+    const term=validTerm(d.term),year=validYear(d.year),classId=str(d.classId,'Class',100),reason=str(d.reason,'Reason',200),accounts=(await tx.get(col(school,'feeAccounts'))).docs.map(snapshot).filter(x=>x.classId===classId&&x.term===term&&x.year===year);if(!accounts.length||accounts.length>400)fail('failed-precondition','No matching fees, or more than 400 accounts.');if(!d.revisions||Object.keys(d.revisions).length!==accounts.length||accounts.some(x=>d.revisions[x.id]!==x.revision))fail('aborted','These class balances changed. Refresh and review before editing.');const amount=action==='cancelClass'?0:money(d.amount),charges=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot);
+    for(const a of accounts){const total=action==='cancelClass'?0:amount+Number(a.adjustment||0);if(total<Number(a.paid||0))fail('failed-precondition',`The new charge for ${a.studentName||'a pupil'} would be below payments received.`);}for(const a of accounts){const next={...a,base:amount,adjustment:action==='cancelClass'?0:a.adjustment,cancelled:action==='cancelClass',revision:Number(a.revision||0)+1};tx.set(col(school,'feeAccounts').doc(a.id),next);const mirror=charges.find(x=>x.id===a.id&&x.isLegacy);if(mirror)tx.set(col(school,'pupilCharges').doc(a.id),{...mirror,baseAmount:amount,adjustment:action==='cancelClass'?0:mirror.adjustment,cancelled:action==='cancelClass',revision:Number(mirror.revision||0)+1});}details={accountIds:accounts.map(x=>x.id),classId,term,year,amount,reason};result={saved:true,updated:accounts.length};
+   }else if(['adjust','edit','cancel'].includes(action)){
+    const accountId=str(d.accountId,'Pupil account',100);if(!/^[a-f0-9]{64}$/.test(accountId))fail('invalid-argument','Invalid pupil account.');const accountRef=col(school,'feeAccounts').doc(accountId),accountSnap=await tx.get(accountRef);if(!accountSnap.exists)fail('not-found','Pupil fee account not found.');const account=accountSnap.data();if(d.revision!==account.revision)fail('aborted','This fee changed. Refresh and review before editing.');const mirrorRef=col(school,'pupilCharges').doc(accountId),mirrorSnap=await tx.get(mirrorRef);let next={...account,revision:Number(account.revision||0)+1};
+    if(action==='adjust'){const amount=money(d.amount,{signed:true}),reason=str(d.reason,'Adjustment reason',200);if(!amount||Number(account.base||0)+Number(account.adjustment||0)+amount<Number(account.paid||0))fail('failed-precondition','The charge cannot be reduced below payments already received. Void an incorrect payment first.');next.adjustment=Number(account.adjustment||0)+amount;details={accountId,amount,reason};}
+    else{const amount=action==='cancel'?0:money(d.amount),reason=str(d.reason,'Reason',200);if(amount<Number(account.paid||0))fail('failed-precondition','Void the payments first before reducing the fee below the amount already paid.');next.base=amount;next.adjustment=0;next.cancelled=action==='cancel';details={accountId,amount,previousCharge:Number(account.base||0)+Number(account.adjustment||0),reason};}
+    tx.set(accountRef,next);if(mirrorSnap.exists&&mirrorSnap.data().isLegacy){const mirror=mirrorSnap.data();tx.set(mirrorRef,{...mirror,baseAmount:Number(next.base||0),adjustment:Number(next.adjustment||0),cancelled:next.cancelled===true,paid:Number(next.paid||0),revision:Number(mirror.revision||0)+1});}
    }else if(action==='payment'){
-    const siblings=(await tx.get(school.collection('feeAccounts'))).docs.filter(x=>x.data().studentId===account.studentId&&period(x.data())<=period(account)).sort((a,b)=>period(a.data()).localeCompare(period(b.data())));
-    const due=siblings.reduce((sum,x)=>sum+x.data().base+x.data().adjustment-x.data().paid,0);
-    const amount=money(d.amount);if(!amount||amount>due)fail('failed-precondition','Payment must be greater than zero and no more than the current balance.');
-    if(!['Cash','Mobile Money','Bank Transfer'].includes(d.method))fail('invalid-argument','Select a payment method.');
-    const payer=str(d.payer,'Payer name');const reference=typeof d.reference==='string'?d.reference.trim():'';if(reference.length>200)fail('invalid-argument','Payment reference is too long.');
-    const metaRef=school.collection('feeMeta').doc('receipts'),meta=await tx.get(metaRef),schoolData=(await tx.get(school)).data()||{};
-    const number=(meta.data()?.number||0)+1,receipt='FEE-'+String(number).padStart(6,'0');
-    let remaining=amount;const allocations=[];
-    for(const doc of siblings){const a=doc.data(),part=Math.min(remaining,a.base+a.adjustment-a.paid);if(part>0){allocations.push({accountId:doc.id,amount:part});remaining-=part;}}
-    const payment={allocations,accountId:id,receipt,amount,method:d.method,payer,reference,studentName:account.studentName,className:account.className,term:account.term,year:account.year,schoolName:schoolData.profile?.schoolName||'School',receivedAt:stamp,receivedBy:actor,balanceAfter:due-amount,voided:false};
-    tx.set(metaRef,{number});tx.set(school.collection('feePayments').doc(requestId),payment);for(const allocation of allocations){if(allocation.accountId===id)next.paid+=allocation.amount;else{const older=siblings.find(x=>x.id===allocation.accountId).data();tx.set(school.collection('feeAccounts').doc(allocation.accountId),{...older,paid:older.paid+allocation.amount,revision:older.revision+1});}}result={saved:true,payment:{id:requestId,...payment}};details={accountId:id,amount,receipt};
-   }else{
-    const paymentId=str(d.paymentId,'Receipt'),reason=str(d.reason,'Void reason');if(!/^[a-zA-Z0-9-]{16,80}$/.test(paymentId))fail('invalid-argument','Invalid receipt.');
-    const paymentRef=school.collection('feePayments').doc(paymentId),payment=(await tx.get(paymentRef)).data();
-    if(!payment||payment.accountId!==id||payment.voided)fail('failed-precondition','Receipt is missing, already voided or belongs to another pupil.');
-    const allocations=payment.allocations||[{accountId:id,amount:payment.amount}];
-    const allocationRecords=await Promise.all(allocations.map(a=>tx.get(school.collection('feeAccounts').doc(a.accountId))));
-    allocations.forEach((a,i)=>{if(a.accountId===id)next.paid-=a.amount;else{const old=allocationRecords[i].data();if(!old)fail('failed-precondition','Original fee record is missing.');tx.set(school.collection('feeAccounts').doc(a.accountId),{...old,paid:old.paid-a.amount,revision:old.revision+1});}});tx.update(paymentRef,{voided:true,voidReason:reason,voidedAt:stamp,voidedBy:actor});details={accountId:id,receipt:payment.receipt,reason,amount:payment.amount};
-   }
-   tx.set(ref,next);
-  }else fail('invalid-argument','Unknown fee operation.');
-  tx.set(eventRef,{action,...details,at:stamp,actor,fingerprint,result});return result;
- }))};
+    const accountId=str(d.accountId,'Pupil account',100);if(!/^[a-f0-9]{64}$/.test(accountId))fail('invalid-argument','Invalid pupil account.');const accountRef=col(school,'feeAccounts').doc(accountId),accountSnap=await tx.get(accountRef);if(!accountSnap.exists)fail('not-found','Pupil fee account not found.');const account=accountSnap.data(),accounts=(await tx.get(col(school,'feeAccounts'))).docs.map(snapshot).filter(x=>x.studentId===account.studentId&&periodKey(x)<=periodKey(account)).sort((a,b)=>periodKey(a).localeCompare(periodKey(b))||a.id.localeCompare(b.id)),due=accounts.reduce((sum,x)=>sum+Math.max(0,(x.cancelled?0:Number(x.base||0)+Number(x.adjustment||0))-Number(x.paid||0)),0),amount=money(d.amount,{positive:true});if(amount>due)fail('failed-precondition','Payment must be no more than the current balance.');if(!['Cash','Mobile Money','Bank Transfer'].includes(d.method))fail('invalid-argument','Select a payment method.');const payer=str(d.payer,'Payer name',200),reference=optStr(d.reference,'Payment reference',200),metaRef=col(school,'feeMeta').doc('receipts'),meta=await tx.get(metaRef),schoolData=(await tx.get(school)).data()||{},charges=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot),number=(meta.data()?.number||0)+1,receipt='FEE-'+String(number).padStart(6,'0');
+    let remaining=amount;const allocations=[];for(const a of accounts){const open=Math.max(0,(a.cancelled?0:Number(a.base||0)+Number(a.adjustment||0))-Number(a.paid||0)),part=Math.min(remaining,open);if(part>0){allocations.push({accountId:a.id,amount:part});remaining-=part;}if(!remaining)break;}
+    for(const allocation of allocations){const a=accounts.find(x=>x.id===allocation.accountId);tx.set(col(school,'feeAccounts').doc(a.id),{...a,paid:Number(a.paid||0)+allocation.amount,revision:Number(a.revision||0)+1});const mirror=charges.find(x=>x.id===a.id&&x.isLegacy);if(mirror)tx.set(col(school,'pupilCharges').doc(a.id),{...mirror,paid:Number(mirror.paid||0)+allocation.amount,revision:Number(mirror.revision||0)+1});}
+    const payment={allocations,accountId,studentId:account.studentId,receipt,amount,method:d.method,payer,reference,studentName:account.studentName,className:account.className,term:account.term,year:account.year,schoolName:schoolData.profile?.schoolName||'School',receivedAt:stamp,receivedBy:actor,balanceBefore:due,balanceAfter:due-amount,voided:false};tx.set(metaRef,{number});tx.set(col(school,'feePayments').doc(requestId),payment);result={saved:true,payment:{id:requestId,...payment}};details={accountId,studentId:account.studentId,amount,receipt};
+   }else if(action==='void'){
+    const accountId=str(d.accountId,'Pupil account',100),paymentId=str(d.paymentId,'Receipt',80),reason=str(d.reason,'Void reason',200);if(!/^[a-f0-9]{64}$/.test(accountId))fail('invalid-argument','Invalid pupil account.');const paymentRef=col(school,'feePayments').doc(paymentId),paymentSnap=await tx.get(paymentRef);if(!paymentSnap.exists)fail('failed-precondition','Receipt is missing.');const payment=paymentSnap.data();if(payment.accountId!==accountId||payment.voided)fail('failed-precondition','Receipt is missing, already voided or belongs to another pupil.');const allocations=payment.allocations||[{accountId,amount:payment.amount}],accountSnaps=await Promise.all(allocations.map(a=>tx.get(col(school,'feeAccounts').doc(a.accountId)))),mirrorSnaps=await Promise.all(allocations.map(a=>tx.get(col(school,'pupilCharges').doc(a.accountId))));
+    allocations.forEach((allocation,i)=>{const snap=accountSnaps[i];if(!snap.exists)fail('failed-precondition','Original fee record is missing.');const a=snap.data();if(Number(a.paid||0)<Number(allocation.amount||0))fail('failed-precondition','Original payment allocation is no longer present.');tx.set(col(school,'feeAccounts').doc(allocation.accountId),{...a,paid:Number(a.paid||0)-Number(allocation.amount||0),revision:Number(a.revision||0)+1});const mirrorSnap=mirrorSnaps[i];if(mirrorSnap.exists&&mirrorSnap.data().isLegacy){const mirror=mirrorSnap.data();if(Number(mirror.paid||0)<Number(allocation.amount||0))fail('failed-precondition','Migrated payment allocation is no longer present.');tx.set(col(school,'pupilCharges').doc(allocation.accountId),{...mirror,paid:Number(mirror.paid||0)-Number(allocation.amount||0),revision:Number(mirror.revision||0)+1});}});tx.set(paymentRef,{...payment,voided:true,voidReason:reason,voidedAt:stamp,voidedBy:actor});details={accountId,studentId:payment.studentId||'',receipt:payment.receipt,reason,amount:payment.amount};
+   }else fail('invalid-argument','Unknown fee operation.');
+
+   tx.set(eventRef,{action,...details,at:stamp,actor,fingerprint,result,isTestData:eventIsTest(details)});return result;
+  }))
+ };
+ return handlers;
 }
 module.exports={register,key};

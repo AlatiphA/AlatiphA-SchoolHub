@@ -915,7 +915,7 @@ window.addEventListener('scroll',()=>{if(floatingPillTicking)return;floatingPill
 
 /* ---------- Home dashboard ---------- */
 const QUICK_ACCESS_CARDS = [
-  {view:'fees',title:'Fees & Receipts',description:'Class fees, pupil balances and receipts',headteacherOnly:true,icon:'<path d="M4 4h16v16H4z"/>'},
+  {view:'fees',title:'Fees & Receipts',description:'Fee categories, pupil balances and receipts',headteacherOnly:true,icon:'<path d="M4 4h16v16H4z"/>'},
   { view: 'setup', title: 'Setup', description: 'School info, term, and report layout', headteacherOnly: true,
     icon: '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/>' },
   { view: 'manage-teachers', title: 'Manage Teachers', description: 'Approve, assign classes, disable', headteacherOnly: true,

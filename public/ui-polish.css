@@ -479,3 +479,65 @@
   #app #view-fees #feeSearch { font-size:15px; }
   #app #view-fees #feesWrap > button, #app #view-fees #feePupil > button { width:100%; margin-right:0; }
 }
+
+/* v40 FIS: multi-category fee-item system. */
+#app #view-fees .fee-actions,
+#app #view-fees .fee-form-grid,
+#app #view-fees .fee-kpis,
+#app #view-fees .fee-card-grid,
+#app #view-fees .fee-allocation-grid {
+  display:grid;
+  gap:14px;
+}
+#app #view-fees .fee-actions { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin:16px 0; }
+#app #view-fees .fee-form-grid { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); align-items:end; }
+#app #view-fees .fee-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); margin:18px 0; }
+#app #view-fees .fee-kpis > div { padding:14px; border:1px solid var(--rule); border-radius:12px; background:var(--surface-alt); min-width:0; }
+#app #view-fees .fee-kpis small { display:block; margin-bottom:5px; color:var(--muted); }
+#app #view-fees .fee-kpis strong { display:block; overflow-wrap:anywhere; font-size:1.08rem; font-variant-numeric:tabular-nums; }
+#app #view-fees .fee-card-grid { grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); margin-top:16px; }
+#app #view-fees .fee-card,
+#app #view-fees .fee-charge-card,
+#app #view-fees .fee-receipt-row,
+#app #view-fees .fee-editor { border:1px solid var(--rule); border-radius:14px; padding:16px; background:var(--surface); }
+#app #view-fees .fee-card h4 { margin:0 0 8px; }
+#app #view-fees .fee-card p { margin:7px 0; }
+#app #view-fees .fee-badge { display:inline-block; margin-left:6px; padding:2px 8px; border:1px solid var(--rule); border-radius:999px; font-size:.78rem; font-weight:600; vertical-align:middle; }
+#app #view-fees .fee-inline-check { display:flex !important; align-items:flex-start; gap:9px; }
+#app #view-fees .fee-inline-check input { width:auto !important; min-height:auto !important; margin:3px 0 0 !important; flex:0 0 auto; }
+#app #view-fees .fee-checkbox-group { margin:16px 0; padding:14px; border:1px solid var(--rule); border-radius:12px; }
+#app #view-fees .fee-checkbox-group legend { padding:0 6px; font-weight:600; }
+#app #view-fees .fee-note { padding:12px 14px; border:1px solid var(--rule); border-radius:10px; background:var(--surface-alt); }
+#app #view-fees .fee-editor { margin:18px 0; }
+#app #view-fees .fee-danger-text { color:#b42318; }
+#app #view-fees .fee-charge-list { display:grid; gap:10px; }
+#app #view-fees .fee-charge-card { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(170px,1fr) auto; gap:12px; align-items:center; }
+#app #view-fees .fee-charge-card small { display:block; margin-top:5px; color:var(--muted); }
+#app #view-fees .fee-charge-card > div:nth-child(2) { display:grid; gap:3px; text-align:right; font-variant-numeric:tabular-nums; }
+#app #view-fees .fee-allocation-grid { grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); margin:12px 0; }
+#app #view-fees .fee-allocation-grid label { margin:0 !important; padding:12px; border:1px solid var(--rule); border-radius:10px; }
+#app #view-fees .fee-allocation-grid small { display:block; margin-top:4px; color:var(--muted); font-weight:400; }
+#app #view-fees .fee-receipt-row { margin:10px 0; }
+#app #view-fees .fee-receipt-row p { margin:5px 0; }
+#app #view-fees .fee-summary-table { width:100%; min-width:680px; border-collapse:collapse; }
+#app #view-fees .fee-summary-table th,
+#app #view-fees .fee-summary-table td { padding:12px; border-bottom:1px solid var(--rule); text-align:left; }
+#app #view-fees .fee-summary-table td:nth-child(n+3) { text-align:right; font-variant-numeric:tabular-nums; }
+#feeReceiptDialog .fee-receipt-allocation { width:100%; border-collapse:collapse; margin:12px 0; }
+#feeReceiptDialog .fee-receipt-allocation th,
+#feeReceiptDialog .fee-receipt-allocation td { padding:8px; border-bottom:1px solid #ccc; text-align:left; }
+#feeReceiptDialog .fee-receipt-allocation td:last-child,
+#feeReceiptDialog .fee-receipt-allocation th:last-child { text-align:right; }
+@media(max-width:600px){
+  #app #view-fees .fee-form-grid,
+  #app #view-fees .fee-card-grid,
+  #app #view-fees .fee-allocation-grid,
+  #app #view-fees .fee-kpis { grid-template-columns:1fr; }
+  #app #view-fees .fee-charge-card { grid-template-columns:1fr; }
+  #app #view-fees .fee-charge-card > div:nth-child(2) { text-align:left; }
+  #app #view-fees .fee-actions { grid-template-columns:1fr; }
+  #app #view-fees .fee-actions button,
+  #app #view-fees .fee-card button,
+  #app #view-fees .fee-editor button,
+  #app #view-fees .fee-receipt-row button { width:100%; margin-right:0; }
+}

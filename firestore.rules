@@ -237,6 +237,18 @@ service cloud.firestore {
         allow write: if false;
       }
 
+      // FIS v40 upgrade. Fee administration contains payer and financial data.
+      // Clients never read or mutate these collections directly. Active Head
+      // Teachers use authenticated Cloud Functions, while teachers receive only
+      // the class balance map required for report cards.
+      match /feeCategories/{feeId} { allow read, write: if false; }
+      match /feeItems/{feeId} { allow read, write: if false; }
+      match /pupilCharges/{chargeId} { allow read, write: if false; }
+      match /feeAccounts/{accountId} { allow read, write: if false; }
+      match /feePayments/{paymentId} { allow read, write: if false; }
+      match /feeEvents/{eventId} { allow read, write: if false; }
+      match /feeMeta/{metaId} { allow read, write: if false; }
+
       match /activity/{activityId} {
         allow read: if isHeadTeacher(schoolId)
           || (isActiveTeacher(schoolId) && resource.data.uid == request.auth.uid);

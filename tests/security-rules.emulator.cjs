@@ -122,7 +122,7 @@ test('old clients cannot blank existing Setup and recovery copies are head-only'
 });
 
 test('fee records cannot be read or rewritten directly by any school account',async()=>{
- for(const uid of ['head','teacher','outsider'])for(const name of ['feeAccounts','feePayments','feeEvents','feeMeta']){
+ for(const uid of ['head','teacher','outsider'])for(const name of ['feeCategories','feeItems','pupilCharges','feeAccounts','feePayments','feeEvents','feeMeta']){
   const db=env.authenticatedContext(uid).firestore();
   await assertFails(getDoc(doc(db,'schools/s/'+name+'/test')));
   await assertFails(setDoc(doc(db,'schools/s/'+name+'/test'),{paid:999,amount:999}));

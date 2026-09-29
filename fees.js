@@ -1,10 +1,11 @@
-/* Pending fee operations retain their identity across reconnects and reloads. */
+/* AlatiphA SchoolHub FIS v40 upgrade.
+   Financial mutations remain server-owned. Pending operations retain their request IDs across reconnects. */
 const feeQueueLocks=new Map();
 function feeWithLock(key,work){
  if(navigator.locks)return navigator.locks.request(key,work);
  const next=(feeQueueLocks.get(key)||Promise.resolve()).catch(()=>{}).then(work);feeQueueLocks.set(key,next);return next;
 }
-function feeQueueRead(key){return JSON.parse(localStorage.getItem(key)||'[]');}
+function feeQueueRead(key){try{return JSON.parse(localStorage.getItem(key)||'[]');}catch(_){return [];}}
 function feeRejected(e){return /invalid-argument|failed-precondition|aborted|permission-denied|unauthenticated|not-found|already-exists/.test(e.code||'');}
 async function feeFlush(key,active){
  return feeWithLock(key,async()=>{
@@ -17,140 +18,167 @@ async function feeFlush(key,active){
   return results;
  });
 }
+function feeCash(n){return 'GH₵ '+(Number(n||0)/100).toFixed(2);}
+function feeCents(value,{allowZero=false,signed=false}={}){const text=String(value??'').trim(),pattern=signed?/^-?\d+(\.\d{1,2})?$/:/^\d+(\.\d{1,2})?$/;if(!pattern.test(text))throw Error('Enter an amount with at most two decimal places.');const cents=Math.round(Number(text)*100);if(!allowZero&&!cents)throw Error('Amount must be greater than zero.');return cents;}
+function feeTermValue(term){return {'Term 1':1,'Term 2':2,'Term 3':3}[term]||99;}
+function feePeriodKey(a){const y=String(a.year||''),m=y.match(/(\d{4})/);return `${m?m[1]:y.padStart(20,'0')}__${String(feeTermValue(a.term)).padStart(2,'0')}__${y}`;}
+function feeChargeDue(a){return a.cancelled?0:Math.max(0,Number(a.baseAmount||0)+Number(a.adjustment||0));}
+function feeChargeBalance(a){return Math.max(0,feeChargeDue(a)-Number(a.paid||0));}
+function feePupilSummary(charges){return charges.reduce((s,a)=>{const due=feeChargeDue(a),paid=Math.min(Number(a.paid||0),due);s.due+=due;s.paid+=paid;s.balance+=Math.max(0,due-paid);return s;},{due:0,paid:0,balance:0});}
+function feeScopeLabel(item,classes){
+ if(item.scopeType==='allClasses')return 'All classes';
+ if(item.scopeType==='pupil')return 'Individual pupil';
+ if(item.scopeType==='legacy')return 'Migrated v40';
+ const names=(item.classIds||[]).map(id=>classes.find(c=>c.id===id)?.name||id);return names.join(', ')||'Selected classes';
+}
+function feeAllocationSummary(payment,chargeMap){
+ const allocations=Array.isArray(payment.allocations)?payment.allocations:[];
+ return allocations.map(a=>{const charge=chargeMap.get(a.chargeId||a.accountId),name=a.itemName||charge?.itemName||'Fee',period=[a.term||charge?.term,a.year||charge?.year].filter(Boolean).join(' ');return `${name}${period?' · '+period:''}: ${feeCash(a.amount)}`;}).join('; ');
+}
+async function feeMigrateLegacy(data,active){
+ if(navigator.onLine===false)return data;
+ let remaining=Number(data?.migration?.legacyRemaining||0),guard=0;
+ while(remaining>0&&active()&&guard++<50){const result=await safetyCall('updateSchoolFees',{action:'migrateLegacy',requestId:crypto.randomUUID()});remaining=Number(result.remaining||0);if(!result.migrated&&remaining>0)throw Error('Existing v40 fee records could not be fully migrated.');}
+ if(!active())return data;return remaining===0?await safetyCall('getSchoolFees',{}):data;
+}
+
 window.addEventListener('online',()=>{if(isHeadTeacher()&&sessionReady)renderSchoolFees();});
 let feeViewGeneration=0;
 async function renderSchoolFees(){
  const host=document.getElementById('feesWrap'),generation=++feeViewGeneration,school=currentSchoolId,user=currentUid,session=sessionGeneration;
  const active=()=>generation===feeViewGeneration&&isCurrentSession(session,user,school)&&isHeadTeacher();
- if(!isHeadTeacher()||!FIREBASE_ENABLED){host.textContent='Sign in as Head Teacher to manage fees.';return;}
- const pendingKey='schoolhub_fee_queue_'+school+'_'+user,cacheKey='schoolhub_fee_cache_'+school+'_'+user;
- const legacyKey='schoolhub_fee_pending_'+school+'_'+user,legacy=localStorage.getItem(legacyKey);if(legacy){await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey),request=JSON.parse(legacy);if(!q.some(x=>x.request.requestId===request.requestId))q.push({request});localStorage.setItem(pendingKey,JSON.stringify(q));localStorage.removeItem(legacyKey);});}
- host.textContent='Loading fees and receipts…';
+ if(!host)return;if(!isHeadTeacher()||!FIREBASE_ENABLED){host.textContent='Sign in as Head Teacher to manage fees.';return;}
+ const pendingKey='schoolhub_fee_queue_'+school+'_'+user,cacheKey='schoolhub_fee_cache_'+school+'_'+user,legacyKey='schoolhub_fee_pending_'+school+'_'+user;
+ const legacyPending=localStorage.getItem(legacyKey);if(legacyPending){await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey),request=JSON.parse(legacyPending);if(!q.some(x=>x.request.requestId===request.requestId))q.push({request,label:'Pending v40 fee operation'});localStorage.setItem(pendingKey,JSON.stringify(q));localStorage.removeItem(legacyKey);});}
+ host.textContent='Loading Fees & Receipts…';
  try{
   await feeFlush(pendingKey,active);if(!active())return;
-  let data,cached=false;try{data=await safetyCall('getSchoolFees',{});if(!active())return;localStorage.setItem(cacheKey,JSON.stringify(data));}catch(e){const saved=localStorage.getItem(cacheKey);if(!saved)throw Error('Connect once to load your fee records before working offline.');data=JSON.parse(saved);cached=true;}if(!active())return;
-  const settings=DB.get(KEYS.settings,{}),classes=DB.get(KEYS.classes,[]),esc=escapeHtml;
-  const cash=n=>'GH₵ '+(Number(n||0)/100).toFixed(2);
-  const cents=value=>{if(!/^-?\d+(\.\d{1,2})?$/.test(value.trim()))throw Error('Enter an amount with at most two decimal places.');return Math.round(Number(value)*100);};
-  host.innerHTML=`<p>Record money received by the school. This page does not collect or transfer money. You can save offline on this device. Pending entries sync when connected; official receipt numbers are issued after confirmation.</p>
-  <details><summary>Set a standard class fee</summary><p>Creates a charge for each active pupil for the selected term. Existing pupil charges stay unchanged; use the update controls below to correct them. Apply again to include newly enrolled pupils.</p>
-  <label>Class<select id="feeClass">${classes.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label>
-  <label>Term<select id="feeTerm">${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===settings.currentTerm?'selected':''}>${t}</option>`).join('')}</select></label>
-  <label>Academic year<input id="feeYear" value="${esc(settings.currentYear||'')}" placeholder="2026/2027"></label>
-  <label>Fee per pupil (GH₵)<input id="feeAmount" type="number" min="0" step="0.01"></label><button id="feeApply" type="button" class="btn-primary">Apply class fee</button><label>Reason for editing or removing existing fees<input id="feeClassReason" maxlength="200"></label><button id="feeClassEdit" type="button">Update existing class fees</button><button id="feeClassCancel" type="button">Remove existing class fees</button><p>Updating changes the standard fee and preserves individual adjustments. Removal cancels unpaid charges and keeps their history.</p></details>
-  <p id="feeMessage" role="status"></p><button id="feeRefresh" type="button" class="btn-secondary">Refresh balances</button>
-  <h3>Pupil balances</h3><p>Each pupil’s latest term shows the previous unpaid balance plus new charges. Payments clear the oldest balance first, including balances from earlier academic years.</p>
-  <label>Search pupil, class or term<input id="feeSearch" type="search" placeholder="Name, class, term or year"></label>
-  <div id="feeTotals"></div><div class="table-scroll fee-table-scroll" role="region" aria-label="Pupil fee balances, scroll horizontally for more columns" tabindex="0"><table class="fee-balances-table"><thead><tr><th>Pupil / class</th><th>Term</th><th>Previous balance</th><th>Term charges</th><th>Total due</th><th>Actions</th></tr></thead><tbody id="feeRows"></tbody></table></div>
-  <div id="feePupil"></div><button id="feeExport" type="button" class="btn-secondary">Export fees backup (JSON)</button>`;
-  const msg=host.querySelector('#feeMessage');
+  let data,cached=false;
+  try{data=await safetyCall('getSchoolFees',{});if(!active())return;data=await feeMigrateLegacy(data,active);if(!active())return;localStorage.setItem(cacheKey,JSON.stringify(data));}
+  catch(e){const saved=localStorage.getItem(cacheKey);if(!saved)throw Error('Connect once to load and upgrade your fee records before working offline.');data=JSON.parse(saved);cached=true;}
+  if(!active())return;if(Number(data.schemaVersion||0)<2)throw Error('This device has an older fee cache. Connect once to complete the FIS upgrade.');
+  const settings=DB.get(KEYS.settings,{}),classes=DB.get(KEYS.classes,[]),students=DB.get(KEYS.students,[]).filter(s=>s.isActive!==false),esc=escapeHtml;
+  const categories=data.categories||[],items=data.items||[],charges=data.charges||[],payments=data.payments||[],events=data.events||[],migrationBlocked=Number(data.migration?.legacyRemaining||0)>0;
+  const categoryMap=new Map(categories.map(x=>[x.id,x])),chargeMap=new Map(charges.map(x=>[x.id,x]));
+  const activeCategories=categories.filter(x=>x.active!==false&&!x.isSystem).sort((a,b)=>a.name.localeCompare(b.name));
+  const classOptions=classes.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+  const pupilOptions=[...students].sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(s=>`<option value="${esc(s.id)}">${esc(s.name||'Unnamed pupil')} · ${esc(classes.find(c=>c.id===s.classId)?.name||'')}</option>`).join('');
+  const categoryOptions=activeCategories.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   const queue=feeQueueRead(pendingKey);
-  msg.textContent=(cached?'Showing saved balances. ':'')+(queue.length?`${queue.length} pending save(s). These are not included in confirmed balances yet.`:'');
-  if(queue.length){
-   const list=document.createElement('ul');
-   queue.forEach(item=>{const row=document.createElement('li');row.textContent=`${item.label||item.request.action} · ${cash(item.request.amount||0)} · ${item.error||'Awaiting confirmation'}`;if(item.error){const remove=document.createElement('button');remove.textContent='Dismiss rejected entry';remove.onclick=async()=>{await feeWithLock(pendingKey,()=>localStorage.setItem(pendingKey,JSON.stringify(feeQueueRead(pendingKey).filter(x=>x.request.requestId!==item.request.requestId))));renderSchoolFees();};row.append(remove);}list.append(row);});msg.after(list);
-  }
-  function operation(button,build,done){
-   let busy=false;
-   button.onclick=async()=>{
-    if(busy||!active())return;busy=true;button.disabled=true;
-    try{
-     const request={...build(),requestId:crypto.randomUUID()};
-     await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey);const names={classFee:'Class fee',reviseClass:'Class fee correction',cancelClass:'Class fee removal',edit:'Fee correction',cancel:'Fee removal',adjust:'Adjustment',payment:'Payment',void:'Receipt reversal'};const account=data.accounts.find(a=>a.id===request.accountId);q.push({request,label:(names[request.action]||request.action)+' — '+(account?account.studentName+' · '+account.term+' '+account.year:(classes.find(c=>c.id===request.classId)?.name||'')+' · '+(request.term||'')+' '+(request.year||''))});localStorage.setItem(pendingKey,JSON.stringify(q));});
-     msg.textContent='Saved on this device; waiting for confirmation…';
-     const results=await feeFlush(pendingKey,active);if(!active())return;
-     if(results[request.requestId])await done(results[request.requestId]);else await renderSchoolFees();
-    }catch(e){if(active())msg.textContent=e.message||String(e);}
-    finally{busy=false;if(active())button.disabled=false;}
+  host.innerHTML=`
+   <p>Manage reusable fee categories, term fee items, pupil charges, payments and receipts. This page records school transactions only; it does not collect or transfer money.</p>
+   <div id="feeMessage" role="status"></div>
+   <div class="fee-actions"><button id="feeRefresh" type="button" class="btn-secondary">Refresh balances</button><button id="feeExport" type="button" class="btn-secondary">Export fees backup (JSON)</button></div>
+
+   <details open><summary>Fee categories</summary>
+    <p>Create reusable categories such as Tuition, PTA, Feeding, ICT, Transport or Examination Fees. A category already used by a fee item can be deactivated, but not renamed.</p>
+    <div class="fee-form-grid"><label>Category name<input id="feeCategoryName" maxlength="80" placeholder="e.g. PTA"></label><label>Description<input id="feeCategoryDescription" maxlength="240" placeholder="Optional description"></label></div>
+    <label class="fee-inline-check"><input id="feeCategoryTest" type="checkbox"> Mark as test data, eligible for Test Data Cleanup</label>
+    <button id="feeCategoryAdd" type="button" class="btn-primary">Add category</button><div id="feeCategoryList" class="fee-card-grid"></div><div id="feeCategoryEditor"></div>
+   </details>
+
+   <details open><summary>Create fee item</summary>
+    <p>Each fee item creates a separate pupil charge, so one term can contain several fees without overwriting another.</p>
+    <div class="fee-form-grid"><label>Category<select id="feeItemCategory">${categoryOptions||'<option value="">Create a category first</option>'}</select></label><label>Fee item name<input id="feeItemName" maxlength="100" placeholder="e.g. Term 1 PTA levy"></label><label>Term<select id="feeItemTerm">${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===settings.currentTerm?'selected':''}>${t}</option>`).join('')}</select></label><label>Academic year<input id="feeItemYear" value="${esc(settings.currentYear||'')}" placeholder="2026/2027"></label><label>Amount per pupil (GH₵)<input id="feeItemAmount" type="number" min="0.01" step="0.01"></label><label>Apply to<select id="feeItemScope"><option value="class">One class</option><option value="classes">Multiple classes</option><option value="allClasses">All classes</option><option value="pupil">Individual pupil</option></select></label></div>
+    <div id="feeScopeFields"></div><label class="fee-inline-check"><input id="feeItemTest" type="checkbox"> Mark this fee item and its pupil charges as test data</label><button id="feeItemCreate" type="button" class="btn-primary" ${activeCategories.length?'':'disabled'}>Create fee item</button>
+   </details>
+
+   <details><summary>Fee items</summary><div id="feeItemList" class="fee-card-grid"></div><div id="feeItemEditor"></div></details>
+
+   <details><summary>Arrears by category and term</summary><p>Balances are grouped by the fee category and period in which each charge originated.</p><div id="feeArrears"></div></details>
+
+   <h3>Pupil balances</h3><p>Each pupil has separate charges. Payments can clear the oldest balances automatically or be allocated manually to selected fee items.</p>
+   <label>Search pupil, class, fee item or category<input id="feeSearch" type="search" placeholder="Name, class, fee item or category"></label><div id="feeTotals"></div>
+   <div class="table-scroll fee-table-scroll" role="region" aria-label="Pupil fee balances, scroll horizontally for more columns" tabindex="0"><table class="fee-balances-table"><thead><tr><th>Pupil / class</th><th>Total due</th><th>Paid</th><th>Balance</th><th>Actions</th></tr></thead><tbody id="feeRows"></tbody></table></div><div id="feePupil"></div>
+
+   <details><summary>Test Data Cleanup</summary><p>Only records explicitly marked as test data are eligible. Production fee records and production payments are never selected by this cleanup.</p><div id="feeTestCount"></div><label>Type CLEAN TEST DATA to confirm<input id="feeCleanupConfirm" autocomplete="off"></label><button id="feeCleanup" type="button">Clean test data</button></details>`;
+
+  const msg=host.querySelector('#feeMessage');
+  const pendingText=queue.length?`${queue.length} pending save(s). Pending entries are not included in confirmed balances until the server accepts them.`:'';
+  const migrationText=migrationBlocked?` ${data.migration.legacyRemaining} v40 fee record(s) still need migration. Connect and Refresh before making new changes.`:'';
+  msg.textContent=(cached?'Showing the last confirmed fee data saved on this device. ':'')+pendingText+migrationText;
+  if(queue.length){const list=document.createElement('ul');queue.forEach(item=>{const row=document.createElement('li');row.textContent=`${item.label||item.request.action} · ${item.error||'Awaiting confirmation'}`;if(item.error){const remove=document.createElement('button');remove.textContent='Dismiss rejected entry';remove.onclick=async()=>{await feeWithLock(pendingKey,()=>localStorage.setItem(pendingKey,JSON.stringify(feeQueueRead(pendingKey).filter(x=>x.request.requestId!==item.request.requestId))));renderSchoolFees();};row.append(remove);}list.append(row);});msg.after(list);}
+
+  function operation(button,build,done=renderSchoolFees,label='Fee update'){
+   let busy=false;button.onclick=async()=>{if(busy||!active())return;busy=true;button.disabled=true;
+    try{if(migrationBlocked)throw Error('Complete the v40 fee migration first. Connect and press Refresh balances.');const request={...build(),requestId:crypto.randomUUID()};await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey);q.push({request,label});localStorage.setItem(pendingKey,JSON.stringify(q));});msg.textContent='Saved on this device; waiting for server confirmation…';const results=await feeFlush(pendingKey,active);if(!active())return;if(results[request.requestId])await done(results[request.requestId]);else await renderSchoolFees();}
+    catch(e){if(active())msg.textContent=e.message||String(e);}finally{busy=false;if(active())button.disabled=false;}
    };
   }
   host.querySelector('#feeRefresh').onclick=renderSchoolFees;
-  operation(host.querySelector('#feeApply'),()=>({action:'classFee',classId:host.querySelector('#feeClass').value,term:host.querySelector('#feeTerm').value,year:host.querySelector('#feeYear').value,amount:cents(host.querySelector('#feeAmount').value)}),async result=>{await renderSchoolFees();if(isCurrentSession(session,user,school))document.getElementById('feeMessage').textContent=`Created ${result.created} pupil charges; ${result.skipped} existing charges kept.`;});
-  for(const [buttonId,action] of [['feeClassEdit','reviseClass'],['feeClassCancel','cancelClass']])operation(host.querySelector('#'+buttonId),()=>{
-   const classId=host.querySelector('#feeClass').value,term=host.querySelector('#feeTerm').value,year=host.querySelector('#feeYear').value;
-   const accounts=data.accounts.filter(a=>a.classId===classId&&a.term===term&&a.year===year);
-   const reason=host.querySelector('#feeClassReason').value.trim();if(!reason)throw Error('Enter a reason for the class fee change.');
-   if(!confirm(`${action==='cancelClass'?'Cancel':'Update'} fees for ${accounts.length} pupil(s) in ${term} ${year}? Existing payments and history will be preserved.`))throw Error('Cancelled.');
-   return {action,classId,term,year,reason,amount:action==='cancelClass'?0:cents(host.querySelector('#feeAmount').value),revisions:Object.fromEntries(accounts.map(a=>[a.id,a.revision]))};
-  },renderSchoolFees);
-  function draw(){
-   const search=host.querySelector('#feeSearch').value.toLowerCase();
-   const latest=Object.values(data.accounts.reduce((map,a)=>{if(!map[a.studentId]||(a.year+'__'+a.term)>(map[a.studentId].year+'__'+map[a.studentId].term))map[a.studentId]=a;return map;},{}));
-   const accounts=latest.filter(a=>`${a.studentName} ${a.className} ${a.term} ${a.year}`.toLowerCase().includes(search));
-   const selected=data.accounts.filter(a=>accounts.some(x=>x.studentId===a.studentId));
-   const charged=selected.reduce((sum,a)=>sum+a.base+a.adjustment,0),paid=selected.reduce((sum,a)=>sum+a.paid,0);
-   host.querySelector('#feeTotals').textContent=`${accounts.length} accounts · Charged ${cash(charged)} · Paid ${cash(paid)} · Outstanding ${cash(charged-paid)}`;
-   host.querySelector('#feeRows').innerHTML=accounts.map(a=>`<tr><td>${esc(a.studentName)}<br><small>${esc(a.className)}${a.cancelled?' · Fee removed':''}</small></td><td>${esc(a.term)}<br>${esc(a.year)}</td><td>${cash(previousBalance(a))}</td><td>${cash(a.base+a.adjustment)}</td><td>${cash(previousBalance(a)+a.base+a.adjustment-a.paid)}</td><td><button type="button" data-account="${a.id}">Open</button></td></tr>`).join('')||'<tr><td colspan="6">No fees found. Set a standard class fee to begin.</td></tr>';
-   host.querySelectorAll('[data-account]').forEach(b=>b.onclick=()=>openPupil(data.accounts.find(a=>a.id===b.dataset.account)));
-  }
-  function previousBalance(a){return data.accounts.filter(x=>x.studentId===a.studentId&&(x.year+'__'+x.term)<(a.year+'__'+a.term)).reduce((sum,x)=>sum+x.base+x.adjustment-x.paid,0);}
-  function openPupil(a){
-   const pane=host.querySelector('#feePupil'),payments=data.payments.filter(p=>data.accounts.some(x=>x.id===p.accountId&&x.studentId===a.studentId)).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt));
-   pane.innerHTML=`<label>View term<select id="feeViewTerm">${data.accounts.filter(x=>x.studentId===a.studentId).sort((x,y)=>(y.year+y.term).localeCompare(x.year+x.term)).map(x=>`<option value="${x.id}" ${x.id===a.id?'selected':''}>${esc(x.term)} · ${esc(x.year)}</option>`).join('')}</select></label><h3>${esc(a.studentName)} — ${esc(a.term)} ${esc(a.year)}</h3><p>Standard fee ${cash(a.base)} · Adjustments ${cash(a.adjustment)} · Previous balance ${cash(previousBalance(a))} · Total due ${cash(previousBalance(a)+a.base+a.adjustment-a.paid)}</p>
-   <details><summary>Edit or remove this term’s fee</summary><label>New total charge (GH₵)<input id="feeNewCharge" type="number" min="0" step="0.01" value="${((a.base+a.adjustment)/100).toFixed(2)}"></label><label>Reason<input id="feeEditReason" maxlength="200" placeholder="Reason for correction"></label><button id="feeEditSave" type="button">Update fee</button><button id="feeCancel" type="button">Remove fee</button><p>Removing a fee cancels the charge and keeps its history. Void any payments first. Editing replaces the total charge, including previous adjustments.</p></details>
-   <details><summary>Individual charge or discount</summary><p>Use a negative amount for a discount or scholarship, and a positive amount for an additional charge. For a different individual fee, enter the difference from the current charge.</p><label>Adjustment (GH₵)<input id="feeAdjustment" type="number" step="0.01"></label><label>Reason<input id="feeReason" maxlength="200" placeholder="Sibling discount, scholarship, transport…"></label><button id="feeAdjustSave" type="button">Save adjustment</button></details>
-   <h4>Record payment</h4><label>Amount received (GH₵)<input id="feePaymentAmount" type="number" min="0.01" step="0.01"></label><label>Payment method<select id="feeMethod"><option>Cash</option><option>Mobile Money</option><option>Bank Transfer</option></select></label><label>Payer name<input id="feePayer" maxlength="200"></label><label>Transaction reference (optional)<input id="feeReference" maxlength="200"></label><button id="feePay" type="button" class="btn-primary">Record payment & receipt</button>
-   <h4>Receipts</h4><div id="feeReceipts"></div><h4>Fee change history</h4><ul>${data.events.filter(e=>(e.accountId===a.id||e.accountIds?.includes(a.id))&&['adjust','edit','cancel','reviseClass','cancelClass'].includes(e.action)).map(e=>`<li>${esc(e.at.slice(0,10))}: ${cash(e.amount)} · ${esc(e.action)} — ${esc(e.reason)}</li>`).join('')||'<li>No fee changes.</li>'}</ul>`;
-   pane.querySelector('#feeViewTerm').onchange=e=>openPupil(data.accounts.find(x=>x.id===e.target.value));
-   operation(pane.querySelector('#feeEditSave'),()=>({action:'edit',accountId:a.id,revision:a.revision,amount:cents(pane.querySelector('#feeNewCharge').value),reason:pane.querySelector('#feeEditReason').value}),renderSchoolFees);
-   operation(pane.querySelector('#feeCancel'),()=>{if(!confirm('Cancel this term’s fee? The history will be kept.'))throw Error('Cancelled.');return {action:'cancel',accountId:a.id,revision:a.revision,reason:pane.querySelector('#feeEditReason').value};},renderSchoolFees);
-   operation(pane.querySelector('#feeAdjustSave'),()=>({action:'adjust',accountId:a.id,revision:a.revision,amount:cents(pane.querySelector('#feeAdjustment').value),reason:pane.querySelector('#feeReason').value}),renderSchoolFees);
-   operation(pane.querySelector('#feePay'),()=>({action:'payment',accountId:a.id,amount:cents(pane.querySelector('#feePaymentAmount').value),method:pane.querySelector('#feeMethod').value,payer:pane.querySelector('#feePayer').value,reference:pane.querySelector('#feeReference').value}),async r=>{await renderSchoolFees();if(isCurrentSession(session,user,school))showFeeReceipt(r.payment);});
-   const receipts=pane.querySelector('#feeReceipts');
-   payments.forEach(p=>{
-    const row=document.createElement('div'),label=document.createElement('p'),print=document.createElement('button');
-    label.textContent=`${p.receipt} · ${cash(p.amount)} · ${p.method} · ${p.receivedAt.slice(0,10)}${p.voided?' · VOID: '+p.voidReason:''}`;print.textContent='View / Print receipt';print.onclick=()=>showFeeReceipt(p);row.append(label,print);
-    if(!p.voided){const reason=document.createElement('input'),voidBtn=document.createElement('button');reason.placeholder='Reason for voiding this receipt';reason.setAttribute('aria-label','Void reason for '+p.receipt);voidBtn.textContent='Void receipt';row.append(reason,voidBtn);operation(voidBtn,()=>{if(!reason.value.trim())throw Error('Enter a reason for voiding.');if(!confirm('Void '+p.receipt+'? The pupil’s outstanding balance will increase by '+cash(p.amount)+'. The original receipt will remain in history.'))throw Error('Cancelled.');return {action:'void',accountId:p.accountId,paymentId:p.id,reason:reason.value};},renderSchoolFees);}
-    receipts.append(row);
-   });
+  host.querySelector('#feeExport').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({schoolId:school,exportedAt:new Date().toISOString(),schemaVersion:2,categories,items,charges,payments,events,legacyAccounts:data.accounts||[]},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='school-fees-fis-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);};
+
+  operation(host.querySelector('#feeCategoryAdd'),()=>({action:'createCategory',name:host.querySelector('#feeCategoryName').value,description:host.querySelector('#feeCategoryDescription').value,isTestData:host.querySelector('#feeCategoryTest').checked}),renderSchoolFees,'Create fee category');
+  const categoryList=host.querySelector('#feeCategoryList');
+  categories.sort((a,b)=>Number(b.active!==false)-Number(a.active!==false)||a.name.localeCompare(b.name)).forEach(cat=>{const card=document.createElement('article');card.className='fee-card';card.innerHTML=`<h4>${esc(cat.name)} ${cat.isSystem?'<span class="fee-badge">System</span>':''} ${cat.isTestData?'<span class="fee-badge">Test</span>':''}</h4><p>${esc(cat.description||'No description')}</p><p><strong>${cat.active===false?'Inactive':'Active'}</strong></p>`;if(!cat.isSystem){const edit=document.createElement('button');edit.type='button';edit.textContent='Edit';edit.onclick=()=>openCategoryEditor(cat);card.append(edit);}categoryList.append(card);});
+  function openCategoryEditor(cat){const pane=host.querySelector('#feeCategoryEditor');pane.innerHTML=`<div class="fee-editor"><h4>Edit category</h4><label>Name<input id="feeEditCategoryName" maxlength="80" value="${esc(cat.name)}"></label><label>Description<input id="feeEditCategoryDescription" maxlength="240" value="${esc(cat.description||'')}"></label><label class="fee-inline-check"><input id="feeEditCategoryActive" type="checkbox" ${cat.active===false?'':'checked'}> Active for new fee items</label><button id="feeEditCategorySave" type="button" class="btn-primary">Save category</button><button id="feeEditCategoryClose" type="button" class="btn-secondary">Close</button></div>`;operation(pane.querySelector('#feeEditCategorySave'),()=>({action:'editCategory',categoryId:cat.id,revision:cat.revision,name:pane.querySelector('#feeEditCategoryName').value,description:pane.querySelector('#feeEditCategoryDescription').value,active:pane.querySelector('#feeEditCategoryActive').checked}),renderSchoolFees,'Edit fee category');pane.querySelector('#feeEditCategoryClose').onclick=()=>pane.replaceChildren();pane.scrollIntoView({behavior:'smooth',block:'nearest'});}
+
+  const scope=host.querySelector('#feeItemScope'),scopeFields=host.querySelector('#feeScopeFields');
+  function renderScope(){const type=scope.value;if(type==='class')scopeFields.innerHTML=`<label>Class<select id="feeScopeClass">${classOptions}</select></label>`;else if(type==='classes')scopeFields.innerHTML=`<fieldset class="fee-checkbox-group"><legend>Classes</legend>${classes.map(c=>`<label class="fee-inline-check"><input type="checkbox" data-fee-class value="${esc(c.id)}"> ${esc(c.name)}</label>`).join('')}</fieldset>`;else if(type==='pupil')scopeFields.innerHTML=`<label>Pupil<select id="feeScopePupil">${pupilOptions}</select></label>`;else scopeFields.innerHTML=`<p class="fee-note">This fee will be charged to all currently active pupils in all classes.</p>`;}
+  scope.onchange=renderScope;renderScope();
+  operation(host.querySelector('#feeItemCreate'),()=>{const scopeType=scope.value;let classIds=[],studentId='';if(scopeType==='class')classIds=[scopeFields.querySelector('#feeScopeClass')?.value].filter(Boolean);if(scopeType==='classes')classIds=[...scopeFields.querySelectorAll('[data-fee-class]:checked')].map(x=>x.value);if(scopeType==='pupil')studentId=scopeFields.querySelector('#feeScopePupil')?.value||'';return {action:'createFeeItem',categoryId:host.querySelector('#feeItemCategory').value,name:host.querySelector('#feeItemName').value,term:host.querySelector('#feeItemTerm').value,year:host.querySelector('#feeItemYear').value,amount:feeCents(host.querySelector('#feeItemAmount').value),scopeType,classIds,studentId,isTestData:host.querySelector('#feeItemTest').checked};},async result=>{await renderSchoolFees();const current=document.getElementById('feeMessage');if(current)current.textContent=`Created ${result.created} pupil charge(s) for the new fee item.`;},'Create fee item');
+
+  const itemList=host.querySelector('#feeItemList');
+  [...items].sort((a,b)=>feePeriodKey(b).localeCompare(feePeriodKey(a))||a.name.localeCompare(b.name)).forEach(item=>{const linked=charges.filter(c=>c.feeItemId===item.id),sum=feePupilSummary(linked),cat=categoryMap.get(item.categoryId)?.name||item.categoryName||'Uncategorised',card=document.createElement('article');card.className='fee-card';card.innerHTML=`<h4>${esc(item.name)} ${item.cancelled?'<span class="fee-badge">Cancelled</span>':''} ${item.isLegacy?'<span class="fee-badge">Migrated</span>':''} ${item.isTestData?'<span class="fee-badge">Test</span>':''}</h4><p>${esc(cat)} · ${esc(item.term||'')} ${esc(item.year||'')}</p><p>${esc(feeScopeLabel(item,classes))} · ${linked.length} pupil charge(s)</p><p><strong>${feeCash(item.amount)}</strong> per pupil · Balance ${feeCash(sum.balance)}</p>`;if(!item.cancelled&&!item.isLegacy){const edit=document.createElement('button'),cancel=document.createElement('button');edit.type=cancel.type='button';edit.textContent='Edit';cancel.textContent='Cancel';cancel.className='fee-danger-text';edit.onclick=()=>openItemEditor(item);cancel.onclick=()=>openItemCancel(item);card.append(edit,cancel);}itemList.append(card);});
+  function openItemEditor(item){const pane=host.querySelector('#feeItemEditor');pane.innerHTML=`<div class="fee-editor"><h4>Edit fee item</h4><p>Scope, term and academic year are locked after creation. Editing the amount updates its pupil charges while preserving individual discounts and payments.</p><label>Category<select id="feeEditItemCategory">${categoryOptions}</select></label><label>Fee item name<input id="feeEditItemName" maxlength="100" value="${esc(item.name)}"></label><label>Amount per pupil (GH₵)<input id="feeEditItemAmount" type="number" min="0.01" step="0.01" value="${(item.amount/100).toFixed(2)}"></label><label>Reason<input id="feeEditItemReason" maxlength="200" placeholder="Reason for this change"></label><button id="feeEditItemSave" type="button" class="btn-primary">Update fee item</button><button id="feeEditItemClose" type="button" class="btn-secondary">Close</button></div>`;pane.querySelector('#feeEditItemCategory').value=item.categoryId;operation(pane.querySelector('#feeEditItemSave'),()=>({action:'editFeeItem',itemId:item.id,revision:item.revision,categoryId:pane.querySelector('#feeEditItemCategory').value,name:pane.querySelector('#feeEditItemName').value,amount:feeCents(pane.querySelector('#feeEditItemAmount').value),reason:pane.querySelector('#feeEditItemReason').value}),renderSchoolFees,'Edit fee item');pane.querySelector('#feeEditItemClose').onclick=()=>pane.replaceChildren();pane.scrollIntoView({behavior:'smooth',block:'nearest'});}
+  function openItemCancel(item){const pane=host.querySelector('#feeItemEditor');pane.innerHTML=`<div class="fee-editor"><h4>Cancel fee item</h4><p>Cancelling preserves history and sets every unpaid pupil charge under this item to cancelled. Any allocated payment must be voided first.</p><label>Reason<input id="feeCancelItemReason" maxlength="200" placeholder="Reason for cancellation"></label><button id="feeCancelItemSave" type="button" class="fee-danger-text">Cancel fee item</button><button id="feeCancelItemClose" type="button" class="btn-secondary">Close</button></div>`;operation(pane.querySelector('#feeCancelItemSave'),()=>{if(!confirm(`Cancel ${item.name}? This keeps its history.`))throw Error('Cancelled.');return {action:'cancelFeeItem',itemId:item.id,revision:item.revision,reason:pane.querySelector('#feeCancelItemReason').value};},renderSchoolFees,'Cancel fee item');pane.querySelector('#feeCancelItemClose').onclick=()=>pane.replaceChildren();pane.scrollIntoView({behavior:'smooth',block:'nearest'});}
+
+  const arrears=host.querySelector('#feeArrears'),arrearRows=(data.arrears||[]).filter(x=>Number(x.balance||0)>0);arrears.innerHTML=arrearRows.length?`<div class="table-scroll"><table class="fee-summary-table"><thead><tr><th>Category</th><th>Period</th><th>Pupils</th><th>Due</th><th>Paid</th><th>Balance</th></tr></thead><tbody>${arrearRows.map(r=>`<tr><td>${esc(categoryMap.get(r.categoryId)?.name||r.categoryName)}</td><td>${esc(r.term)} ${esc(r.year)} ${r.isArrear?'<span class="fee-badge">Arrears</span>':''}</td><td>${r.pupilCount}</td><td>${feeCash(r.due)}</td><td>${feeCash(r.paid)}</td><td><strong>${feeCash(r.balance)}</strong></td></tr>`).join('')}</tbody></table></div>`:'<p>No outstanding arrears.</p>';
+
+  const pupilGroups=new Map();for(const charge of charges){if(!pupilGroups.has(charge.studentId))pupilGroups.set(charge.studentId,[]);pupilGroups.get(charge.studentId).push(charge);}
+  const pupilRows=[...pupilGroups].map(([studentId,list])=>{const sample=list.find(x=>x.studentName)||list[0],sum=feePupilSummary(list),search=list.map(x=>`${x.itemName} ${categoryMap.get(x.categoryId)?.name||x.categoryName} ${x.term} ${x.year}`).join(' ');return {studentId,list,sample,sum,search};}).sort((a,b)=>(a.sample.studentName||'').localeCompare(b.sample.studentName||''));
+  const totals=feePupilSummary(charges);host.querySelector('#feeTotals').innerHTML=`<div class="fee-kpis"><div><small>Total due</small><strong>${feeCash(totals.due)}</strong></div><div><small>Total paid</small><strong>${feeCash(totals.paid)}</strong></div><div><small>Outstanding</small><strong>${feeCash(totals.balance)}</strong></div></div>`;
+  function drawPupils(){const q=host.querySelector('#feeSearch').value.trim().toLowerCase(),rows=pupilRows.filter(x=>`${x.sample.studentName} ${x.sample.className} ${x.search}`.toLowerCase().includes(q)),tbody=host.querySelector('#feeRows');tbody.replaceChildren();if(!rows.length){tbody.innerHTML='<tr><td colspan="5">No matching pupil fee records.</td></tr>';return;}for(const row of rows){const tr=document.createElement('tr'),button=document.createElement('button');button.type='button';button.textContent='View';button.onclick=()=>openPupil(row.studentId);tr.innerHTML=`<td><strong>${esc(row.sample.studentName||'Pupil')}</strong><small>${esc(row.sample.className||'')}</small></td><td>${feeCash(row.sum.due)}</td><td>${feeCash(row.sum.paid)}</td><td><strong>${feeCash(row.sum.balance)}</strong></td><td></td>`;tr.lastElementChild.append(button);tbody.append(tr);}}
+  host.querySelector('#feeSearch').oninput=drawPupils;drawPupils();
+
+  function openPupil(studentId){const pane=host.querySelector('#feePupil'),list=(pupilGroups.get(studentId)||[]).sort((a,b)=>feePeriodKey(a).localeCompare(feePeriodKey(b))||String(a.createdAt||'').localeCompare(String(b.createdAt||''))),sample=list[0]||{},sum=feePupilSummary(list),outstanding=list.filter(x=>!x.cancelled&&feeChargeBalance(x)>0),chargeIds=new Set(list.map(x=>x.id)),pupilPayments=payments.filter(p=>p.studentId===studentId||chargeIds.has(p.accountId)||((p.allocations||[]).some(a=>chargeIds.has(a.chargeId||a.accountId))));
+   pane.innerHTML=`<h3>${esc(sample.studentName||'Pupil')} <small>${esc(sample.className||'')}</small></h3><div class="fee-kpis"><div><small>Total due</small><strong>${feeCash(sum.due)}</strong></div><div><small>Paid</small><strong>${feeCash(sum.paid)}</strong></div><div><small>Balance</small><strong>${feeCash(sum.balance)}</strong></div></div>
+    <h4>Charges</h4><div class="fee-charge-list">${list.map(a=>`<article class="fee-charge-card"><div><strong>${esc(a.itemName||'Fee')}</strong><small>${esc(categoryMap.get(a.categoryId)?.name||a.categoryName||'Uncategorised')} · ${esc(a.term)} ${esc(a.year)}</small></div><div><span>Due ${feeCash(feeChargeDue(a))}</span><span>Paid ${feeCash(a.paid)}</span><strong>Balance ${feeCash(feeChargeBalance(a))}</strong></div>${a.cancelled?'<span class="fee-badge">Cancelled</span>':''}${a.isTestData?'<span class="fee-badge">Test</span>':''}</article>`).join('')}</div>
+    <details><summary>Discount or adjustment</summary><p>Enter a negative amount for a discount or scholarship, or a positive amount for an additional charge.</p><label>Fee charge<select id="feeAdjustCharge">${list.filter(x=>!x.cancelled).map(a=>`<option value="${esc(a.id)}">${esc(a.itemName)} · ${esc(a.term)} ${esc(a.year)} · balance ${feeCash(feeChargeBalance(a))}</option>`).join('')}</select></label><label>Adjustment (GH₵)<input id="feeAdjustmentAmount" type="number" step="0.01"></label><label>Reason<input id="feeAdjustmentReason" maxlength="200" placeholder="Scholarship, sibling discount, correction…"></label><button id="feeAdjustmentSave" type="button">Save adjustment</button></details>
+    <details><summary>Cancel an individual pupil charge</summary><p>Use this only when the pupil should not owe a particular fee item. Payments allocated to that charge must be voided first.</p><label>Fee charge<select id="feeCancelChargeSelect">${list.filter(x=>!x.cancelled).map(a=>`<option value="${esc(a.id)}">${esc(a.itemName)} · ${esc(a.term)} ${esc(a.year)}</option>`).join('')}</select></label><label>Reason<input id="feeCancelChargeReason" maxlength="200"></label><button id="feeCancelCharge" type="button" class="fee-danger-text">Cancel pupil charge</button></details>
+    <h4>Record payment</h4>${outstanding.length?`<div class="fee-form-grid"><label>Allocation<select id="feeAllocationMode"><option value="oldest-first">Automatic, oldest balance first</option><option value="manual">Manual, selected fee items</option></select></label><label>Amount received (GH₵)<input id="feePaymentAmount" type="number" min="0.01" step="0.01"></label><label>Payment method<select id="feeMethod"><option>Cash</option><option>Mobile Money</option><option>Bank Transfer</option></select></label><label>Payer name<input id="feePayer" maxlength="200"></label><label>Transaction reference, optional<input id="feeReference" maxlength="200"></label></div><div id="feeManualAllocations" hidden></div><button id="feePay" type="button" class="btn-primary">Record payment & receipt</button>`:'<p>No outstanding balance to receive.</p>'}
+    <h4>Receipts</h4><div id="feeReceipts"></div><h4>Fee history</h4><ul>${events.filter(e=>e.studentId===studentId||chargeIds.has(e.chargeId)||chargeIds.has(e.accountId)||((e.accountIds||[]).some(id=>chargeIds.has(id)))).slice().sort((a,b)=>String(b.at).localeCompare(String(a.at))).map(e=>`<li>${esc((e.at||'').slice(0,10))}: ${esc(e.action)}${e.amount!=null?' · '+feeCash(e.amount):''}${e.reason?' · '+esc(e.reason):''}</li>`).join('')||'<li>No recorded changes.</li>'}</ul>`;
+   const adjustButton=pane.querySelector('#feeAdjustmentSave');if(adjustButton)operation(adjustButton,()=>{const id=pane.querySelector('#feeAdjustCharge').value,a=chargeMap.get(id);return {action:'adjustCharge',chargeId:id,revision:a.revision,amount:feeCents(pane.querySelector('#feeAdjustmentAmount').value,{signed:true}),reason:pane.querySelector('#feeAdjustmentReason').value};},renderSchoolFees,'Pupil fee adjustment');
+   const cancelButton=pane.querySelector('#feeCancelCharge');if(cancelButton)operation(cancelButton,()=>{const id=pane.querySelector('#feeCancelChargeSelect').value,a=chargeMap.get(id);if(!confirm('Cancel this pupil charge? Its history will remain.'))throw Error('Cancelled.');return {action:'cancelCharge',chargeId:id,revision:a.revision,reason:pane.querySelector('#feeCancelChargeReason').value};},renderSchoolFees,'Cancel pupil charge');
+   const mode=pane.querySelector('#feeAllocationMode'),amountInput=pane.querySelector('#feePaymentAmount'),manual=pane.querySelector('#feeManualAllocations');
+   if(mode){const renderManual=()=>{const on=mode.value==='manual';manual.hidden=!on;amountInput.readOnly=on;if(!on)return;manual.innerHTML=`<p>Enter the amount to allocate to each selected fee item. The total below becomes the receipt amount.</p><div class="fee-allocation-grid">${outstanding.map(a=>`<label>${esc(a.itemName)}<small>${esc(a.term)} ${esc(a.year)} · balance ${feeCash(feeChargeBalance(a))}</small><input type="number" min="0" max="${(feeChargeBalance(a)/100).toFixed(2)}" step="0.01" data-fee-allocation="${esc(a.id)}" placeholder="0.00"></label>`).join('')}</div>`;const recalc=()=>{let cents=0;manual.querySelectorAll('[data-fee-allocation]').forEach(input=>{const value=input.value.trim();if(value)cents+=feeCents(value,{allowZero:true});});amountInput.value=(cents/100).toFixed(2);};manual.querySelectorAll('[data-fee-allocation]').forEach(input=>input.oninput=recalc);recalc();};mode.onchange=renderManual;renderManual();
+    operation(pane.querySelector('#feePay'),()=>{const allocationMode=mode.value,allocations=allocationMode==='manual'?[...manual.querySelectorAll('[data-fee-allocation]')].filter(x=>Number(x.value)>0).map(x=>({chargeId:x.dataset.feeAllocation,amount:feeCents(x.value)})):undefined;return {action:'recordPayment',studentId,amount:feeCents(amountInput.value),method:pane.querySelector('#feeMethod').value,payer:pane.querySelector('#feePayer').value,reference:pane.querySelector('#feeReference').value,allocationMode,allocations};},async r=>{await renderSchoolFees();if(isCurrentSession(session,user,school))showFeeReceipt(r.payment);},'Record pupil payment');}
+   const receiptHost=pane.querySelector('#feeReceipts');pupilPayments.slice().sort((a,b)=>String(b.receivedAt).localeCompare(String(a.receivedAt))).forEach(p=>{const row=document.createElement('article'),view=document.createElement('button');row.className='fee-receipt-row';row.innerHTML=`<p><strong>${esc(p.receipt||'Receipt')}</strong> · ${feeCash(p.amount)} · ${esc(p.method||'')}</p><p>${esc((p.receivedAt||'').slice(0,10))}${p.voided?' · VOID: '+esc(p.voidReason||''):''}</p><small>${esc(feeAllocationSummary(p,chargeMap)||'Legacy allocation')}</small>`;view.type='button';view.textContent='View / Print receipt';view.onclick=()=>showFeeReceipt(p);row.append(view);if(!p.voided){const reason=document.createElement('input'),voidButton=document.createElement('button');reason.placeholder='Reason for voiding this receipt';reason.setAttribute('aria-label','Void reason for '+(p.receipt||'receipt'));voidButton.type='button';voidButton.textContent='Void receipt';voidButton.className='fee-danger-text';row.append(reason,voidButton);operation(voidButton,()=>{if(!reason.value.trim())throw Error('Enter a reason for voiding.');if(!confirm(`Void ${p.receipt}? Its allocations will be reversed.`))throw Error('Cancelled.');return {action:'voidPayment',paymentId:p.id,reason:reason.value};},renderSchoolFees,'Void fee receipt');}receiptHost.append(row);});
    pane.scrollIntoView({behavior:'smooth',block:'start'});
   }
-  host.querySelector('#feeSearch').oninput=draw;draw();
-  host.querySelector('#feeExport').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({schoolId:school,exportedAt:new Date().toISOString(),...data},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='school-fees-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);};
- }catch(e){if(active())host.textContent='Unable to load fees: '+(e.message||e)+'. Reopen Fees & Receipts to retry.';}
+
+  const testCount=[...categories,...items,...charges,...payments,...events,...(data.accounts||[])].filter(x=>x.isTestData===true).length;host.querySelector('#feeTestCount').textContent=`${testCount} test record(s) are currently marked as eligible for cleanup.`;
+  operation(host.querySelector('#feeCleanup'),()=>{const confirmText=host.querySelector('#feeCleanupConfirm').value;if(confirmText!=='CLEAN TEST DATA')throw Error('Type CLEAN TEST DATA exactly to confirm.');if(!confirm('Delete test fee records only? Production fee records will be left untouched.'))throw Error('Cancelled.');return {action:'cleanupTestData',confirmText};},async r=>{await renderSchoolFees();const current=document.getElementById('feeMessage');if(current)current.textContent=`Test cleanup deleted ${r.deleted} record(s).${r.remaining?' '+r.remaining+' test record(s) remain for another cleanup pass.':''}`;},'Test Data Cleanup');
+ }catch(e){if(active())host.textContent='Unable to load Fees & Receipts: '+(e.message||e)+'. Reopen Fees & Receipts or reconnect and try again.';}
 }
+
 function showFeeReceipt(p){
  if(!isHeadTeacher())return;
- const esc=escapeHtml,cash=n=>'GH₵ '+(n/100).toFixed(2),overlay=document.createElement('div');overlay.className='about-overlay';overlay.id='feeReceiptDialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Fee receipt');
- overlay.innerHTML=`<div class="about-box"><h2>${esc(p.schoolName)}</h2><h3>${p.voided?'VOIDED RECEIPT':'PAYMENT RECEIPT'} · ${esc(p.receipt)}</h3><p>Date: ${esc(p.receivedAt.slice(0,10))}</p><p>Pupil: ${esc(p.studentName)}<br>Class: ${esc(p.className)}<br>${esc(p.term)} · ${esc(p.year)}</p><p>Received from: ${esc(p.payer)}<br>Method: ${esc(p.method)}<br>Reference: ${esc(p.reference||'—')}</p><p><strong>Amount received: ${cash(p.amount)}</strong></p><p>Balance after this payment: ${cash(p.balanceAfter)}</p>${p.voided?`<p>Void reason: ${esc(p.voidReason)}</p>`:''}<p>This receipt records a payment entered by the school.</p><button type="button" class="btn-primary" data-print>Print / Save as PDF</button><button type="button" class="btn-secondary" data-close>Close</button></div>`;
+ const esc=escapeHtml,allocations=Array.isArray(p.allocations)?p.allocations:[],overlay=document.createElement('div');overlay.className='about-overlay';overlay.id='feeReceiptDialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Fee receipt');
+ overlay.innerHTML=`<div class="about-box"><h2>${esc(p.schoolName||'School')}</h2><h3>${p.voided?'VOIDED RECEIPT':'PAYMENT RECEIPT'} · ${esc(p.receipt||'')}</h3><p>Date: ${esc((p.receivedAt||'').slice(0,10))}</p><p>Pupil: ${esc(p.studentName||'')}<br>Class: ${esc(p.className||'')}</p><p>Received from: ${esc(p.payer||'')}<br>Method: ${esc(p.method||'')}<br>Reference: ${esc(p.reference||'—')}</p><p><strong>Amount received: ${feeCash(p.amount)}</strong></p>${allocations.length?`<h4>Allocation</h4><table class="fee-receipt-allocation"><thead><tr><th>Fee item</th><th>Period</th><th>Amount</th></tr></thead><tbody>${allocations.map(a=>`<tr><td>${esc(a.itemName||'Fee')}</td><td>${esc([a.term,a.year].filter(Boolean).join(' '))}</td><td>${feeCash(a.amount)}</td></tr>`).join('')}</tbody></table>`:''}<p>Balance after this payment: ${feeCash(p.balanceAfter)}</p>${p.voided?`<p><strong>VOID</strong><br>Reason: ${esc(p.voidReason||'')}</p>`:''}<p>This receipt records a payment entered by the school.</p><button type="button" class="btn-primary" data-print>Print / Save as PDF</button><button type="button" class="btn-secondary" data-close>Close</button></div>`;
  overlay.querySelector('[data-print]').onclick=()=>window.print();overlay.querySelector('[data-close]').onclick=()=>overlay.remove();document.body.append(overlay);overlay.querySelector('[data-close]').focus();
 }
 
 new MutationObserver(()=>{if(!isHeadTeacher()||!sessionReady){document.getElementById('feeReceiptDialog')?.remove();const host=document.getElementById('feesWrap');if(host&&host.textContent)host.replaceChildren();}}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
 
-// Reconnect and restored sessions also drain pending saves when another page is open.
 let feeBackgroundBusy=false;
 setInterval(async()=>{
  if(feeBackgroundBusy||!sessionReady||!isHeadTeacher()||navigator.onLine===false)return;
- const school=currentSchoolId,user=currentUid,session=sessionGeneration,key='schoolhub_fee_queue_'+school+'_'+user;
- const active=()=>isCurrentSession(session,user,school)&&isHeadTeacher();
- try{
-  const queued=feeQueueRead(key);if(!queued.length||queued[0].error)return;
-  feeBackgroundBusy=true;await feeFlush(key,active);
-  if(active()){const data=await safetyCall('getSchoolFees',{});if(active())localStorage.setItem('schoolhub_fee_cache_'+school+'_'+user,JSON.stringify(data));}
- }catch(e){/* Keep pending entries on this device for the next attempt. */}finally{feeBackgroundBusy=false;}
+ const school=currentSchoolId,user=currentUid,session=sessionGeneration,key='schoolhub_fee_queue_'+school+'_'+user,active=()=>isCurrentSession(session,user,school)&&isHeadTeacher();
+ try{const queued=feeQueueRead(key);if(!queued.length||queued[0].error)return;feeBackgroundBusy=true;await feeFlush(key,active);if(active()){let data=await safetyCall('getSchoolFees',{});data=await feeMigrateLegacy(data,active);if(active())localStorage.setItem('schoolhub_fee_cache_'+school+'_'+user,JSON.stringify(data));}}
+ catch(_){/* Pending entries remain on this device for the next attempt. */}finally{feeBackgroundBusy=false;}
 },30000);
 
-// Only class balances are exposed to report users, never receipts or payer details.
+// Only class balances are exposed to report users, never receipts, payer names or fee administration data.
 async function loadReportFeeBalances(classId,settings){
  if(!FIREBASE_ENABLED||isActiveGuest())return null;
- const school=currentSchoolId,user=currentUid,session=sessionGeneration;
- const key='schoolhub_report_fees_'+school+'_'+user+'_'+classId+'_'+settings.currentYear+'_'+settings.currentTerm;
+ const school=currentSchoolId,user=currentUid,session=sessionGeneration,key='schoolhub_report_fees_'+school+'_'+user+'_'+classId+'_'+settings.currentYear+'_'+settings.currentTerm;
  if(navigator.onLine===false){const saved=localStorage.getItem(key);if(saved)return {...JSON.parse(saved),offline:true};throw Error('Connect once to load fee balances for this class before printing offline.');}
- const data=await safetyCall('getReportFeeBalances',{classId,term:settings.currentTerm,year:settings.currentYear});
- if(!isCurrentSession(session,user,school))throw Error('Account changed. Reopen this page.');
- localStorage.setItem(key,JSON.stringify(data));return data;
+ const data=await safetyCall('getReportFeeBalances',{classId,term:settings.currentTerm,year:settings.currentYear});if(!isCurrentSession(session,user,school))throw Error('Account changed. Reopen this page.');localStorage.setItem(key,JSON.stringify(data));return data;
 }
-function reportFeeRemarks(remarks,studentId,fees){
- return fees&&Object.prototype.hasOwnProperty.call(fees.balances,studentId)?{...remarks,feesDue:(fees.balances[studentId]/100).toFixed(2)}:remarks;
-}
+function reportFeeRemarks(remarks,studentId,fees){return fees&&Object.prototype.hasOwnProperty.call(fees.balances,studentId)?{...remarks,feesDue:(fees.balances[studentId]/100).toFixed(2)}:remarks;}
 async function refreshRemarksFeeBalance(student,classId,settings,card){
- if(!FIREBASE_ENABLED||isActiveGuest())return;
- const input=card.querySelector('.rm-fees'),note=document.createElement('small');
- input.readOnly=true;input.value='';note.textContent='Loading confirmed fee balance…';input.after(note);
- try{const fees=await loadReportFeeBalances(classId,settings);if(!card.isConnected)return;
- const managed=Object.prototype.hasOwnProperty.call(fees.balances,student.id);
- input.value=managed?(fees.balances[student.id]/100).toFixed(2):input.dataset.manual||'';input.readOnly=managed;
- note.textContent=managed?(fees.offline?'Last confirmed balance saved on this device.':'From Fees & Receipts, including previous unpaid balances. Update fees or payments there.'):'No fee account for this period. You may enter an amount manually.';
- }catch(e){if(card.isConnected){input.value=input.dataset.manual||'';note.textContent='Fee balance unavailable. '+(e.message||e);}}
+ if(!FIREBASE_ENABLED||isActiveGuest())return;const input=card.querySelector('.rm-fees'),note=document.createElement('small');input.readOnly=true;input.value='';note.textContent='Loading confirmed fee balance…';input.after(note);
+ try{const fees=await loadReportFeeBalances(classId,settings);if(!card.isConnected)return;const managed=Object.prototype.hasOwnProperty.call(fees.balances,student.id);input.value=managed?(fees.balances[student.id]/100).toFixed(2):input.dataset.manual||'';input.readOnly=managed;note.textContent=managed?(fees.offline?'Last confirmed balance saved on this device.':'From Fees & Receipts, including previous unpaid balances. Update fees or payments there.'):'No managed fee charge for this period. You may enter an amount manually.';}
+ catch(e){if(card.isConnected){input.value=input.dataset.manual||'';note.textContent='Fee balance unavailable. '+(e.message||e);}}
 }
