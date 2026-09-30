@@ -609,3 +609,86 @@
  #feePrintDialog .fee-parent-details { color:#111!important; background:#fff!important; border-color:#aaa!important; }
  #feePrintDialog .fee-reminder-notice .fee-kpis > div { color:#111!important; background:#fff!important; border-color:#aaa!important; }
 }
+
+
+/* FIS reminder action feedback and mobile table navigation. */
+.fee-action-toast{
+  position:fixed; right:24px; bottom:24px; z-index:10050;
+  max-width:min(420px,calc(100vw - 32px)); padding:11px 14px;
+  border:1px solid var(--rule); border-radius:10px;
+  background:var(--paper); color:var(--ink); box-shadow:0 8px 28px rgba(0,0,0,.18);
+  font:500 13px 'IBM Plex Sans',sans-serif; line-height:1.4;
+  opacity:0; transform:translateY(10px); pointer-events:none;
+  transition:opacity .16s ease,transform .16s ease;
+}
+.fee-action-toast.show{opacity:1;transform:translateY(0);}
+.fee-action-toast[data-kind='error']{border-color:var(--red);}
+.fee-action-toast[data-kind='info']{border-color:var(--gold);}
+
+/* Every Fees & Receipts table can scroll left/right without trapping page scrolling. */
+#app #view-fees .table-scroll{
+  max-width:100%; overflow-x:auto; overflow-y:visible;
+  -webkit-overflow-scrolling:touch; overscroll-behavior-inline:contain;
+  scrollbar-width:thin;
+}
+#app #view-fees .table-scroll > table{
+  width:max-content; min-width:100%; border-collapse:separate; border-spacing:0;
+}
+#app #view-fees .table-scroll > table thead th{
+  text-align:center!important; vertical-align:middle;
+}
+#app #view-fees .table-scroll > table tbody td{
+  text-align:center!important; vertical-align:middle;
+}
+/* Freeze the row label/name column on every FIS table. */
+#app #view-fees .table-scroll > table :is(th,td):first-child{
+  position:sticky; left:0; z-index:2; background:var(--surface);
+  box-shadow:2px 0 0 var(--rule);
+}
+#app #view-fees .table-scroll > table thead th:first-child{
+  z-index:4; background:var(--surface-alt);
+}
+#app #view-fees .table-scroll > table tbody td:first-child{
+  text-align:left!important;
+}
+/* Arrears has a checkbox before the pupil name, so keep both columns pinned. */
+#app #view-fees .fee-arrears-table :is(th,td):first-child{
+  left:0; width:58px; min-width:58px; max-width:58px; text-align:center!important;
+}
+#app #view-fees .fee-arrears-table :is(th,td):nth-child(2){
+  position:sticky; left:58px; z-index:2; min-width:190px; max-width:230px;
+  background:var(--surface); box-shadow:2px 0 0 var(--rule);
+}
+#app #view-fees .fee-arrears-table thead th:nth-child(2){
+  z-index:4; background:var(--surface-alt); text-align:center!important;
+}
+#app #view-fees .fee-arrears-table tbody td:nth-child(2){text-align:left!important;}
+
+/* Receipt/print preview tables use the same horizontal navigation on small screens. */
+#feeReceiptDialog .fee-dialog-table-scroll,
+#feePrintDialog .table-scroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+#feeReceiptDialog .fee-dialog-table-scroll > table,
+#feePrintDialog .table-scroll > table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;}
+#feeReceiptDialog .fee-dialog-table-scroll th,
+#feePrintDialog .table-scroll th{text-align:center!important;}
+#feeReceiptDialog .fee-dialog-table-scroll td,
+#feePrintDialog .table-scroll td{text-align:center!important;}
+#feeReceiptDialog .fee-dialog-table-scroll :is(th,td):first-child,
+#feePrintDialog .table-scroll :is(th,td):first-child{position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:2px 0 0 var(--rule);}
+#feeReceiptDialog .fee-dialog-table-scroll th:first-child,
+#feePrintDialog .table-scroll th:first-child{z-index:4;background:var(--surface-alt);}
+#feeReceiptDialog .fee-dialog-table-scroll td:first-child,
+#feePrintDialog .table-scroll td:first-child{text-align:left!important;}
+
+@media(max-width:600px){
+  .fee-action-toast{left:50%;right:auto;bottom:calc(82px + env(safe-area-inset-bottom));transform:translate(-50%,10px);width:max-content;max-width:calc(100vw - 28px);text-align:center;}
+  .fee-action-toast.show{transform:translate(-50%,0);}
+  #app #view-fees .table-scroll{margin-inline:0;}
+  #app #view-fees .fee-arrears-table :is(th,td):nth-child(2){min-width:150px;max-width:170px;}
+}
+
+@media print{
+  .fee-action-toast{display:none!important;}
+  #feePrintDialog .table-scroll{overflow:visible!important;}
+  #feePrintDialog .table-scroll :is(th,td):first-child{position:static!important;box-shadow:none!important;}
+}
