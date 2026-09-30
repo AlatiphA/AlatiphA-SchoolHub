@@ -39,7 +39,7 @@ test('payment method analytics count only allocations matching the filtered char
 });
 
 test('pupil statements include charge, payment, CSV and print controls with responsive styling',()=>{
- for(const token of ['Pupil statements','feeStatementPupil','feeStatementPreview','Export statement CSV','Print / Save statement PDF','feeStatementHtml','feePrintDialog'])assert.ok(fees.includes(token),token);
+ for(const token of ['Parent fee statements','feeStatementPupil','feeStatementPreview','Export statement CSV','Print / Save statement PDF','feeStatementHtml','feePrintDialog'])assert.ok(fees.includes(token),token);
  for(const token of ['.fee-dashboard-kpis','.fee-report-grid','.fee-statement-table','#feePrintDialog .fee-print-box','body:has(#feePrintDialog)'])assert.ok(css.includes(token),token);
 });
 
