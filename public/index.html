@@ -47,11 +47,7 @@
     <h2 id="authHeading">Welcome back</h2>
     <p id="authSubtitle" class="auth-subtitle">Sign in to your school account.</p>
     <div id="authFormFields">
-      <button type="button" id="authGoogleBtn" class="google-signin-btn">
-        <span class="google-mark" aria-hidden="true">G</span>
-        <span id="authGoogleBtnLabel">Continue with Google</span>
-      </button>
-      <div class="auth-divider" aria-hidden="true"><span>or continue with email</span></div>
+
       <label class="auth-label" for="authEmail">Email</label>
       <input type="email" id="authEmail" placeholder="Enter your email" autocomplete="email" inputmode="email" autocapitalize="none">
       <div class="auth-password-label"><label class="auth-label" for="authPassword">Password</label><button type="button" id="authForgotBtn">Forgot password?</button></div>
@@ -73,6 +69,11 @@
       </div>
       <button type="button" id="authSubmitBtn" class="btn-primary">Sign in</button>
       <p class="auth-switch"><span id="authSwitchPrompt">Don’t have an account?</span> <button type="button" id="authToggleModeBtn">Sign up</button></p>
+      <div class="auth-divider" aria-hidden="true"><span>or continue with Google</span></div>
+      <button type="button" id="authGoogleBtn" class="google-signin-btn">
+        <span class="google-mark" aria-hidden="true">G</span>
+        <span id="authGoogleBtnLabel">Continue with Google</span>
+      </button>
       <button type="button" id="authGuestBtn" class="btn-text">Start 7-day guest trial</button>
     </div>
     <p id="authSyncingMsg" class="hint hidden" role="status">Syncing your data from the cloud…</p>
@@ -1043,11 +1044,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-storage-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.17.1/firebase-functions-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
 <script src="app-4.js?v=v40-manage-teacher-remove-ui-8"></script>
 <script src="fees.js"></script>
