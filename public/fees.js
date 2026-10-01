@@ -15,11 +15,13 @@ function feeRejected(e){return /invalid-argument|failed-precondition|aborted|per
 async function feeFlush(key,active){
  return feeWithLock(key,async()=>{
   const results={};
+  if (typeof reconcileWorkerSyncAcks === 'function') try { await reconcileWorkerSyncAcks(key); } catch(e) { console.warn('Background fee receipts remain saved:',e); }
   while(active()&&navigator.onLine!==false){
    const queue=feeQueueRead(key),item=queue[0];if(!item||item.error)break;
    try{results[item.request.requestId]=await safetyCall('updateSchoolFees',item.request);localStorage.setItem(key,JSON.stringify(queue.slice(1)));}
    catch(e){if(feeRejected(e)){item.error=e.message||String(e);localStorage.setItem(key,JSON.stringify(queue));}else if(typeof requestSchoolHubBackgroundSync==='function')requestSchoolHubBackgroundSync('fee-flush-failed');break;}
   }
+  if (typeof stageWorkerFeeQueue === 'function' && active() && key === 'schoolhub_fee_queue_' + currentSchoolId + '_' + currentUid) try { await stageWorkerFeeQueue(true); } catch(e) { console.warn('Fee saves remain queued on this device:',e); }
   return results;
  });
 }

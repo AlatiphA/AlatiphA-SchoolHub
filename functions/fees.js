@@ -21,6 +21,7 @@ function register({onCall,HttpsError,db}){
   if(!r.auth)fail('unauthenticated','Sign in first.');
   const user=(await tx.get(db.collection('users').doc(r.auth.uid))).data();
   if(!user||user.status!=='active'||user.role!=='headteacher'||!user.schoolId)fail('permission-denied','Only the active Head Teacher can manage fees.');
+  if(r.data?.expectedSchoolId!==undefined&&r.data.expectedSchoolId!==user.schoolId)fail('failed-precondition','The school for this pending fee save has changed.');
   return {school:db.collection('schools').doc(user.schoolId),user};
  }
  async function reportSchoolFor(tx,r,classId){
@@ -71,7 +72,7 @@ function register({onCall,HttpsError,db}){
   updateSchoolFees:call(async r=>db.runTransaction(async tx=>{
    const {school}=await schoolFor(tx,r),d=r.data||{},action=str(d.action,'Fee action',40),requestId=str(d.requestId,'Request identifier',80);
    if(!/^[a-zA-Z0-9-]{16,80}$/.test(requestId))fail('invalid-argument','Invalid request identifier.');
-   const eventRef=col(school,'feeEvents').doc(requestId),oldEvent=await tx.get(eventRef),fingerprint=key(d);
+   const eventRef=col(school,'feeEvents').doc(requestId),oldEvent=await tx.get(eventRef),fingerprint=key(Object.fromEntries(Object.entries(d).filter(([name])=>name!=='expectedSchoolId')));
    if(oldEvent.exists){if(oldEvent.data().fingerprint!==fingerprint)fail('already-exists','This request identifier was already used for a different fee operation. Refresh before continuing.');return oldEvent.data().result;}
    const stamp=new Date().toISOString(),actor=r.auth.uid;let result={saved:true},details={};
 

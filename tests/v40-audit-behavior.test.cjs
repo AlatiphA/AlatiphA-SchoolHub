@@ -9,6 +9,7 @@ function fixture(){
  const ctx={console,Map,Set,Promise,JSON,FIREBASE_ENABLED:true,currentSchoolId:'school',currentUid:'head',currentStatus:'active',sessionGeneration:1,sessionDataReady:true,cloudHydrationInProgress:false,offlineAuthenticatedMode:false,
   DB:{get:(key,fallback)=>records.has(key)?records.get(key):fallback,set:(key,value)=>records.set(key,value)},
   KEYS:{students:'students',grades:'grades',settings:'settings'},
+  syncableFields:()=>Object.entries(ctx.KEYS).map(([field,key])=>({field,key})),
   syncErrors:new Map(),updateOfflineModeBanner(){},syncDirtyKeys:dirty,syncBaseValues:new Map(),fieldPushes:new Map(),stableSyncJson:JSON.stringify,
   dirtyIdsFor:key=>Array.from(dirty.get(key)||[]),
   clearSyncDirty:(key,ids)=>ids.forEach(id=>dirty.get(key)?.delete(id)),
@@ -52,6 +53,21 @@ test('failed writes and obsolete sessions do not acknowledge the outbox',async()
 test('cached offline identity cannot initiate writes before reverification',async()=>{
  const f=fixture();f.ctx.offlineAuthenticatedMode=true;f.records.set('students',[{id:'s1',classId:'class1'}]);f.dirty.set('students',new Set(['s1']));
  await f.ctx.pushFieldToCloud({field:'students',key:'students'});assert.equal(f.writes.length,0);assert.equal(f.dirty.get('students').size,1);
+});
+
+test('account change while a worker lock is held cannot send the previous workspace',async()=>{
+ const f=fixture();let release;const gate=new Promise(resolve=>release=resolve);
+ f.ctx.runWithWorkerFieldLock=async(_,work)=>{await gate;return work();};
+ f.records.set('students',[{id:'s1',classId:'class1'}]);f.dirty.set('students',new Set(['s1']));
+ const pending=f.ctx.pushFieldToCloud({field:'students',key:'students'});
+ f.ctx.sessionGeneration++;f.ctx.currentSchoolId='other-school';release();await pending;
+ assert.equal(f.writes.length,0);assert.equal(f.dirty.get('students').size,1);
+});
+
+test('pending data for a different school does not keep this school retrying',()=>{
+ const ctx={currentUid:'u',currentSchoolId:'s',syncableFields:()=>[{key:'current-school'}],syncDirtyKeys:new Map([['other-school',new Set(['p'])]])};vm.createContext(ctx);
+ vm.runInContext(section('function hasPendingPrimarySync()', '\nfunction hasPendingFeeSync()'),ctx);
+ assert.equal(ctx.hasPendingPrimarySync(),false);ctx.syncDirtyKeys.set('current-school',new Set(['p']));assert.equal(ctx.hasPendingPrimarySync(),true);
 });
 test('hydration preserves pending array, keyed and settings edits while accepting clean cloud data',()=>{
  const f=fixture();

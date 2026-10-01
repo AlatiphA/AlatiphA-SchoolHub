@@ -59,15 +59,22 @@ function persistSyncOutbox() {
 loadPersistentSyncOutbox();
 
 function hasPendingPrimarySync() {
+  // Pending data from another school must not keep this session retrying forever.
+  if (typeof syncableFields === 'function') {
+    if (!currentUid || !currentSchoolId) return false;
+    return syncableFields().some(field => syncDirtyKeys.get(field.key)?.size);
+  }
   for (const ids of syncDirtyKeys.values()) if (ids && ids.size) return true;
   return false;
 }
 
 function hasPendingFeeSync() {
   try {
+    if (!currentUid || !currentSchoolId) return false;
+    const activeQueueKey = 'schoolhub_fee_queue_' + currentSchoolId + '_' + currentUid;
     for (let i = 0; i < localStorage.length; i += 1) {
       const key = localStorage.key(i);
-      if (!key || !key.startsWith('schoolhub_fee_queue_')) continue;
+      if (key !== activeQueueKey) continue;
       const queue = JSON.parse(localStorage.getItem(key) || '[]');
       if (Array.isArray(queue) && queue.some(item => item && !item.error)) return true;
     }
@@ -82,8 +89,13 @@ function hasPendingSchoolHubSync() {
 }
 
 async function requestSchoolHubBackgroundSync(reason = 'pending-write') {
-  if (!('serviceWorker' in navigator) || !hasPendingSchoolHubSync()) return false;
+  if (!('serviceWorker' in navigator) || !hasPendingSchoolHubSync() || !currentUid || !currentSchoolId || currentStatus !== 'active') return false;
   try {
+    if (typeof stagePendingWorkerSync === 'function') {
+      try { await stagePendingWorkerSync(); }
+      catch (error) { console.warn('Worker storage is unavailable; local saves remain queued:', error); }
+    }
+    if (!hasPendingSchoolHubSync()) return false;
     const registration = schoolHubServiceWorkerRegistration || await navigator.serviceWorker.ready;
     schoolHubServiceWorkerRegistration = registration;
     if (!registration || !registration.sync || typeof registration.sync.register !== 'function') return false;
@@ -353,6 +365,7 @@ function startCachedAuthenticatedSession(user, cached) {
   loadSettingsForm();
   refreshProfileMenu();
   proceedToApp();
+  requestSchoolHubBackgroundSync('cached-session-restored');
   updateOfflineModeBanner();
   return true;
 }
@@ -374,6 +387,7 @@ function resetWorkspaceState() {
   if (staffDetails) staffDetails.innerHTML = '';
   document.getElementById('staffDetailsDialog')?.classList.add('hidden');
   currentUid = null;
+  if (typeof SchoolHubSyncQueue !== 'undefined') SchoolHubSyncQueue.disable().catch(() => {});
   stopNotificationListener();
   hideNotificationCenter();
   currentSchoolId = null;
@@ -10090,6 +10104,7 @@ function pullCloudData(sessionToken) {
     if (valid()) {
       cloudHydrationInProgress = false;
       sessionDataReady = true;
+      requestSchoolHubBackgroundSync('school-session-ready');
       syncableFields().forEach(field => {
         if (dirtyIdsFor(field.key).length) scheduleCloudPush(field.key);
       });
@@ -10174,7 +10189,9 @@ function pushFieldToCloud(match) {
   // Serialize writes per school/field so an older response cannot overtake a newer edit.
   if (fieldPushes.has(match.key)) return fieldPushes.get(match.key);
   const token = sessionGeneration;
-  const pending = performFieldPush(match).then(result => {
+  const perform = () => token === sessionGeneration && syncableFields().some(field => field.field === match.field && field.key === match.key)
+    ? performFieldPush(match) : Promise.resolve();
+  const pending = (typeof runWithWorkerFieldLock === 'function' ? runWithWorkerFieldLock(match, perform) : perform()).then(result => {
     if (token === sessionGeneration) { syncErrors.delete(match.key); updateOfflineModeBanner(); }
     return result;
   }, error => {
@@ -10339,7 +10356,7 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
     if (offlineAuthenticatedMode) await revalidateAndSyncAfterReconnect();
     else await flushPendingCloudWrites();
     if (typeof window.flushPendingSchoolFeeWrites === 'function') await window.flushPendingSchoolFeeWrites();
-    if (hasPendingSchoolHubSync()) await requestSchoolHubBackgroundSync(`${source}-remaining`);
+    if (hasPendingSchoolHubSync()) { await requestSchoolHubBackgroundSync(`${source}-remaining`); return false; }
     return true;
   } catch (error) {
     console.warn('Background synchronization could not finish:', error);
@@ -10350,7 +10367,7 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
     // Permission/conflict failures remain in the existing queues for user review;
     // they are not converted into an automatic retry loop.
     updateOfflineModeBanner(error.message || 'Some changes still need attention.');
-    return true;
+    return false;
   }
 }
 if (typeof window !== 'undefined') window.runSchoolHubBackgroundSync = runSchoolHubBackgroundSync;
@@ -11869,6 +11886,10 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', event => {
     if (event.data && event.data.type === 'OPEN_NOTIFICATIONS') {
       showNotificationCenter();
+      return;
+    }
+    if (event.data?.type === 'SCHOOLHUB_WORKER_SYNC_COMPLETE') {
+      if (currentUid && sessionReady) runSchoolHubBackgroundSync('worker-complete').catch(() => {});
       return;
     }
     if (!event.data || event.data.type !== 'SCHOOLHUB_BACKGROUND_SYNC') return;

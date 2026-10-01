@@ -55,6 +55,7 @@ function register({onCall,HttpsError,db,admin}) {
   if(!request.auth)fail('unauthenticated','Sign in first.');
   const snap=await tx.get(db.collection('users').doc(request.auth.uid));const u=snap.data();
   if(!u||u.status!=='active'||!u.schoolId||!['headteacher','teacher'].includes(u.role)||(head&&u.role!=='headteacher'))fail('permission-denied','Active school access required.');
+  if(request.data?.expectedSchoolId!==undefined&&request.data.expectedSchoolId!==u.schoolId)fail('failed-precondition','The school for this pending save has changed.');
   return u;
  }
  const exports={};

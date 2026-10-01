@@ -1,24 +1,32 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const CACHE_NAME = 'schoolhub-cache-v40-fis-notification-audit-1';
-const APP_SHELL = ['./','./index.html','./faq.html','./privacy.html','./terms.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./staff-transfer.js','./fees.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
+const CACHE_NAME = 'schoolhub-cache-v40-closed-sync-1';
+const APP_SHELL = ['./','./index.html','./faq.html','./privacy.html','./terms.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./staff-transfer.js','./fees.js','./sync-queue.js','./sync-client.js','./sync-worker.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
 const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
 const BACKGROUND_SYNC_TAG = 'schoolhub-pending-sync-v1';
+if (typeof importScripts === 'function') importScripts('./sync-queue.js','./sync-worker.js');
 const backgroundSyncWaiters = new Map();
 self.addEventListener('message',e=>{
   if(e.data?.type==='SKIP_WAITING')self.skipWaiting();
   if(e.data?.type==='SCHOOLHUB_BACKGROUND_SYNC_RESULT'&&e.data.syncId){
-    const waiter=backgroundSyncWaiters.get(e.data.syncId);if(waiter){backgroundSyncWaiters.delete(e.data.syncId);e.data.ok?waiter.resolve():waiter.reject(new Error('Client sync did not complete'));}
+    const waiter=backgroundSyncWaiters.get(e.data.syncId);if(waiter&&(!waiter.clientId||!e.source?.id||e.source.id===waiter.clientId)){backgroundSyncWaiters.delete(e.data.syncId);e.data.ok?waiter.resolve():waiter.reject(new Error('Client sync did not complete'));}
   }
 });
 async function dispatchBackgroundSyncToClient(){
   const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
   if(!windows.length)throw new Error('No active SchoolHub client is available yet.');
   const syncId=`${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const completion=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{backgroundSyncWaiters.delete(syncId);reject(new Error('Background sync acknowledgement timed out'));},25000);backgroundSyncWaiters.set(syncId,{resolve:()=>{clearTimeout(timer);resolve();},reject:error=>{clearTimeout(timer);reject(error);}});});
-  windows.forEach(client=>client.postMessage({type:'SCHOOLHUB_BACKGROUND_SYNC',syncId}));
+  const completion=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{backgroundSyncWaiters.delete(syncId);reject(new Error('Background sync acknowledgement timed out'));},25000);backgroundSyncWaiters.set(syncId,{clientId:windows[0].id,resolve:()=>{clearTimeout(timer);resolve();},reject:error=>{clearTimeout(timer);reject(error);}});});
+  // One client owns the acknowledgement; other tabs cannot reject a successful save.
+  windows[0].postMessage({type:'SCHOOLHUB_BACKGROUND_SYNC',syncId});
   return completion;
 }
-self.addEventListener('sync',event=>{if(event.tag===BACKGROUND_SYNC_TAG)event.waitUntil(dispatchBackgroundSyncToClient());});self.addEventListener('notificationclick',event=>{
+self.addEventListener('sync',event=>{if(event.tag===BACKGROUND_SYNC_TAG)event.waitUntil((async()=>{
+  if (self.SchoolHubSyncWorker) {
+    const completed = await self.SchoolHubSyncWorker.run();
+    if (completed) return;
+  }
+  await dispatchBackgroundSyncToClient();
+})());});self.addEventListener('notificationclick',event=>{
   event.notification.close();
   event.waitUntil((async()=>{
     const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});

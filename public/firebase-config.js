@@ -7,7 +7,7 @@
 //
 // Until real values are set, the app has no working accounts/sync.
 
-window.FIREBASE_CONFIG = {
+globalThis.FIREBASE_CONFIG = {
   apiKey: "AIzaSyADvwL7iA8ZY4xbT90Iz8MCy48iwCEWzWI",
   authDomain: "alatipha-schoolhub.firebaseapp.com",
   projectId: "alatipha-schoolhub",
@@ -16,4 +16,4 @@ window.FIREBASE_CONFIG = {
 
 // Paystack public key only. Never place the Paystack secret key in this file.
 // Use a test public key while testing, then replace it with the live public key.
-window.PAYSTACK_PUBLIC_KEY = "pk_test_20c396303090791c7267c5c93c6204efa33b1655";
+globalThis.PAYSTACK_PUBLIC_KEY = "pk_test_20c396303090791c7267c5c93c6204efa33b1655";

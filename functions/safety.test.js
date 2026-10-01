@@ -281,3 +281,5 @@ test('server preserves marks but rejects stale writes to a school strike date',a
  f.records.set('schools/s/schoolCalendar/'+cal,{type:'strike'});
  const before=structuredClone([...f.records]);await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'attendance',key,base:{},value:{entries:{p1:'P'}}},'teacher')),e=>e.code==='failed-precondition');assert.deepEqual([...f.records],before);
 });
+
+test('queued record and profile writes reject a changed school inside the transaction',async()=>{const f=fixture();for(const [name,data]of [['saveSchoolRecord',{field:'grades',key:'c1__Term 1__2026/2027',base:{},value:{p1:{math:{e:75}}}}],['saveSchoolProfile',{changes:{schoolName:'New'},base:{schoolName:'Test'}}]]){await assert.rejects(f.handlers[name](f.req({...data,expectedSchoolId:'other'})),e=>e.code==='failed-precondition');}assert.equal(f.records.get('schools/s').profile.schoolName,'Test');});
