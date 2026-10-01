@@ -56,36 +56,23 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isHeadTeacher(resource.data.schoolId));
 
+      // Head Teacher creation remains client-authorized. Teacher join/rejoin is
+      // server-only through joinSchoolWithCodeSafe so duplicate identities can
+      // be checked atomically before a membership is created.
       allow create: if signedIn()
         && request.auth.uid == uid
+        && request.resource.data.role == 'headteacher'
+        && request.resource.data.status == 'active'
+        && request.resource.data.schoolId != null
+        && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == uid;
+      // A user may refresh only their own display profile. Email must match the
+      // authenticated Firebase identity; membership fields remain server-only.
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email'])
         && (
-          (
-            request.resource.data.role == 'headteacher'
-            && request.resource.data.status == 'active'
-            && request.resource.data.schoolId != null
-            && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == uid
-          )
-          ||
-          (
-            request.resource.data.role == 'teacher'
-            && request.resource.data.status == 'pending'
-            && !('staffId' in request.resource.data)
-            && request.resource.data.assignedClassIds == [] && request.resource.data.assignedSubjectIds == []
-            && request.resource.data.schoolId != null
-            && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId))
-          )
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['email'])
+          || (request.auth.token.email is string && request.resource.data.email == request.auth.token.email)
         );
-
-      // Membership and account/Staff relationships are changed atomically by the server.
-      allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email']);
-
-      allow update: if signedIn() && request.auth.uid == uid
-        && resource.data.status in ['rejected', 'removed']
-        && request.resource.data.role == 'teacher' && request.resource.data.status == 'pending'
-        && request.resource.data.assignedClassIds == [] && request.resource.data.assignedSubjectIds == []
-        && request.resource.data.keys().hasOnly(['schoolId','role','status','assignedClassIds','assignedSubjectIds','email','displayName','createdAt'])
-        && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId));
       allow delete: if false;
     }
 
@@ -140,6 +127,10 @@ service cloud.firestore {
         && (!(resource.data.get('profile', {}).get('schoolName', '') != '') || request.resource.data.get('profile', {}).get('schoolName', '') != '')
         && (!(resource.data.get('profile', {}).get('currentYear', '') != '') || request.resource.data.get('profile', {}).get('currentYear', '') != '')
         && (!(resource.data.get('profile', {}).get('currentTerm', '') != '') || request.resource.data.get('profile', {}).get('currentTerm', '') != '');
+      // Normalized-email identity locks are written only by trusted Functions.
+      match /identityEmails/{emailHash} {
+        allow read, write: if false;
+      }
       match /profileRecovery/{backupId} {
         allow read: if isHeadTeacher(schoolId);
         allow write: if false;

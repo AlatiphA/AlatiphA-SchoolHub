@@ -2,11 +2,43 @@
 const crypto=require('node:crypto');
 const norm=s=>String(s||'').trim().toLowerCase();
 const nameKey=s=>norm(s).normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
-function register({onCall,HttpsError,db}){
+const emailLockId=s=>crypto.createHash('sha256').update(norm(s)).digest('hex');
+function register({onCall,HttpsError,db,admin}){
  const fail=(code,msg)=>{throw new HttpsError(code,msg);};
  const call=fn=>onCall({region:'us-central1',invoker:'public'},fn);
  async function member(tx,r,head=false){if(!r.auth)fail('unauthenticated','Sign in first.');const u=(await tx.get(db.collection('users').doc(r.auth.uid))).data();if(!u||!u.schoolId||u.status!=='active'||!['teacher','headteacher'].includes(u.role)||(head&&u.role!=='headteacher'))fail('permission-denied','Active school access required.');return u;}
  return {
+ joinSchoolWithCodeSafe:call(async r=>{
+  if(!r.auth)fail('unauthenticated','Sign in first.');
+  const code=String((r.data&&r.data.code)||'').trim().toUpperCase();
+  if(!/^[A-Z0-9-]{4,32}$/.test(code))fail('invalid-argument','Enter a valid school join code.');
+  const email=norm(r.auth.token&&r.auth.token.email);
+  if(!email||!email.includes('@'))fail('failed-precondition','Your signed-in account must have an email address before joining a school.');
+  const displayName=String((r.auth.token&&(r.auth.token.name||r.auth.token.display_name))||'').trim().slice(0,200);
+  return db.runTransaction(async tx=>{
+   const joinRef=db.collection('joinCodes').doc(code),joinSnap=await tx.get(joinRef);
+   if(!joinSnap.exists)fail('not-found','That code was not found. Check it and try again.');
+   const schoolId=String((joinSnap.data()||{}).schoolId||'');
+   if(!schoolId)fail('failed-precondition','This join code is not linked to a school.');
+   const school=db.collection('schools').doc(schoolId),schoolSnap=await tx.get(school);
+   if(!schoolSnap.exists)fail('not-found','The school for this join code no longer exists.');
+   const userRef=db.collection('users').doc(r.auth.uid),currentSnap=await tx.get(userRef),current=currentSnap.data()||{};
+   if(current.role==='headteacher'&&current.status==='active')fail('failed-precondition','This account already owns a school.');
+   if(current.schoolId&&['pending','active','disabled'].includes(current.status)){
+    if(current.schoolId===schoolId&&current.role==='teacher'&&current.status==='pending'&&norm(current.email)===email)return {schoolId,status:'pending',alreadyPending:true};
+    fail('failed-precondition','This account already has a school membership. Sign in with that membership or ask the Head Teacher to remove it first.');
+   }
+   const identityRef=school.collection('identityEmails').doc(emailLockId(email)),identitySnap=await tx.get(identityRef);
+   if(identitySnap.exists&&identitySnap.data().uid&&identitySnap.data().uid!==r.auth.uid)fail('already-exists','This email is already linked to another SchoolHub account in this school. Sign in with the existing account or ask the Head Teacher to remove the duplicate.');
+   const members=await tx.get(db.collection('users').where('schoolId','==',schoolId));
+   const duplicate=members.docs.find(x=>{const m=x.data()||{};return x.id!==r.auth.uid&&['teacher','headteacher'].includes(m.role)&&['pending','active','disabled'].includes(m.status)&&norm(m.email)===email;});
+   if(duplicate)fail('already-exists','This email is already linked to another SchoolHub account in this school. Sign in with the existing account or ask the Head Teacher to remove the duplicate.');
+   const now=admin.firestore.FieldValue.serverTimestamp();
+   tx.set(identityRef,{uid:r.auth.uid,email,status:'pending',updatedAt:now});
+   tx.set(userRef,{schoolId,role:'teacher',status:'pending',assignedClassIds:[],assignedSubjectIds:[],email,displayName,createdAt:now});
+   return {schoolId,status:'pending',alreadyPending:false};
+  });
+ }),
  getTeacherHomeSummary:call(async r=>db.runTransaction(async tx=>{
   const u=await member(tx,r),assigned=new Set(u.assignedClassIds||[]);
   const users=await tx.get(db.collection('users').where('schoolId','==',u.schoolId));
@@ -21,6 +53,15 @@ function register({onCall,HttpsError,db}){
   const staff=staffSnap.docs.map(x=>({id:x.id,...x.data()})),linked=staff.filter(s=>s.userUid===id),next={...u};
   const remembered=await tx.get(school.collection('teacherLinks').doc(id));
   const matching=staff.filter(s=>s.id===u.staffId||s.userUid===id||s.id===remembered.data()?.staffId|| (norm(u.email)&&norm(s.email)===norm(u.email)));
+   const identityEmail=norm(u.email),identityRef=identityEmail?school.collection('identityEmails').doc(emailLockId(identityEmail)):null;
+   const identitySnap=identityRef?await tx.get(identityRef):null;
+   const needsIdentityGuard=d.action==='save'||d.action==='reactivate';
+   if(needsIdentityGuard&&identityEmail){
+    const members=await tx.get(db.collection('users').where('schoolId','==',h.schoolId));
+    const duplicate=members.docs.find(x=>{const m=x.data()||{};return x.id!==id&&['teacher','headteacher'].includes(m.role)&&['pending','active','disabled'].includes(m.status)&&norm(m.email)===identityEmail;});
+    if(duplicate)fail('already-exists','Another school membership already uses this email. Keep one account and remove or reject the duplicate before approving or reactivating.');
+    if(identitySnap&&identitySnap.exists&&identitySnap.data().uid&&identitySnap.data().uid!==id)fail('already-exists','Another school membership already uses this email. Keep one account and remove or reject the duplicate before approving or reactivating.');
+   }
   let selected=null;
   if(d.action==='save'){
    if(!Array.isArray(d.assignedClassIds)||!d.assignedClassIds.length||!Array.isArray(d.assignedSubjectIds))fail('invalid-argument','Assign at least one class.');
@@ -48,6 +89,9 @@ function register({onCall,HttpsError,db}){
    if(d.action!=='unlink'){delete next.schoolId;delete next.role;next.assignedClassIds=[];next.assignedSubjectIds=[];next.status=d.action==='remove'?'removed':'rejected';}
   }else fail('invalid-argument','Unknown teacher action.');
   // All reads have completed; membership and both relationship ends commit together.
+   if(identityRef&&(d.action==='save'||d.action==='reactivate'))tx.set(identityRef,{uid:id,email:identityEmail,status:next.status,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+   if(identityRef&&d.action==='disable'&&identitySnap&&identitySnap.exists&&identitySnap.data().uid===id)tx.set(identityRef,{uid:id,email:identityEmail,status:'disabled',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+   if(identityRef&&['remove','reject'].includes(d.action)&&identitySnap&&identitySnap.exists&&identitySnap.data().uid===id)tx.delete(identityRef);
   if(selected){tx.set(school.collection('staff').doc(selected.id),{...selected,userUid:id});tx.set(school.collection('teacherLinks').doc(id),{staffId:selected.id});}
   if(['unlink','remove','reject'].includes(d.action)){
    for(const s of linked)tx.set(school.collection('staff').doc(s.id),{...s,userUid:''});

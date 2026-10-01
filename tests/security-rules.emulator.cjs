@@ -154,14 +154,34 @@ test('fee transactions serialize concurrent payments and receipt retries',async(
  }finally{await app.delete();}
 });
 
+test('teacher membership creation and rejoin require the server guard',async()=>{
+ const fresh=env.authenticatedContext('direct-new').firestore(),pending={schoolId:'s',role:'teacher',status:'pending',assignedClassIds:[],assignedSubjectIds:[],email:'direct@example.test',displayName:'Direct'};
+ await assertFails(setDoc(doc(fresh,'users/direct-new'),pending));
+ await env.withSecurityRulesDisabled(async ctx=>setDoc(doc(ctx.firestore(),'users/direct-rejoin'),{status:'rejected',email:'direct-rejoin@example.test'}));
+ const rejoin=env.authenticatedContext('direct-rejoin').firestore();
+ await assertFails(setDoc(doc(rejoin,'users/direct-rejoin'),{...pending,email:'direct-rejoin@example.test'}));
+});
+test('server join blocks a second membership with the same normalized email',async()=>{
+ const admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'identity-guard'),db=app.firestore();
+ const {register}=require('../functions/teacher-lifecycle');class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
+ const h=register({db,admin,HttpsError,onCall:(_,fn)=>fn}),assert=require('node:assert/strict');
+ try{
+  await db.doc('joinCodes/GUARD1').set({schoolId:'s'});
+  const req=(uid,email)=>({auth:{uid,token:{email,name:uid}},data:{code:'GUARD1'}});
+  const first=await h.joinSchoolWithCodeSafe(req('identity-a','Same.Email@Example.Test'));
+  assert.equal(first.status,'pending');
+  assert.equal((await db.doc('users/identity-a').get()).data().email,'same.email@example.test');
+  await assert.rejects(()=>h.joinSchoolWithCodeSafe(req('identity-b','same.email@example.test')),e=>e&&e.code==='already-exists');
+ }finally{await app.delete();}
+});
 test('atomic teacher lifecycle, concurrent approval, removal and rejoining preserve one staff record',async()=>{
  const admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'teacher-lifecycle'),db=app.firestore();
  const {register}=require('../functions/teacher-lifecycle');class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
- const h=register({db,HttpsError,onCall:(_,fn)=>fn}),assert=require('node:assert/strict'),req=data=>({auth:{uid:'head'},data});
+ const h=register({db,admin,HttpsError,onCall:(_,fn)=>fn}),assert=require('node:assert/strict'),req=data=>({auth:{uid:'head'},data});
  const teacherDb=env.authenticatedContext('lifecycle-teacher').firestore();
  const pending={schoolId:'s',role:'teacher',status:'pending',assignedClassIds:[],assignedSubjectIds:[],email:'life@example.test',displayName:'Lifecycle Teacher'};
  try{
-  await assertSucceeds(setDoc(doc(teacherDb,'users/lifecycle-teacher'),pending));
+  await db.doc('users/lifecycle-teacher').set(pending);
   await db.doc('schools/s/classes/life-class').set({name:'Lifecycle class'});
   const save={action:'save',teacherUid:'lifecycle-teacher',name:'Lifecycle Teacher',assignedClassIds:['life-class'],assignedSubjectIds:[]};
   const results=await Promise.all([h.manageTeacherLifecycle(req(save)),h.manageTeacherLifecycle(req(save))]);assert.equal(results[0].staffId,results[1].staffId);
@@ -176,7 +196,7 @@ test('atomic teacher lifecycle, concurrent approval, removal and rejoining prese
   await assertFails(getDoc(doc(teacherDb,'schools/s/classes/life-class')));
   assert.equal((await db.doc('schools/s/teacherAttendance/lifecycle-history').get()).data().entries[staffId],'P');
   assert.equal((await staffRef.get()).data().phone,'12345');
-  await assertSucceeds(setDoc(doc(teacherDb,'users/lifecycle-teacher'),pending));assert.equal((await h.manageTeacherLifecycle(req(save))).staffId,staffId);
+  await db.doc('users/lifecycle-teacher').set(pending);assert.equal((await h.manageTeacherLifecycle(req(save))).staffId,staffId);
   assert.equal((await db.collection('schools/s/staff').where('userUid','==','lifecycle-teacher').get()).size,1);
  }finally{await app.delete();}
 });

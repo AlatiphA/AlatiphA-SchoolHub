@@ -10625,20 +10625,13 @@ function registerSchool(schoolName, address, email) {
 }
 
 function joinSchoolWithCode(code) {
-  const cleanCode = code.trim().toUpperCase();
-  return firebase.firestore().collection('joinCodes').doc(cleanCode).get().then(doc => {
-    if (!doc.exists) throw new Error('That code was not found. Check it and try again.');
-    const schoolId = doc.data().schoolId;
-    return firebase.firestore().collection('users').doc(currentUid).set({
-      schoolId, role: 'teacher', status: 'pending', assignedClassIds: [], assignedSubjectIds: [],
-      email: firebase.auth().currentUser ? (firebase.auth().currentUser.email || '') : '',
-      displayName: firebase.auth().currentUser ? (firebase.auth().currentUser.displayName || '') : '',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).then(() => {
-      currentSchoolId = null; // stays null until a Head Teacher approves — no data namespace touched yet
-      currentRole = 'teacher';
-      currentStatus = 'pending';
-    });
+  const cleanCode = String(code || '').trim().toUpperCase();
+  if (!cleanCode) return Promise.reject(new Error('Enter a join code.'));
+  return safetyCall('joinSchoolWithCodeSafe', { code: cleanCode }).then(result => {
+    currentSchoolId = null; // stays null until a Head Teacher approves — no data namespace touched yet
+    currentRole = 'teacher';
+    currentStatus = 'pending';
+    return result;
   });
 }
 
@@ -10712,6 +10705,13 @@ function renderManageTeachers() {
 
     list.innerHTML = '';
     const teachers = members.filter(m => m.role === 'teacher');
+    const identityEmailCounts = new Map();
+    members
+      .filter(m => ['teacher','headteacher'].includes(m.role) && ['pending','active','disabled'].includes(m.status))
+      .forEach(m => {
+        const key = String(m.email || '').normalize('NFKC').trim().toLowerCase();
+        if (key) identityEmailCounts.set(key, (identityEmailCounts.get(key) || 0) + 1);
+      });
     if (!teachers.length) {
       list.innerHTML = '<li class="empty">No teachers have joined your school yet.</li>';
       return;
@@ -10725,6 +10725,8 @@ function renderManageTeachers() {
       const suggestedStaff = linkedStaff || teacherStaffCandidate(m);
       const statusText = m.status === 'pending' ? ' · Pending approval' : m.status === 'disabled' ? ' · Disabled' : ' · Active';
       const displayEmail = String(m.email || '').trim();
+      const identityEmailKey = displayEmail.normalize('NFKC').toLowerCase();
+      const duplicateIdentity = !!identityEmailKey && (identityEmailCounts.get(identityEmailKey) || 0) > 1;
       const displayName = String(m.displayName || '').trim();
       const accountLabel = displayName && displayEmail
         ? `${displayName} · ${displayEmail}`
@@ -10753,6 +10755,8 @@ function renderManageTeachers() {
         li.innerHTML = `<div class="edit-row teacher-edit-panel">
           <strong>${escapeHtml(accountLabel)}</strong>
           <div class="meta">Teacher${statusText}${linkedStaff ? ' · Staff: ' + escapeHtml(linkedStaff.name) : ' · No Staff record linked'}</div>
+          <div class="meta">Account UID: ${escapeHtml(m.uid)}</div>
+          ${duplicateIdentity ? `<p class="hint"><strong>Duplicate email warning:</strong> Another account in this school already uses ${escapeHtml(displayEmail)}. Keep only one active account. Remove or reject the duplicate before approving/reactivating.</p>` : ''}
           <label>Staff name
             <input type="text" class="teacher-staff-name" value="${escapeHtml(suggestedName)}" placeholder="Full name for Staff record">
           </label>
@@ -10778,6 +10782,8 @@ function renderManageTeachers() {
           <div class="teacher-summary-main">
             <strong>${escapeHtml(accountLabel)}</strong>
             <div class="meta">Teacher${statusText}${linkedStaff ? ' · Staff: ' + escapeHtml(linkedStaff.name) : ' · No Staff record linked'}</div>
+            <div class="meta">Account UID: ${escapeHtml(m.uid)}</div>
+            ${duplicateIdentity ? `<div class="hint"><strong>Duplicate email warning:</strong> Another account in this school already uses ${escapeHtml(displayEmail)}.</div>` : ''}
             <div class="teacher-assignment-summary">${classCount} class${classCount === 1 ? '' : 'es'} · ${subjectCount} subject${subjectCount === 1 ? '' : 's'}</div>
           </div>
           <div class="teacher-summary-actions">
@@ -10819,7 +10825,17 @@ function renderManageTeachers() {
         const li = btn.closest('li');
         const member = teachers.find(t => t.uid === btn.dataset.uid);
         if (!member) return;
-
+        const memberEmailKey = String(member.email || '').normalize('NFKC').trim().toLowerCase();
+        const duplicateAccount = !!memberEmailKey && members.some(t =>
+          t.uid !== member.uid &&
+          ['teacher','headteacher'].includes(t.role) &&
+          ['pending','active','disabled'].includes(t.status) &&
+          String(t.email || '').normalize('NFKC').trim().toLowerCase() === memberEmailKey
+        );
+        if (member.status === 'pending' && duplicateAccount) {
+          alert('Cannot approve this account because another school account already uses the same email. Keep the correct account and reject or remove the duplicate first.');
+          return;
+        }
         const assignedClassIds = Array.from(li.querySelectorAll('.assign-class-cb:checked')).map(cb => cb.value);
         const assignedSubjectIds = Array.from(li.querySelectorAll('.assign-subject-cb:checked')).map(cb => cb.value);
         const staffSelect = li.querySelector('.teacher-staff-select');
