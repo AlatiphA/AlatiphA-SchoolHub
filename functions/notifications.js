@@ -61,7 +61,7 @@ function register({ onCall, HttpsError, db, admin }) {
   }
 
   const onUserMembershipNotification = onDocumentWritten(
-    { document: 'users/{uid}', region: 'us-central1' },
+    { document: 'users/{uid}', region: 'africa-south1' },
     async event => {
       const before = event.data && event.data.before && event.data.before.exists ? (event.data.before.data() || {}) : null;
       const after = event.data && event.data.after && event.data.after.exists ? (event.data.after.data() || {}) : null;
