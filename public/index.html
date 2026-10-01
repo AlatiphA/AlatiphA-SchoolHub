@@ -118,6 +118,11 @@
     <img src="icon.svg" alt="" class="lock-seal">
     <h2>Waiting for Approval</h2>
     <p class="hint">Your request to join this school has been sent. Your Head Teacher needs to approve you and assign your classes before you can get in — check back after they've had a chance to do that.</p>
+    <div class="notification-gate-actions">
+      <button type="button" id="pendingNotificationsBtn" class="btn-text">Notifications</button>
+      <button type="button" id="pendingCheckStatusBtn" class="btn-text">Check Approval Status</button>
+    </div>
+    <p id="pendingNotificationStatus" class="hint"></p>
     <button type="button" id="pendingLogoutBtn" class="btn-text">Log Out</button>
   </div>
 </div>
@@ -127,6 +132,7 @@
     <img src="icon.svg" alt="" class="lock-seal">
     <h2>Access Disabled</h2>
     <p class="hint">Your access to this school has been disabled by your Head Teacher. Your data is safe — contact them if you believe this is a mistake.</p>
+    <div class="notification-gate-actions"><button type="button" id="disabledNotificationsBtn" class="btn-text">Notifications</button></div>
     <button type="button" id="disabledLogoutBtn" class="btn-text">Log Out</button>
   </div>
 </div>
@@ -153,6 +159,10 @@
   </div>
   <div class="topbar-right">
     <button id="syncStatusBtn" class="sync-status-badge hidden" type="button" aria-label="Open Sync Center">Checking…</button>
+    <button id="notificationBtn" class="notification-btn hidden" type="button" aria-label="Open notifications">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span id="notificationBadge" class="notification-badge hidden">0</span>
+    </button>
     <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle theme"></button>
     <div class="profile-menu">
       <button id="profileBtn" class="profile-btn" type="button" aria-label="Account menu">
@@ -172,6 +182,7 @@
         <button type="button" id="profileInstallBtn" class="profile-link">Install SchoolHub</button>
         <button type="button" id="profileAboutBtn" class="profile-link">About SchoolHub</button>
         <button type="button" id="profileSyncCenterBtn" class="profile-link">Sync Center</button>
+        <button type="button" id="profileNotificationsBtn" class="profile-link">Notifications</button>
         <button type="button" id="profileSystemHealthBtn" class="profile-link">System Health</button>
         <button type="button" id="profileBillingBtn" class="profile-link">Billing &amp; Credits</button>
         <button type="button" id="profileLoginBtn" class="profile-link hidden">Log In</button>
@@ -786,6 +797,35 @@
   </div>
 </div>
 
+<!-- NOTIFICATIONS / COMMUNICATION v1 -->
+<div id="notificationCenterDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="notificationCenterTitle">
+  <div class="about-box notification-center-box">
+    <div class="notification-center-head">
+      <div>
+        <h2 id="notificationCenterTitle">Notifications</h2>
+        <p class="about-version">SchoolHub communication center</p>
+      </div>
+      <button type="button" id="notificationCenterCloseBtn" class="btn-text">Close</button>
+    </div>
+    <div class="notification-toolbar">
+      <button type="button" id="notificationMarkAllReadBtn" class="btn-text">Mark all read</button>
+      <button type="button" id="notificationBrowserToggleBtn" class="btn-text">Enable browser notifications</button>
+    </div>
+    <p id="notificationBrowserStatus" class="hint notification-browser-status">Checking browser notification support…</p>
+    <div id="notificationComposeWrap" class="notification-compose hidden">
+      <h3>Send school announcement</h3>
+      <textarea id="notificationAnnouncementBody" maxlength="1000" rows="4" placeholder="Write an announcement for all active teachers…"></textarea>
+      <div class="notification-compose-actions">
+        <button type="button" id="notificationSendAnnouncementBtn" class="btn-primary">Send to active teachers</button>
+      </div>
+      <p id="notificationAnnouncementStatus" class="hint"></p>
+    </div>
+    <div id="notificationList" class="notification-list" aria-live="polite">
+      <div class="empty notification-empty">No notifications yet.</div>
+    </div>
+  </div>
+</div>
+
 <!-- SYSTEM HEALTH -->
 <div id="systemHealthDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="systemHealthTitle">
   <div class="about-box diagnostic-box health-box">
@@ -943,6 +983,16 @@
         <details><summary>How do I start a new term?</summary><div class="inline-doc-answer"><p>Use <strong>Term History</strong> to start the next term/year while preserving the school structure and historical records.</p></div></details>
         <details><summary>What is Academic Year Rollover?</summary><div class="inline-doc-answer"><p>At year end, the Head Teacher reviews each student as <strong>Promote</strong>, <strong>Repeat</strong>, <strong>Graduate/Complete</strong>, or <strong>Transfer/Leave</strong>. The rollover creates a year-end backup/archive and starts the new academic year at Term 1.</p></div></details>
         <details><summary>What is Restore Year-End Backup?</summary><div class="inline-doc-answer"><p>It is an emergency reversal tool for a SchoolHub academic-year rollover JSON. SchoolHub validates the backup and restores the backed-up roster/settings without unnecessarily deleting later grades, attendance, remarks, staff, classes, subjects or calendar data.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
+        <h2>Notifications &amp; communication</h2>
+        <details><summary>When does the Head Teacher receive notifications?</summary><div class="inline-doc-answer"><p>SchoolHub notifies the Head Teacher when a Teacher submits a school join request and when an existing school Teacher explicitly signs in. Refreshing the page or restoring an already signed-in session does not create a new sign-in notification.</p></div></details>
+        <details><summary>What notifications can a Teacher receive?</summary><div class="inline-doc-answer"><p>Teachers can receive notices when their account is approved, rejected, disabled, reactivated or removed, and when their class or subject assignments are changed.</p></div></details>
+        <details><summary>Where do I see notifications?</summary><div class="inline-doc-answer"><p>Use the bell icon or <strong>Profile → Notifications</strong>. Unread notifications show a badge. Pending Teachers can also open Notifications from the Waiting for Approval screen.</p></div></details>
+        <details><summary>Can SchoolHub show browser or PWA notifications?</summary><div class="inline-doc-answer"><p>Yes, while SchoolHub is running or backgrounded on a supported device. Enable the option inside Notifications. In-app notifications remain available even if browser notification permission is not granted.</p></div></details>
+        <details><summary>Can the Head Teacher send an announcement?</summary><div class="inline-doc-answer"><p>Yes. Open Notifications and use <strong>Send school announcement</strong>. The announcement is delivered to all active Teacher accounts and remains in each Teacher's notification history.</p></div></details>
+        <details><summary>Do browser notifications work when SchoolHub is completely closed?</summary><div class="inline-doc-answer"><p>Not in Notifications v1. The persisted in-app notification will still be waiting the next time the user opens SchoolHub. Fully closed-app push delivery can be added later with Firebase Cloud Messaging web-push configuration.</p></div></details>
       </section>
 
       <section class="inline-doc-section">

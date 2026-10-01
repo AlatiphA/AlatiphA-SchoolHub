@@ -150,6 +150,16 @@ body{padding:0;background:var(--ink);color:var(--paper)}
       </section>
 
       <section class="inline-doc-section">
+        <h2>Notifications &amp; communication</h2>
+        <details><summary>When does the Head Teacher receive notifications?</summary><div class="inline-doc-answer"><p>SchoolHub notifies the Head Teacher when a Teacher submits a school join request and when an existing school Teacher explicitly signs in. Refreshing the page or restoring an already signed-in session does not create a new sign-in notification.</p></div></details>
+        <details><summary>What notifications can a Teacher receive?</summary><div class="inline-doc-answer"><p>Teachers can receive notices when their account is approved, rejected, disabled, reactivated or removed, and when their class or subject assignments are changed.</p></div></details>
+        <details><summary>Where do I see notifications?</summary><div class="inline-doc-answer"><p>Use the bell icon or <strong>Profile → Notifications</strong>. Unread notifications show a badge. Pending Teachers can also open Notifications from the Waiting for Approval screen.</p></div></details>
+        <details><summary>Can SchoolHub show browser or PWA notifications?</summary><div class="inline-doc-answer"><p>Yes, while SchoolHub is running or backgrounded on a supported device. Enable the option inside Notifications. In-app notifications remain available even if browser notification permission is not granted.</p></div></details>
+        <details><summary>Can the Head Teacher send an announcement?</summary><div class="inline-doc-answer"><p>Yes. Open Notifications and use <strong>Send school announcement</strong>. The announcement is delivered to all active Teacher accounts and remains in each Teacher's notification history.</p></div></details>
+        <details><summary>Do browser notifications work when SchoolHub is completely closed?</summary><div class="inline-doc-answer"><p>Not in Notifications v1. The persisted in-app notification will still be waiting the next time the user opens SchoolHub. Fully closed-app push delivery can be added later with Firebase Cloud Messaging web-push configuration.</p></div></details>
+      </section>
+
+      <section class="inline-doc-section">
         <h2>Install, security &amp; troubleshooting</h2>
         <details><summary>Can I install SchoolHub like an app?</summary><div class="inline-doc-answer"><p>Yes. Use <strong>Profile → Install SchoolHub</strong> when installation is supported by your browser/device. The PWA caches the application shell for reliable reopening.</p></div></details>
         <details><summary>What is the PIN Lock?</summary><div class="inline-doc-answer"><p>The optional PIN Lock is a local privacy screen for a shared device. It does not replace your Firebase account password or the Head Teacher/Teacher permission system.</p></div></details>

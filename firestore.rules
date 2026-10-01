@@ -89,6 +89,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Notifications / Communication v1. Notification content is created by
+    // trusted Cloud Functions. A signed-in user can read only their own
+    // notifications and can change only read/readAt when acknowledging one.
+    match /users/{uid}/notifications/{notificationId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, delete: if false;
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt'])
+        && request.resource.data.read == true
+        && request.resource.data.readAt == request.time;
+    }
+
     match /joinCodes/{code} {
       allow get: if signedIn();
       allow list: if false;

@@ -10903,6 +10903,337 @@ function renderManageTeachers() {
   });
 }
 
+/* ---------- Notifications / Communication v1 ---------- */
+const SCHOOLHUB_BROWSER_NOTIFICATIONS_KEY = 'schoolhub_browser_notifications_v1';
+let notificationUnsubscribe = null;
+let notificationItems = [];
+let notificationListenerUid = '';
+let notificationListenerStarted = false;
+
+function notificationCollection(uid = currentUid) {
+  if (!uid || !FIREBASE_ENABLED) return null;
+  return firebase.firestore().collection('users').doc(uid).collection('notifications');
+}
+
+function notificationDate(value) {
+  try {
+    if (value && typeof value.toDate === 'function') return value.toDate();
+    if (value instanceof Date) return value;
+    if (value) return new Date(value);
+  } catch (_) {}
+  return null;
+}
+
+function notificationTimeText(value) {
+  const date = notificationDate(value);
+  if (!date || Number.isNaN(date.getTime())) return 'Just now';
+  return date.toLocaleString();
+}
+
+function browserNotificationsEnabled() {
+  return typeof Notification !== 'undefined'
+    && Notification.permission === 'granted'
+    && localStorage.getItem(SCHOOLHUB_BROWSER_NOTIFICATIONS_KEY) === '1';
+}
+
+async function showSchoolHubBrowserNotification(item) {
+  if (!item || !browserNotificationsEnabled() || document.visibilityState === 'visible') return false;
+  try {
+    if (!('serviceWorker' in navigator)) return false;
+    const registration = schoolHubServiceWorkerRegistration || await navigator.serviceWorker.ready;
+    if (!registration || typeof registration.showNotification !== 'function') return false;
+    await registration.showNotification(item.title || 'AlatiphA SchoolHub', {
+      body: item.body || '',
+      icon: 'icon-192.png',
+      badge: 'icon-192.png',
+      tag: `schoolhub-${item.id}`,
+      renotify: false,
+      data: { notificationId: item.id, action: item.action || '', url: './?notifications=1' }
+    });
+    return true;
+  } catch (error) {
+    console.warn('Could not show browser notification:', error);
+    return false;
+  }
+}
+
+function notificationUnreadCount() {
+  return notificationItems.filter(item => item && item.read !== true).length;
+}
+
+function updateNotificationBadge() {
+  const count = notificationUnreadCount();
+  const button = document.getElementById('notificationBtn');
+  const badge = document.getElementById('notificationBadge');
+  if (button) button.classList.toggle('hidden', !currentUid);
+  if (badge) {
+    badge.textContent = count > 99 ? '99+' : String(count);
+    badge.classList.toggle('hidden', count === 0);
+  }
+  const pendingButton = document.getElementById('pendingNotificationsBtn');
+  if (pendingButton) pendingButton.textContent = count ? `Notifications (${count})` : 'Notifications';
+  const disabledButton = document.getElementById('disabledNotificationsBtn');
+  if (disabledButton) disabledButton.textContent = count ? `Notifications (${count})` : 'Notifications';
+}
+
+function updateBrowserNotificationControls() {
+  const status = document.getElementById('notificationBrowserStatus');
+  const button = document.getElementById('notificationBrowserToggleBtn');
+  if (!status || !button) return;
+  if (typeof Notification === 'undefined' || !('serviceWorker' in navigator)) {
+    status.textContent = 'Browser notifications are not supported on this device.';
+    button.disabled = true;
+    button.textContent = 'Not supported';
+    return;
+  }
+  button.disabled = false;
+  if (Notification.permission === 'denied') {
+    status.textContent = 'Browser notifications are blocked in this browser. Change the site permission to enable them.';
+    button.textContent = 'Permission blocked';
+    button.disabled = true;
+    return;
+  }
+  if (browserNotificationsEnabled()) {
+    status.textContent = 'Browser/PWA notifications are enabled while SchoolHub is running or backgrounded.';
+    button.textContent = 'Disable browser notifications';
+  } else if (Notification.permission === 'granted') {
+    status.textContent = 'Permission is granted, but SchoolHub browser notifications are disabled on this device.';
+    button.textContent = 'Enable browser notifications';
+  } else {
+    status.textContent = 'Enable browser/PWA alerts on this device. In-app notifications work even if you leave this off.';
+    button.textContent = 'Enable browser notifications';
+  }
+}
+
+async function toggleBrowserNotifications() {
+  const button = document.getElementById('notificationBrowserToggleBtn');
+  if (!button || typeof Notification === 'undefined') return;
+  if (browserNotificationsEnabled()) {
+    localStorage.removeItem(SCHOOLHUB_BROWSER_NOTIFICATIONS_KEY);
+    updateBrowserNotificationControls();
+    return;
+  }
+  button.disabled = true;
+  try {
+    const permission = Notification.permission === 'granted'
+      ? 'granted'
+      : await Notification.requestPermission();
+    if (permission === 'granted') localStorage.setItem(SCHOOLHUB_BROWSER_NOTIFICATIONS_KEY, '1');
+  } catch (error) {
+    console.warn('Notification permission request failed:', error);
+  } finally {
+    button.disabled = false;
+    updateBrowserNotificationControls();
+  }
+}
+
+function notificationActionButton(item) {
+  if (!item || !item.action) return '';
+  if (item.action === 'manage-teachers' && isHeadTeacher()) {
+    return `<button type="button" class="btn-text notification-open-action" data-id="${escapeHtml(item.id)}">Open Manage Teachers</button>`;
+  }
+  if (item.action === 'home' && currentStatus === 'active') {
+    return `<button type="button" class="btn-text notification-open-action" data-id="${escapeHtml(item.id)}">Open SchoolHub</button>`;
+  }
+  return '';
+}
+
+function renderNotificationCenter() {
+  const list = document.getElementById('notificationList');
+  if (!list) return;
+  const compose = document.getElementById('notificationComposeWrap');
+  if (compose) compose.classList.toggle('hidden', !isHeadTeacher());
+  updateNotificationBadge();
+  updateBrowserNotificationControls();
+
+  if (!currentUid) {
+    list.innerHTML = '<div class="empty notification-empty">Sign in to view notifications.</div>';
+    return;
+  }
+  if (!notificationItems.length) {
+    list.innerHTML = '<div class="empty notification-empty">No notifications yet.</div>';
+    return;
+  }
+
+  list.innerHTML = notificationItems.map(item => `
+    <article class="notification-item ${item.read === true ? 'is-read' : 'is-unread'}" data-id="${escapeHtml(item.id)}">
+      <div class="notification-item-head">
+        <strong>${escapeHtml(item.title || 'SchoolHub notification')}</strong>
+        ${item.read === true ? '' : '<span class="notification-unread-dot" aria-label="Unread"></span>'}
+      </div>
+      <p>${escapeHtml(item.body || '')}</p>
+      <div class="notification-item-meta">${escapeHtml(notificationTimeText(item.createdAt))}</div>
+      <div class="notification-item-actions">
+        ${item.read === true ? '' : `<button type="button" class="btn-text notification-mark-read" data-id="${escapeHtml(item.id)}">Mark read</button>`}
+        ${notificationActionButton(item)}
+      </div>
+    </article>
+  `).join('');
+
+  list.querySelectorAll('.notification-mark-read').forEach(button => {
+    button.addEventListener('click', () => markNotificationRead(button.dataset.id));
+  });
+  list.querySelectorAll('.notification-open-action').forEach(button => {
+    button.addEventListener('click', async () => {
+      const item = notificationItems.find(entry => entry.id === button.dataset.id);
+      if (!item) return;
+      await markNotificationRead(item.id).catch(() => {});
+      hideNotificationCenter();
+      if (item.action === 'manage-teachers' && isHeadTeacher()) {
+        showView('manage-teachers');
+        renderManageTeachers();
+      } else if (item.action === 'home' && currentStatus === 'active') {
+        showView('home');
+      }
+    });
+  });
+}
+
+function showNotificationCenter() {
+  const dialog = document.getElementById('notificationCenterDialog');
+  if (!dialog) return;
+  document.getElementById('profileDropdown')?.classList.add('hidden');
+  dialog.classList.remove('hidden');
+  renderNotificationCenter();
+}
+
+function hideNotificationCenter() {
+  document.getElementById('notificationCenterDialog')?.classList.add('hidden');
+}
+
+async function markNotificationRead(id) {
+  const ref = notificationCollection();
+  if (!ref || !id) return;
+  await ref.doc(id).update({
+    read: true,
+    readAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+}
+
+async function markAllNotificationsRead() {
+  const ref = notificationCollection();
+  const unread = notificationItems.filter(item => item && item.read !== true);
+  if (!ref || !unread.length) return;
+  const batch = firebase.firestore().batch();
+  unread.forEach(item => {
+    batch.update(ref.doc(item.id), {
+      read: true,
+      readAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  });
+  await batch.commit();
+}
+
+function stopNotificationListener() {
+  if (typeof notificationUnsubscribe === 'function') {
+    try { notificationUnsubscribe(); } catch (_) {}
+  }
+  notificationUnsubscribe = null;
+  notificationItems = [];
+  notificationListenerUid = '';
+  notificationListenerStarted = false;
+  updateNotificationBadge();
+  renderNotificationCenter();
+}
+
+function startNotificationListener(user) {
+  if (!FIREBASE_ENABLED || !user || !user.uid) return;
+  if (notificationListenerStarted && notificationListenerUid === user.uid) return;
+  stopNotificationListener();
+  notificationListenerUid = user.uid;
+  notificationListenerStarted = true;
+  const ref = notificationCollection(user.uid);
+  if (!ref) return;
+
+  let initialSnapshot = true;
+  notificationUnsubscribe = ref.orderBy('createdAt', 'desc').limit(100).onSnapshot(snapshot => {
+    notificationItems = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }));
+    updateNotificationBadge();
+    renderNotificationCenter();
+
+    if (!initialSnapshot) {
+      snapshot.docChanges().forEach(change => {
+        if (change.type !== 'added') return;
+        const item = { id: change.doc.id, ...(change.doc.data() || {}) };
+        showSchoolHubBrowserNotification(item);
+      });
+    }
+    initialSnapshot = false;
+  }, error => {
+    console.warn('Notification listener failed:', error);
+    const list = document.getElementById('notificationList');
+    if (list) list.innerHTML = `<div class="empty notification-empty">Could not load notifications: ${escapeHtml(error.message || String(error))}</div>`;
+  });
+}
+
+function recordExplicitSchoolSignIn(method) {
+  if (!FIREBASE_ENABLED || !firebase.auth().currentUser || navigator.onLine === false) return Promise.resolve();
+  return firebase.functions().httpsCallable('recordSchoolSignIn')({ method })
+    .catch(error => console.warn('Could not record SchoolHub sign-in notification:', error));
+}
+
+async function sendSchoolAnnouncement() {
+  const input = document.getElementById('notificationAnnouncementBody');
+  const button = document.getElementById('notificationSendAnnouncementBtn');
+  const status = document.getElementById('notificationAnnouncementStatus');
+  if (!input || !button || !status || !isHeadTeacher()) return;
+  const body = input.value.trim();
+  if (!body) { status.textContent = 'Enter an announcement first.'; return; }
+  button.disabled = true;
+  status.textContent = 'Sending announcement…';
+  try {
+    const result = await safetyCall('sendSchoolAnnouncement', { body });
+    input.value = '';
+    status.textContent = result.sent
+      ? `Announcement sent to ${result.sent} active teacher${result.sent === 1 ? '' : 's'}.`
+      : 'There are no active teacher accounts to receive this announcement.';
+  } catch (error) {
+    status.textContent = `Could not send announcement: ${error.message || error}`;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function checkPendingApprovalStatus() {
+  const status = document.getElementById('pendingNotificationStatus');
+  const user = firebase.auth().currentUser;
+  if (!user || !status) return;
+  status.textContent = 'Checking your approval status…';
+  try {
+    const snap = await firebase.firestore().collection('users').doc(user.uid).get({ source: 'server' });
+    const data = snap.exists ? (snap.data() || {}) : null;
+    if (data && data.status === 'pending') {
+      status.textContent = 'Still waiting for Head Teacher approval.';
+      return;
+    }
+    status.textContent = 'Your account status changed. Refreshing SchoolHub…';
+    setTimeout(() => window.location.reload(), 350);
+  } catch (error) {
+    status.textContent = `Could not check now: ${error.message || error}`;
+  }
+}
+
+function initNotificationUi() {
+  document.getElementById('notificationBtn')?.addEventListener('click', showNotificationCenter);
+  document.getElementById('profileNotificationsBtn')?.addEventListener('click', showNotificationCenter);
+  document.getElementById('pendingNotificationsBtn')?.addEventListener('click', showNotificationCenter);
+  document.getElementById('disabledNotificationsBtn')?.addEventListener('click', showNotificationCenter);
+  document.getElementById('notificationCenterCloseBtn')?.addEventListener('click', hideNotificationCenter);
+  document.getElementById('notificationCenterDialog')?.addEventListener('click', event => {
+    if (event.target && event.target.id === 'notificationCenterDialog') hideNotificationCenter();
+  });
+  document.getElementById('notificationMarkAllReadBtn')?.addEventListener('click', () => {
+    markAllNotificationsRead().catch(error => alert('Could not mark notifications as read: ' + (error.message || error)));
+  });
+  document.getElementById('notificationBrowserToggleBtn')?.addEventListener('click', toggleBrowserNotifications);
+  document.getElementById('notificationSendAnnouncementBtn')?.addEventListener('click', sendSchoolAnnouncement);
+  document.getElementById('pendingCheckStatusBtn')?.addEventListener('click', checkPendingApprovalStatus);
+  updateNotificationBadge();
+  updateBrowserNotificationControls();
+}
+/* ---------- end Notifications / Communication v1 ---------- */
+
+
 function initAuth() {
   if (!FIREBASE_ENABLED) {
     // Accounts not configured — app behaves exactly as it always has.
@@ -10958,10 +11289,14 @@ function initAuth() {
     if (!document.getElementById('authEmail').checkValidity()) { setAuthError('Enter a valid email address.'); return; }
     if (authMode === 'signup' && password.length < 6) { setAuthError('Use a password with at least 6 characters.'); return; }
     if (authMode === 'signup' && password !== document.getElementById('authConfirmPassword').value) { setAuthError('Your passwords do not match. Please try again.'); return; }
-    const action = authMode === 'login'
-      ? firebase.auth().signInWithEmailAndPassword(email, password)
-      : firebase.auth().createUserWithEmailAndPassword(email, password);
-    action.catch(err => setAuthError(err.message));
+    if (authMode === 'login') {
+      firebase.auth().signInWithEmailAndPassword(email, password)
+        .then(() => recordExplicitSchoolSignIn('password'))
+        .catch(err => setAuthError(err.message));
+    } else {
+      firebase.auth().createUserWithEmailAndPassword(email, password)
+        .catch(err => setAuthError(err.message));
+    }
   });
 
   document.getElementById('authGoogleBtn').addEventListener('click', () => {
@@ -10977,6 +11312,7 @@ function initAuth() {
 
     authPersistenceReady
       .then(() => firebase.auth().signInWithPopup(provider))
+      .then(() => recordExplicitSchoolSignIn('google'))
       .catch(err => {
         if (err && err.code === 'auth/account-exists-with-different-credential') {
           setAuthError('An account already exists with this email. Sign in with your email and password first, then contact the Head Teacher if you need help linking Google.');
@@ -11077,6 +11413,7 @@ function initAuth() {
 
     if (user) {
       currentUid = user.uid;
+      startNotificationListener(user);
       currentSchoolId = null;
       currentRole = null;
       currentStatus = null;
@@ -11203,6 +11540,7 @@ function initAuth() {
         setAuthError('Could not load your account: ' + err.message);
       });
     } else {
+      stopNotificationListener();
       offlineAuthenticatedMode = false;
       updateOfflineModeBanner();
       hideSessionRestoring();
@@ -11397,6 +11735,7 @@ setTimeout(() => updateOfflineModeBanner(), 0);
 
 /* ---------- init ---------- */
 initTheme();
+initNotificationUi();
 initAuth();
 
 function setServiceWorkerDiagnostic(message) {
@@ -11480,6 +11819,10 @@ if ('serviceWorker' in navigator) {
     schoolHubServiceWorkerHadController = true;
   });
   navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data && event.data.type === 'OPEN_NOTIFICATIONS') {
+      showNotificationCenter();
+      return;
+    }
     if (!event.data || event.data.type !== 'SCHOOLHUB_BACKGROUND_SYNC') return;
     const source = event.source;
     const syncId = event.data.syncId;
