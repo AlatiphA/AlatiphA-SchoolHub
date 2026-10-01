@@ -30,7 +30,7 @@ assert(!css.includes('var(--border,#ddd)'),
 assert(!css.includes('var(--accent,#956433)'),
   'accent controls must use the active theme token');
 
-assert(index.includes('style-3.css?v=v40-manage-teacher-remove-ui-8'));
-assert(sw.includes('schoolhub-cache-v40-identity-guard-1'));
+assert(index.includes('style-3.css?v=v40-fis-notification-audit-1'));
+assert(sw.includes('schoolhub-cache-v40-fis-notification-audit-1'));
 
 console.log('whole-app theme consistency regression: PASS');

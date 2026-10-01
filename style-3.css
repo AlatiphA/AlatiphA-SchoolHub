@@ -1840,3 +1840,10 @@ html.disabledAccess #schoolHubFloatingPill{
   .notification-toolbar>*{flex:1 1 160px}
   .notification-compose-actions .btn-primary{width:100%}
 }
+
+/* FIS and notification audit: explicit visibility and account-gate stacking. */
+.notification-btn.hidden,.notification-badge.hidden{display:none;}
+.notification-btn{flex:0 0 38px;padding:0;}
+.notification-btn svg{display:block;flex:none;}
+#notificationCenterDialog{z-index:1050;}
+#notificationCenterDialog .notification-center-box{box-sizing:border-box;}

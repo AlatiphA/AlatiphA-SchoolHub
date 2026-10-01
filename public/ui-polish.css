@@ -692,3 +692,7 @@
   #feePrintDialog .table-scroll{overflow:visible!important;}
   #feePrintDialog .table-scroll :is(th,td):first-child{position:static!important;box-shadow:none!important;}
 }
+
+/* Keep long receipts reachable on phones and let print use the full page. */
+#feeReceiptDialog .about-box{box-sizing:border-box;max-height:calc(100dvh - 48px);overflow:auto;}
+@media print{#feeReceiptDialog .about-box{max-height:none!important;overflow:visible!important;}}

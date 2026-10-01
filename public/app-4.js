@@ -374,6 +374,8 @@ function resetWorkspaceState() {
   if (staffDetails) staffDetails.innerHTML = '';
   document.getElementById('staffDetailsDialog')?.classList.add('hidden');
   currentUid = null;
+  stopNotificationListener();
+  hideNotificationCenter();
   currentSchoolId = null;
   currentRole = null;
   currentStatus = null;
@@ -1170,6 +1172,8 @@ async function refreshTeacherHomeCount(){
 
 /* ---------- Profile menu ---------- */
 function refreshProfileMenu() {
+  updateNotificationBadge();
+  if (!document.getElementById('notificationCenterDialog')?.classList.contains('hidden')) renderNotificationCenter();
   const activeTeacher = isTeacher() && currentStatus === 'active';
   document.getElementById('profileMyDetailsBtn')?.classList.toggle('hidden', !activeTeacher);
   const setupLink = document.getElementById('profileSetupLink');
@@ -10925,6 +10929,9 @@ let notificationUnsubscribe = null;
 let notificationItems = [];
 let notificationListenerUid = '';
 let notificationListenerStarted = false;
+let notificationListenerGeneration = 0;
+let notificationLoadError = '';
+let notificationOpenFromLink = new URLSearchParams(window.location.search).get('notifications') === '1';
 
 function notificationCollection(uid = currentUid) {
   if (!uid || !FIREBASE_ENABLED) return null;
@@ -10947,9 +10954,11 @@ function notificationTimeText(value) {
 }
 
 function browserNotificationsEnabled() {
-  return typeof Notification !== 'undefined'
-    && Notification.permission === 'granted'
-    && localStorage.getItem(SCHOOLHUB_BROWSER_NOTIFICATIONS_KEY) === '1';
+  try {
+    return typeof Notification !== 'undefined'
+      && Notification.permission === 'granted'
+      && localStorage.getItem(SCHOOLHUB_BROWSER_NOTIFICATIONS_KEY) === '1';
+  } catch (_) { return false; }
 }
 
 async function showSchoolHubBrowserNotification(item) {
@@ -11066,6 +11075,10 @@ function renderNotificationCenter() {
     list.innerHTML = '<div class="empty notification-empty">Sign in to view notifications.</div>';
     return;
   }
+  if (notificationLoadError) {
+    list.innerHTML = '<div class="empty notification-empty">Could not load notifications: ' + escapeHtml(notificationLoadError) + '</div>';
+    return;
+  }
   if (!notificationItems.length) {
     list.innerHTML = '<div class="empty notification-empty">No notifications yet.</div>';
     return;
@@ -11087,7 +11100,7 @@ function renderNotificationCenter() {
   `).join('');
 
   list.querySelectorAll('.notification-mark-read').forEach(button => {
-    button.addEventListener('click', () => markNotificationRead(button.dataset.id));
+    button.addEventListener('click', () => markNotificationRead(button.dataset.id).catch(error => alert('Could not mark notification as read: ' + (error.message || error))));
   });
   list.querySelectorAll('.notification-open-action').forEach(button => {
     button.addEventListener('click', async () => {
@@ -11107,7 +11120,8 @@ function renderNotificationCenter() {
 
 function showNotificationCenter() {
   const dialog = document.getElementById('notificationCenterDialog');
-  if (!dialog) return;
+  if (!dialog || !currentUid) return;
+  if (!notificationListenerStarted && FIREBASE_ENABLED) startNotificationListener(firebase.auth().currentUser);
   document.getElementById('profileDropdown')?.classList.add('hidden');
   dialog.classList.remove('hidden');
   renderNotificationCenter();
@@ -11141,6 +11155,8 @@ async function markAllNotificationsRead() {
 }
 
 function stopNotificationListener() {
+  notificationListenerGeneration++;
+  notificationLoadError = '';
   if (typeof notificationUnsubscribe === 'function') {
     try { notificationUnsubscribe(); } catch (_) {}
   }
@@ -11158,11 +11174,23 @@ function startNotificationListener(user) {
   stopNotificationListener();
   notificationListenerUid = user.uid;
   notificationListenerStarted = true;
+  const generation = notificationListenerGeneration;
+  const active = () => generation === notificationListenerGeneration && currentUid === user.uid;
+  updateNotificationBadge();
+  if (notificationOpenFromLink) {
+    notificationOpenFromLink = false;
+    showNotificationCenter();
+    const url = new URL(window.location.href);
+    url.searchParams.delete('notifications');
+    window.history.replaceState(window.history.state, '', url);
+  }
   const ref = notificationCollection(user.uid);
-  if (!ref) return;
+  if (!ref) { notificationListenerStarted = false; return; }
 
   let initialSnapshot = true;
   notificationUnsubscribe = ref.orderBy('createdAt', 'desc').limit(100).onSnapshot(snapshot => {
+    if (!active()) return;
+    notificationLoadError = '';
     notificationItems = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }));
     updateNotificationBadge();
     renderNotificationCenter();
@@ -11176,9 +11204,12 @@ function startNotificationListener(user) {
     }
     initialSnapshot = false;
   }, error => {
+    if (!active()) return;
+    notificationListenerStarted = false;
+    notificationLoadError = error.message || String(error);
     console.warn('Notification listener failed:', error);
-    const list = document.getElementById('notificationList');
-    if (list) list.innerHTML = `<div class="empty notification-empty">Could not load notifications: ${escapeHtml(error.message || String(error))}</div>`;
+    updateNotificationBadge();
+    renderNotificationCenter();
   });
 }
 
@@ -11744,6 +11775,7 @@ window.addEventListener('offline', () => {
 
 window.addEventListener('online', () => {
   updateOfflineModeBanner('Internet connection detected. Revalidating your school account…');
+  if (FIREBASE_ENABLED && currentUid) startNotificationListener(firebase.auth().currentUser);
   revalidateAndSyncAfterReconnect();
 });
 

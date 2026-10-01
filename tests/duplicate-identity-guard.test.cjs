@@ -114,6 +114,6 @@ test('identity lock collection is server-only',()=>{
 });
 
 test('service worker release is bumped for the identity guard delivery',()=>{
-  assert.ok(sw.includes("schoolhub-cache-v40-identity-guard-1"));
+  assert.ok(sw.includes("schoolhub-cache-v40-fis-notification-audit-1"));
   assert.equal(hostedSw,sw);
 });
