@@ -7,6 +7,7 @@ const equal = (a,b) => {
   const keys=Object.keys(a);
   return keys.length===Object.keys(b).length && keys.every(key=>Object.hasOwn(b,key) && equal(a[key],b[key]));
 };
+const StaffQualifications=require('./staff-qualifications');
 const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 const badKey = k => ['__proto__','prototype','constructor'].includes(k);
 function mergeEdit(base, desired, remote, validate, path=[]) {
@@ -131,6 +132,7 @@ function register({onCall,HttpsError,db,admin}) {
   const update={};
   for(const [key,value] of Object.entries(changes)){
    if(!personalFields.includes(key)||typeof value!=='string'||value.length>250)fail('invalid-argument','That field cannot be updated here.');
+   if(StaffQualifications.choices[key]&&!StaffQualifications.valid(key,value.trim())){if(value===(record[key]??''))continue;fail('invalid-argument','Choose a listed academic or professional qualification, or Other.');}
    const text=value.trim();
    if(key==='name'&&!text)fail('invalid-argument','Full name is required.');
    if(key==='sex'&&!['','M','F'].includes(text))fail('invalid-argument','Select a valid sex.');

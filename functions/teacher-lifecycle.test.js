@@ -59,3 +59,5 @@ test('teacher Home counts unique active peer accounts sharing an assigned class'
  assert.deepEqual(await f.handlers.getTeacherHomeSummary(f.req({},'teacher')),{teachers:2});
  await assert.rejects(f.handlers.manageTeacherLifecycle(f.req(save,'teacher')),e=>e.code==='permission-denied');
 });
+
+test('removing a teacher retires owned verification reservations without touching other accounts',async()=>{const f=fixture();f.records.get('users/teacher').email='teacher@example.test';f.records.set('schools/s/identityEmails/current',{uid:'teacher',email:'teacher@example.test'});f.records.set('schools/s/identityEmails/pending',{uid:'teacher',email:'future@example.test',status:'email-change-reserved'});f.records.set('schools/s/identityEmails/other',{uid:'other',email:'other@example.test'});await f.handlers.manageTeacherLifecycle(f.req({action:'remove',teacherUid:'teacher'}));assert(!f.records.has('schools/s/identityEmails/current'));assert(!f.records.has('schools/s/identityEmails/pending'));assert(f.records.has('schools/s/identityEmails/other'));});

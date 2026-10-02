@@ -88,10 +88,11 @@ function register({onCall,HttpsError,db,admin}){
    delete next.staffId;delete next.staffLinkedAt;
    if(d.action!=='unlink'){delete next.schoolId;delete next.role;next.assignedClassIds=[];next.assignedSubjectIds=[];next.status=d.action==='remove'?'removed':'rejected';}
   }else fail('invalid-argument','Unknown teacher action.');
+  const retiringIdentities=['remove','reject'].includes(d.action)?await tx.get(school.collection('identityEmails').where('uid','==',id)):null;
   // All reads have completed; membership and both relationship ends commit together.
    if(identityRef&&(d.action==='save'||d.action==='reactivate'))tx.set(identityRef,{uid:id,email:identityEmail,status:next.status,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
    if(identityRef&&d.action==='disable'&&identitySnap&&identitySnap.exists&&identitySnap.data().uid===id)tx.set(identityRef,{uid:id,email:identityEmail,status:'disabled',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
-   if(identityRef&&['remove','reject'].includes(d.action)&&identitySnap&&identitySnap.exists&&identitySnap.data().uid===id)tx.delete(identityRef);
+   if(retiringIdentities)for(const identity of retiringIdentities.docs)tx.delete(school.collection('identityEmails').doc(identity.id));
   if(selected){tx.set(school.collection('staff').doc(selected.id),{...selected,userUid:id});tx.set(school.collection('teacherLinks').doc(id),{staffId:selected.id});}
   if(['unlink','remove','reject'].includes(d.action)){
    for(const s of linked)tx.set(school.collection('staff').doc(s.id),{...s,userUid:''});

@@ -99,7 +99,8 @@ test('old clients cannot create or rejoin teacher membership directly',()=>{
   const usersRule=rules.slice(usersStart,notificationsStart);
   assert.ok(!usersRule.includes("request.resource.data.role == 'teacher'"));
   assert.ok(!usersRule.includes("resource.data.status in ['rejected', 'removed']"));
-  assert.ok(usersRule.includes("request.auth.token.email"));
+  assert.ok(usersRule.includes("hasOnly(['displayName'])"));
+  assert.ok(!usersRule.includes("hasOnly(['displayName', 'email'])"));
 });
 
 test('Head Teacher can see duplicate-email warnings and full account UIDs',()=>{
@@ -114,6 +115,6 @@ test('identity lock collection is server-only',()=>{
 });
 
 test('service worker release is bumped for the identity guard delivery',()=>{
-  assert.ok(sw.includes("schoolhub-cache-v40-closed-sync-1"));
+  assert.ok(sw.includes("schoolhub-cache-v40-profile-security-1"));
   assert.equal(hostedSw,sw);
 });

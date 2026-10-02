@@ -696,3 +696,5 @@
 /* Keep long receipts reachable on phones and let print use the full page. */
 #feeReceiptDialog .about-box{box-sizing:border-box;max-height:calc(100dvh - 48px);overflow:auto;}
 @media print{#feeReceiptDialog .about-box{max-height:none!important;overflow:visible!important;}}
+
+.account-security{box-sizing:border-box}.account-security #accountSecurityStatus{padding:12px;border-radius:8px;background:var(--surface-alt,#eef4ee);overflow-wrap:anywhere}.account-security form{margin-block:18px}.account-security button{min-height:44px}.account-security #accountSecurityClose{width:100%}.account-security a{overflow-wrap:anywhere}

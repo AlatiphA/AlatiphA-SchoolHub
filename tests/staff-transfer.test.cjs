@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const transfer = require('../staff-transfer.js');
 const source=fs.readFileSync('app-4.js','utf8');
 const context=vm.createContext({});
+context.StaffQualifications=require('../staff-qualifications');
 vm.runInContext(source.slice(source.indexOf('const STAFF_FIELDS ='), source.indexOf('function staffFieldControl('))+'\nglobalThis.fields=STAFF_FIELDS;',context);
 const fields=context.fields;
 const existing=[{id:'internal-1',name:'Old Name',staffId:'0012',phone:'0123',signature:'image',signatureUrl:'url',userUid:'account',role:'Teacher'}];

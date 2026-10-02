@@ -200,3 +200,5 @@ test('atomic teacher lifecycle, concurrent approval, removal and rejoining prese
   assert.equal((await db.collection('schools/s/staff').where('userUid','==','lifecycle-teacher').get()).size,1);
  }finally{await app.delete();}
 });
+
+test('verified user cannot bypass server-owned email reconciliation but can edit display name',async()=>{const db=env.authenticatedContext('head',{email:'new@example.test',email_verified:true}).firestore();await assertFails(setDoc(doc(db,'users/head'),{email:'new@example.test'},{merge:true}));await assertSucceeds(setDoc(doc(db,'users/head'),{displayName:'Head Teacher'},{merge:true}));});

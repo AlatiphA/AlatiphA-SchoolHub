@@ -386,6 +386,7 @@ function resetWorkspaceState() {
   const staffDetails = document.getElementById('staffDetailsContent');
   if (staffDetails) staffDetails.innerHTML = '';
   document.getElementById('staffDetailsDialog')?.classList.add('hidden');
+  document.getElementById('accountSecurityDialog')?.close();
   currentUid = null;
   if (typeof SchoolHubSyncQueue !== 'undefined') SchoolHubSyncQueue.disable().catch(() => {});
   stopNotificationListener();
@@ -1186,6 +1187,8 @@ async function refreshTeacherHomeCount(){
 
 /* ---------- Profile menu ---------- */
 function refreshProfileMenu() {
+  document.getElementById('profileAccountSecurityBtn')?.classList.toggle('hidden', !FIREBASE_ENABLED || !currentUid || currentStatus !== 'active');
+  if(sessionDataReady&&typeof maybeOpenAccountSecurity==='function')maybeOpenAccountSecurity();
   updateNotificationBadge();
   if (!document.getElementById('notificationCenterDialog')?.classList.contains('hidden')) renderNotificationCenter();
   const activeTeacher = isTeacher() && currentStatus === 'active';
@@ -1257,15 +1260,15 @@ async function openMyStaffProfile(){
   const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
   const valid=()=>dialog.isConnected&&isCurrentSession(token,userId,schoolId);
   const status=dialog.querySelector('#myStaffProfileStatus'),form=dialog.querySelector('form');
-  const fields=[['name','Full name','text'],['sex','Sex','select'],['dob','Date of birth','date'],['registeredNo','Registered No.','text'],['licenseNo','License No.','text'],['emisNo','EMIS No.','text'],['ssnitNo','SSNIT No.','text'],['ghanaCardId','Ghana Card ID','text'],['academicQualification','Academic qualification','text'],['professionalQualification','Professional qualification','text'],['bankBranch','Bank and branch','text'],['bankAccount','Bank account','text'],['phone','Phone','tel'],['email','Contact email','email']];
+  const fields=[['name','Full name','text'],['sex','Sex','select'],['dob','Date of birth','date'],['registeredNo','Registered No.','text'],['licenseNo','License No.','text'],['emisNo','EMIS No.','text'],['ssnitNo','SSNIT No.','text'],['ghanaCardId','Ghana Card ID','text'],['academicQualification','Academic qualification','qualification'],['professionalQualification','Professional qualification','qualification'],['bankBranch','Bank and branch','text'],['bankAccount','Bank account','text'],['phone','Phone','tel'],['email','Contact email','email']];
   try{
     let loaded=await safetyCall('getMyStaffProfile',{});if(!valid())return;
-    form.innerHTML=fields.map(([key,label,type])=>`<label>${label}${type==='select'?`<select name="${key}"><option value="">Select</option><option value="M">Male</option><option value="F">Female</option></select>`:`<input name="${key}" type="${type}" maxlength="250" ${key==='name'?'required':''}>`}</label>`).join('')+'<p class="hint">School-managed details (read only)</p>'+[['staffId','Staff ID'],['role','Role'],['rank','Rank / Grade'],['notionalDate','Notional date'],['substantiveDate','Substantive date']].map(([key,label])=>`<label>${label}<input data-school-field="${key}" readonly></label>`).join('')+'<button class="btn-primary" type="submit">Save My Details</button>';
-    const populate=()=>{fields.forEach(([key])=>{form.elements.namedItem(key).value=loaded.profile[key]||'';});form.querySelectorAll('[data-school-field]').forEach(input=>{input.value=loaded.profile[input.dataset.schoolField]||'';});};
+    form.innerHTML=fields.map(([key,label,type])=>`<label>${label}${type==='qualification'?`<select name="${key}"><option value="">Select ${label}</option>${StaffQualifications.options(key).map(([value,text])=>`<option value="${escapeHtml(value)}">${escapeHtml(text)}</option>`).join('')}</select>`:type==='select'?`<select name="${key}"><option value="">Select</option><option value="M">Male</option><option value="F">Female</option></select>`:`<input name="${key}" type="${type}" maxlength="250" ${key==='name'?'required':''}>`}</label>`).join('')+'<p class="hint">School-managed details (read only)</p>'+[['staffId','Staff ID'],['role','Role'],['rank','Rank / Grade'],['notionalDate','Notional date'],['substantiveDate','Substantive date']].map(([key,label])=>`<label>${label}<input data-school-field="${key}" readonly></label>`).join('')+'<button class="btn-primary" type="submit">Save My Details</button>';
+    const populate=()=>{fields.forEach(([key])=>{const control=form.elements.namedItem(key),value=loaded.profile[key]||'';control.querySelectorAll?.('[data-legacy]').forEach(option=>option.remove());if(StaffQualifications.choices[key]&&value&&!StaffQualifications.valid(key,value)){const option=document.createElement('option');option.value=value;option.textContent='Existing value: '+value+' (choose a listed qualification to correct it)';option.dataset.legacy='true';control.append(option);}control.value=value;});form.querySelectorAll('[data-school-field]').forEach(input=>{input.value=loaded.profile[input.dataset.schoolField]||'';});};
     populate();status.textContent='You can edit your personal details below.';
     form.onsubmit=async event=>{
       event.preventDefault();if(!valid())return;
-      const changes={},base={};fields.forEach(([key])=>{const value=form.elements.namedItem(key).value.trim();if(value!==(loaded.profile[key]||'')){changes[key]=value;base[key]=loaded.profile[key]||'';}});
+      const changes={},base={};fields.forEach(([key])=>{const raw=form.elements.namedItem(key).value;const value=StaffQualifications.choices[key]&&raw===(loaded.profile[key]||'')?raw:raw.trim();if(value!==(loaded.profile[key]||'')){changes[key]=value;base[key]=loaded.profile[key]||'';}});
       if(!Object.keys(changes).length){status.textContent='No changes to save.';return;}
       const button=form.querySelector('[type="submit"]');Array.from(form.elements).forEach(input=>input.disabled=true);status.textContent='Saving…';
       try{const result=await safetyCall('updateMyStaffProfile',{staffRecordId:loaded.staffRecordId,changes,base});if(!valid())return;loaded=result;populate();status.textContent='Your details have been updated. Your Head Teacher will see them after syncing.';}
@@ -3924,12 +3927,8 @@ const STAFF_FIELDS = [
   ] },
   { key: 'notionalDate', label: 'Notional Date', type: 'date' },
   { key: 'substantiveDate', label: 'Substantive Date', type: 'date' },
-  { key: 'academicQualification', label: 'Academic Qualification', type: 'select', options: [
-    ['SSCE/WACCE','SSCE/WACCE'],["O'Level/A' Level","O'Level/A' Level"],['Diploma','Diploma'],['HND','HND'],["Bachelor's Degree","Bachelor's Degree"],['Postgraduate Diploma','Postgraduate Diploma'],["Master's Degree","Master's Degree"],['PhD','PhD'],['Other','Other']
-  ] },
-  { key: 'professionalQualification', label: 'Professional Qualification', type: 'select', options: [
-    ["Teacher's Certificate","Teacher's Certificate"],['Diploma in Basic Education','Diploma in Basic Education'],['Bachelor of Education','Bachelor of Education'],['Postgraduate teaching qualification','Postgraduate teaching qualification'],['Other','Other']
-  ] },
+  { key: 'academicQualification', label: 'Academic Qualification', type: 'select', options: StaffQualifications.options('academicQualification') },
+  { key: 'professionalQualification', label: 'Professional Qualification', type: 'select', options: StaffQualifications.options('professionalQualification') },
   { key: 'bankBranch', label: 'Bank & Branch', type: 'text' },
   { key: 'bankAccount', label: 'Bank Account', type: 'text' },
   { key: 'phone', label: 'Phone', type: 'tel' },
@@ -3939,7 +3938,8 @@ const STAFF_FIELDS = [
 function staffFieldControl(f, value) {
   const val = value || '';
   if (f.type === 'select') {
-    const opts = (f.options || []).map(([v, label]) => `<option value="${escapeHtml(v)}" ${val === v ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
+    const legacy = StaffQualifications.choices[f.key] && val && !StaffQualifications.valid(f.key,val) ? `<option value="${escapeHtml(val)}" selected>Existing value: ${escapeHtml(val)}</option>` : '';
+    const opts = legacy + (f.options || []).map(([v, label]) => `<option value="${escapeHtml(v)}" ${val === v ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
     return `<select class="edit-staff-${f.key}"><option value="">Select ${escapeHtml(f.label)}</option>${opts}</select>`;
   }
   return `<input type="${f.type}" class="edit-staff-${f.key}" value="${escapeHtml(val)}" ${f.key === 'staffId' ? 'required' : ''}>`;
@@ -10392,7 +10392,13 @@ async function revalidateAndSyncAfterReconnect() {
   try {
     const userDoc = await firebase.firestore().collection('users').doc(uidBefore).get({source:'server'});
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
-    const data = userDoc.exists ? userDoc.data() : null;
+    let data = userDoc.exists ? userDoc.data() : null;
+    if(data?.status==='active'&&data.schoolId===schoolBefore&&String(data.email||'').trim().toLowerCase()!==String(authUser.email||'').trim().toLowerCase()){
+      await authUser.getIdToken(true);
+      const result=await firebase.functions().httpsCallable('synchronizeLoginEmail')({});
+      if(!isCurrentSession(token,uidBefore,schoolBefore))return;
+      data={...data,email:result.data.email,pendingLoginEmail:result.data.pendingEmail};
+    }
     if (!data || data.status !== 'active' || !data.schoolId || data.schoolId !== schoolBefore) {
       clearVerifiedLocalSession(uidBefore);
       offlineAuthenticatedMode = false;
@@ -11491,14 +11497,19 @@ function initAuth() {
       // short restoration window.
       showSessionRestoring();
 
-      firebase.firestore().collection('users').doc(currentUid).get({source:'server'}).then(userDoc => {
+      firebase.firestore().collection('users').doc(currentUid).get({source:'server'}).then(async userDoc => {
         if (!isCurrentSession(token, user.uid, null)) return;
-        const data = userDoc.exists ? userDoc.data() : null;
+        let data = userDoc.exists ? userDoc.data() : null;
+        if(data?.schoolId&&data.status==='active'&&String(data.email||'').trim().toLowerCase()!==String(user.email||'').trim().toLowerCase()){
+          await user.getIdToken(true);
+          const result=await firebase.functions().httpsCallable('synchronizeLoginEmail')({});
+          if(!isCurrentSession(token,user.uid,null))return;
+          data={...data,email:result.data.email,pendingLoginEmail:result.data.pendingEmail};
+        }
         currentUserData = data || null;
         const authProfileUpdates = {};
         if (data && data.schoolId && firebase.auth().currentUser) {
           const authUser = firebase.auth().currentUser;
-          if (!data.email && authUser.email) authProfileUpdates.email = authUser.email;
           if (!data.displayName && authUser.displayName) authProfileUpdates.displayName = authUser.displayName;
         }
         const repairAccountProfile = Object.keys(authProfileUpdates).length
@@ -11766,6 +11777,7 @@ function proceedToApp() {
   // still loading. Once sessionDataReady is true, restore the saved location.
   // This avoids saving/remembering the temporary Home screen itself.
   if (sessionDataReady) {
+    if(typeof maybeOpenAccountSecurity==='function')maybeOpenAccountSecurity();
     const restored = getSavedNavigation();
     if (restored.view === 'attendance') {
       showView('attendance');

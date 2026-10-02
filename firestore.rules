@@ -65,14 +65,10 @@ service cloud.firestore {
         && request.resource.data.status == 'active'
         && request.resource.data.schoolId != null
         && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == uid;
-      // A user may refresh only their own display profile. Email must match the
-      // authenticated Firebase identity; membership fields remain server-only.
+      // A user may refresh only their own display name. Login email changes
+      // and membership fields are reconciled by trusted server Functions.
       allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email'])
-        && (
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['email'])
-          || (request.auth.token.email is string && request.resource.data.email == request.auth.token.email)
-        );
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']); // Login email reconciliation is server-owned.
       allow delete: if false;
     }
 
