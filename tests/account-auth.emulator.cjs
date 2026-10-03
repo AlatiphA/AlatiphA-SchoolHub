@@ -22,3 +22,15 @@ test('verified native email change and password change preserve one Firebase UID
  assert.equal((await signInWithEmailAndPassword(auth,newEmail,newPassword)).user.uid,uid);
  await assert.rejects(applyActionCode(auth,code.oobCode),'verification link cannot be reused');
 });
+test('repeated login and credential refresh keep the same synthetic teacher UID',async()=>{
+ const email='session-'+Date.now()+'@example.test',password='Session-password-123';
+ const uid=(await createUserWithEmailAndPassword(auth,email,password)).user.uid;
+ for(let cycle=0;cycle<12;cycle++){
+  await signOut(auth);
+  const user=(await signInWithEmailAndPassword(auth,email,password)).user;
+  assert.equal(user.uid,uid);
+  const token=await user.getIdToken(true);
+  assert(token&&token.split('.').length===3,'native SDK refresh returns a signed-in token');
+  assert.equal(auth.currentUser.uid,uid);
+ }
+});

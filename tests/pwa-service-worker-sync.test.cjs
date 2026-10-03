@@ -47,7 +47,7 @@ test('background sync remains progressive enhancement, not a replacement for off
   assert.ok(app.includes('revalidateAndSyncAfterReconnect();'));
   assert.ok(app.includes('The durable outbox and the'));
   assert.ok(fees.includes("window.addEventListener('online'"));
-  assert.match(sw,/schoolhub-cache-v40-profile-security-1/);
+  assert.match(sw,/schoolhub-cache-v40-session-navigation-1/);
 });
 
 test('service worker sync event waits for a client acknowledgement',async()=>{

@@ -16,7 +16,7 @@ async function feeFlush(key,active){
  return feeWithLock(key,async()=>{
   const results={};
   if (typeof reconcileWorkerSyncAcks === 'function') try { await reconcileWorkerSyncAcks(key); } catch(e) { console.warn('Background fee receipts remain saved:',e); }
-  while(active()&&navigator.onLine!==false){
+  while(active()&&navigator.onLine!==false&&!(typeof offlineAuthenticatedMode!=='undefined'&&offlineAuthenticatedMode)){
    const queue=feeQueueRead(key),item=queue[0];if(!item||item.error)break;
    try{results[item.request.requestId]=await safetyCall('updateSchoolFees',item.request);localStorage.setItem(key,JSON.stringify(queue.slice(1)));}
    catch(e){if(feeRejected(e)){item.error=e.message||String(e);localStorage.setItem(key,JSON.stringify(queue));}else if(typeof requestSchoolHubBackgroundSync==='function')requestSchoolHubBackgroundSync('fee-flush-failed');break;}
@@ -127,7 +127,7 @@ function feeRestoreDetails(host,state){
  host.querySelectorAll('details').forEach(d=>{const summary=d.querySelector('summary'),key=summary?.textContent.trim();if(key&&Object.prototype.hasOwnProperty.call(state.detailState,key))d.open=state.detailState[key];});
 }
 async function flushPendingSchoolFeeWrites(){
- if(!isHeadTeacher()||!sessionReady||!currentSchoolId||!currentUid||navigator.onLine===false)return false;
+ if(!isHeadTeacher()||!sessionReady||!currentSchoolId||!currentUid||navigator.onLine===false||(typeof offlineAuthenticatedMode!=='undefined'&&offlineAuthenticatedMode))return false;
  const key='schoolhub_fee_queue_'+currentSchoolId+'_'+currentUid,session=sessionGeneration,school=currentSchoolId,user=currentUid;
  const active=()=>isCurrentSession(session,user,school)&&isHeadTeacher()&&sessionReady;
  await feeFlush(key,active);

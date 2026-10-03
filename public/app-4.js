@@ -31,6 +31,7 @@ try { recoverSyncJournal(); } catch (error) {
 }
 let offlineAuthenticatedMode = false;
 let offlineReconnectInProgress = false;
+let reconnectTask = null;
 
 function loadPersistentSyncOutbox() {
   try {
@@ -871,7 +872,7 @@ const VALID_ATTENDANCE_TABS = ['students','teachers','calendar','summary','analy
 
 function getSavedNavigation() {
   let view = localStorage.getItem(NAV_VIEW_KEY) || 'home';
-  const allowed = ['home','setup','staff','classes','students','subjects','attendance','grades','remarks','reports','history','manage-teachers','activity'];
+  const allowed = views; // Keep restoration aligned with every supported view, including Fees and Billing.
   if (allowed.indexOf(view) === -1) view = 'home';
   let attendanceTab = localStorage.getItem(NAV_ATTENDANCE_TAB_KEY) || 'students';
   if (VALID_ATTENDANCE_TABS.indexOf(attendanceTab) === -1) attendanceTab = 'students';
@@ -10350,11 +10351,15 @@ async function flushPendingCloudWrites() {
 
 async function runSchoolHubBackgroundSync(source = 'service-worker') {
   if (navigator.onLine === false || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active') return false;
+  if (!sessionReady || !sessionDataReady || cloudHydrationInProgress) return false;
   try {
     // If this session crossed an offline boundary, preserve the v40 safeguard:
     // revalidate membership before any queued write is allowed to leave the device.
+    const token = sessionGeneration, uid = currentUid, school = currentSchoolId;
     if (offlineAuthenticatedMode) await revalidateAndSyncAfterReconnect();
+    else if (['app-visible','app-focus','app-resume','online','foreground-retry'].includes(source)) await revalidateAndSyncAfterReconnect();
     else await flushPendingCloudWrites();
+    if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode || currentStatus !== 'active') return false;
     if (typeof window.flushPendingSchoolFeeWrites === 'function') await window.flushPendingSchoolFeeWrites();
     if (hasPendingSchoolHubSync()) { await requestSchoolHubBackgroundSync(`${source}-remaining`); return false; }
     return true;
@@ -10373,7 +10378,31 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
 if (typeof window !== 'undefined') window.runSchoolHubBackgroundSync = runSchoolHubBackgroundSync;
 
 async function revalidateAndSyncAfterReconnect() {
-  if (offlineReconnectInProgress || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active') {
+  // Overlapping online/resume events must await the same verification. A task
+  // belonging to an earlier login or school must never block the new session.
+  if (reconnectTask && reconnectTask.generation === sessionGeneration && reconnectTask.uid === currentUid && reconnectTask.school === currentSchoolId) return reconnectTask.promise;
+  const task = { generation: sessionGeneration, uid: currentUid, school: currentSchoolId };
+  reconnectTask = task;
+  task.promise = performReconnectRecovery().finally(() => {
+    if (reconnectTask === task) { reconnectTask = null; offlineReconnectInProgress = false; updateOfflineModeBanner(); }
+  });
+  return task.promise;
+}
+
+async function withSessionVerificationDeadline(promise) {
+  let timer;
+  try {
+    return await Promise.race([promise, new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error('Account verification timed out. Your changes remain saved for retry.');
+        error.code = 'schoolhub/deadline-exceeded'; reject(error);
+      }, 15000);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+
+async function performReconnectRecovery() {
+  if (navigator.onLine === false || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active' || !sessionReady || !sessionDataReady || cloudHydrationInProgress) {
     updateOfflineModeBanner();
     return;
   }
@@ -10384,18 +10413,22 @@ async function revalidateAndSyncAfterReconnect() {
   }
 
   offlineReconnectInProgress = true;
+  offlineAuthenticatedMode = true; // Pause queued writes until this account is verified.
   updateOfflineModeBanner('Internet is back. Rechecking your account before syncing local changes.');
 
   const token = sessionGeneration;
   const uidBefore = currentUid;
   const schoolBefore = currentSchoolId;
   try {
-    const userDoc = await firebase.firestore().collection('users').doc(uidBefore).get({source:'server'});
+    // Firebase refreshes expired credentials; no copied token is persisted.
+    await withSessionVerificationDeadline(authUser.getIdToken());
+    if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
+    const userDoc = await withSessionVerificationDeadline(firebase.firestore().collection('users').doc(uidBefore).get({source:'server'}));
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
     let data = userDoc.exists ? userDoc.data() : null;
     if(data?.status==='active'&&data.schoolId===schoolBefore&&String(data.email||'').trim().toLowerCase()!==String(authUser.email||'').trim().toLowerCase()){
-      await authUser.getIdToken(true);
-      const result=await firebase.functions().httpsCallable('synchronizeLoginEmail')({});
+      await withSessionVerificationDeadline(authUser.getIdToken(true));
+      const result=await withSessionVerificationDeadline(firebase.functions().httpsCallable('synchronizeLoginEmail')({}));
       if(!isCurrentSession(token,uidBefore,schoolBefore))return;
       data={...data,email:result.data.email,pendingLoginEmail:result.data.pendingEmail};
     }
@@ -10448,10 +10481,15 @@ async function revalidateAndSyncAfterReconnect() {
     startBackgroundImageSync(token, uidBefore, schoolBefore);
   } catch (error) {
     console.warn('Reconnect synchronization failed:', error);
+    if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
     if (isLikelyOfflineError(error)) offlineAuthenticatedMode = true;
-  } finally {
-    offlineReconnectInProgress = false;
-    updateOfflineModeBanner();
+    if (['auth/user-disabled','auth/user-token-expired','auth/invalid-user-token'].includes(error.code)) {
+      clearVerifiedLocalSession(uidBefore);
+      sessionReady = false; sessionDataReady = false;
+      hideSessionRestoring(); hideSyncingMessage(); hidePendingGate(); hideDisabledGate();
+      renderAuthForm(); showAuthGate();
+      setAuthError('Your sign-in needs renewing. Sign in again when online. Unsynced changes remain on this device.');
+    }
   }
 }
 
@@ -11805,7 +11843,7 @@ window.addEventListener('offline', () => {
 window.addEventListener('online', () => {
   updateOfflineModeBanner('Internet connection detected. Revalidating your school account…');
   if (FIREBASE_ENABLED && currentUid) startNotificationListener(firebase.auth().currentUser);
-  revalidateAndSyncAfterReconnect();
+  runSchoolHubBackgroundSync('online').catch(() => {});
 });
 
 setTimeout(() => updateOfflineModeBanner(), 0);

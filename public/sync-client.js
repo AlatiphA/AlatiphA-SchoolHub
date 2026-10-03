@@ -99,3 +99,14 @@ document.addEventListener('visibilitychange',()=>{
   else if(typeof runSchoolHubBackgroundSync==='function'&&currentUid&&sessionReady)runSchoolHubBackgroundSync('app-visible').catch(()=>{});
 });
 window.addEventListener('pagehide',preserveSyncOnHide);
+function recoverVisibleSession(source){
+  if(document.visibilityState==='visible'&&navigator.onLine!==false&&typeof runSchoolHubBackgroundSync==='function'&&currentUid&&sessionReady)runSchoolHubBackgroundSync(source).catch(()=>{});
+}
+// Focus and back/forward restoration cover devices that suspend visibility or
+// connectivity events. Retry transient failures while open without relying on
+// native Background Sync support or a second online event.
+window.addEventListener('focus',()=>recoverVisibleSession('app-focus'));
+window.addEventListener('pageshow',event=>{if(event.persisted)recoverVisibleSession('app-resume');});
+setInterval(()=>{
+  if(typeof hasPendingSchoolHubSync==='function'&&(offlineAuthenticatedMode||hasPendingSchoolHubSync()))recoverVisibleSession('foreground-retry');
+},60000);
