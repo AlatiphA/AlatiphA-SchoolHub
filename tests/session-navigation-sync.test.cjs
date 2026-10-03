@@ -71,3 +71,10 @@ test('offline boundary and expired or foreign verification always require member
  f.c.revalidateAndSyncAfterReconnect.verifiedContext.at=Date.now()-300001;await f.c.runSchoolHubBackgroundSync('app-focus');assert.equal(f.reads(),3);
  f.c.revalidateAndSyncAfterReconnect.verifiedContext.uid='other';await f.c.runSchoolHubBackgroundSync('app-visible');assert.equal(f.reads(),4);
 });
+
+test('healthy expired desktop verification is marked as a routine check and still gates all writes',async()=>{
+ const f=fixture();f.c.offlineAuthenticatedMode=false;let release;f.user.getIdToken=()=>new Promise(r=>release=r);const p=f.c.runSchoolHubBackgroundSync('app-visible');assert.equal(f.c.performReconnectRecovery.startedOffline,false);assert.equal(f.c.offlineAuthenticatedMode,true);assert.equal(f.writes.length,0);release();await p;assert.equal(f.reads(),1);assert(f.events.includes('pull'));assert.equal(f.c.offlineAuthenticatedMode,false);
+});
+test('offline boundary marks recovery as reconnecting before account verification',async()=>{
+ const f=fixture();await f.c.runSchoolHubBackgroundSync('online');assert.equal(f.c.performReconnectRecovery.startedOffline,true);assert.equal(f.reads(),1);
+});

@@ -40,5 +40,5 @@ test('receipt allocation table participates in mobile horizontal scrolling',()=>
 });
 
 test('service worker cache is bumped for reminder feedback and table UX delivery',()=>{
-  assert.match(sw,/schoolhub-cache-v40-close-controls-1/);
+  assert.match(sw,/schoolhub-cache-v40-resume-status-1/);
 });
