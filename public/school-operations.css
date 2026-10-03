@@ -51,3 +51,12 @@
 /* Stock codes need less space than names or creditor labels. */
 #app #view-operations #operations-stock .operations-table :is(th,td):first-child{width:88px;min-width:88px;max-width:88px;padding-inline:8px;overflow-wrap:anywhere;}
 @media(max-width:600px){#app #view-operations #operations-stock .operations-table :is(th,td):first-child{width:76px;min-width:76px;max-width:76px;}}
+
+/* Search shares the app's form colours and remains usable on small screens. */
+#app #view-operations .operations-search{margin:16px 0;max-width:640px;}
+#app #view-operations .operations-search label{display:block;margin:0 0 6px;font-size:13px;text-align:left;color:var(--muted);}
+#app #view-operations .operations-search>div{display:flex;align-items:center;gap:8px;}
+#app #view-operations .operations-search input{box-sizing:border-box;flex:1;min-width:0;width:100%;min-height:44px;margin:0;padding:10px 12px;font:inherit;border:1px solid var(--rule);border-radius:8px;background:var(--surface-alt);color:var(--paper);}
+#app #view-operations .operations-search button{min-height:44px;flex-shrink:0;}
+#app #view-operations .operations-search input:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+#app #view-operations .operations-search-status{margin:10px 0;}
