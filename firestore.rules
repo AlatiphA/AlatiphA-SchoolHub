@@ -145,6 +145,10 @@ service cloud.firestore {
         allow delete: if isHeadTeacher(schoolId);
       }
 
+      // Operations balances, settlements, requests and idempotency receipts are server-owned.
+      match /{operationsCollection}/{recordId} {
+        allow read, write: if operationsCollection in ['opItems','opAssets','opLiabilities','opRequests','opHistory','opSettlements','opCodes','opReceipts'] && false;
+      }
       match /classes/{classId} {
         allow read: if isHeadTeacher(schoolId) || hasClass(schoolId, classId);
         allow create: if isHeadTeacher(schoolId) && notDeleted(schoolId, 'classes', classId);

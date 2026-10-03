@@ -28,6 +28,28 @@ before(async () => {
   });
 });
 after(async()=>{if(env)await env.cleanup();});
+test('operations documents are server-owned even for heads; teachers cannot read financial registers',async()=>{
+ for(const collectionName of ['opItems','opAssets','opLiabilities','opRequests','opHistory','opSettlements','opCodes','opReceipts']){
+  const path='schools/s/'+collectionName+'/security-test';await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),path),{cost:100,createdBy:'teacher'}));
+  for(const uid of ['head','teacher','disabled','outsider']){const db=env.authenticatedContext(uid).firestore();await assertFails(getDoc(doc(db,path)));await assertFails(setDoc(doc(db,path),{cost:0}));await assertFails(deleteDoc(doc(db,path)));}
+ }
+});
+test('native operations transactions prevent concurrent overspending, duplicate payments and teacher financial access',async()=>{
+ const assert=require('node:assert/strict'),admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'operations-server'),db=app.firestore();
+ const serverRequire=require('node:module').createRequire(require('node:path').resolve('functions/index.js')),{HttpsError}=serverRequire('firebase-functions/v2/https'),h=require('../functions/school-operations').register({db,admin,HttpsError,onCall:(_,fn)=>fn});
+ const req=(data,uid='head')=>({auth:{uid},data:{expectedUid:uid,expectedSchoolId:'s',...data}});
+ try{
+  await h.updateSchoolOperations(req({requestId:'native-item-01',id:'native-stock-01',action:'createItem',code:'NATIVE-BOOK',name:'Synthetic books',unit:'pieces',quantityMilli:5000,minimumMilli:1000,unitCost:100}));
+  const outcomes=await Promise.allSettled([1,2].map(i=>h.updateSchoolOperations(req({requestId:'native-issue-0'+i,action:'issue',id:'native-stock-01',revision:0,quantityMilli:3000,reason:'Synthetic issue'}))));assert.equal(outcomes.filter(x=>x.status==='fulfilled').length,1);
+  await h.updateSchoolOperations(req({requestId:'native-request-01',action:'requestStock',id:'native-stock-request',itemId:'native-stock-01',quantityMilli:1000,purpose:'Synthetic lesson'},'teacher'));
+  const approval=req({requestId:'native-approve-01',action:'approveRequest',id:'native-stock-request',revision:0,reason:'Approved'});await h.updateSchoolOperations(approval);await h.updateSchoolOperations(approval);assert.equal((await db.doc('schools/s/opItems/native-stock-01').get()).data().quantityMilli,1000);
+  await h.updateSchoolOperations(req({requestId:'native-liability-01',id:'native-liability-01',action:'createLiability',creditor:'Synthetic supplier',description:'Books',amount:10000,dueOn:'2026-10-31'}));
+  const payment=req({requestId:'native-payment-01',action:'settle',id:'native-liability-01',revision:0,amount:6000,reason:'Synthetic cash'}),paid=await h.updateSchoolOperations(payment);await h.updateSchoolOperations(payment);assert.equal((await db.doc('schools/s/opLiabilities/native-liability-01').get()).data().paid,6000);
+  await h.updateSchoolOperations(req({requestId:'native-reverse-01',action:'reverseSettlement',paymentId:paid.paymentId,revision:1,reason:'Synthetic reversal'}));assert.equal((await db.doc('schools/s/opLiabilities/native-liability-01').get()).data().paid,0);
+  const teacher=await h.getSchoolOperations(req({},'teacher'));assert.deepEqual(teacher.assets,[]);assert.deepEqual(teacher.liabilities,[]);assert(teacher.items.every(x=>!Object.hasOwn(x,'unitCost')));assert(teacher.requests.every(x=>x.createdBy==='teacher'));
+  await assert.rejects(h.updateSchoolOperations(req({requestId:'native-denied-01',action:'settle'},'teacher')),e=>e.code==='permission-denied');
+ }finally{await app.delete();}
+});
 test('teachers can query assigned pupils but not other classes or personnel',async()=>{
   const db=env.authenticatedContext('teacher').firestore();
   await assertSucceeds(getDocs(query(collection(db,'schools/s/students'),where('classId','==','c1'))));

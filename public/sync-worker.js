@@ -19,7 +19,7 @@
   function permanent(error){return /(?:^|\/)(invalid-argument|failed-precondition|aborted|permission-denied|unauthenticated|not-found|already-exists)$/.test(String(error?.code||''));}
   async function execute(job,api){
     if(job.kind==='call'){
-      if(!['saveSchoolRecord','saveSchoolProfile','updateSchoolFees'].includes(job.name))throw Error('Unknown background operation.');
+      if(!['saveSchoolRecord','saveSchoolProfile','updateSchoolFees','updateSchoolOperations'].includes(job.name))throw Error('Unknown background operation.');
       await api.functions.httpsCallable(job.name)({...job.data,expectedSchoolId:job.schoolId});return;
     }
     if(job.kind!=='upsert'||!['classes','subjects','students','staff','schoolCalendar'].includes(job.field)||!job.recordId||job.recordId.includes('/'))throw Error('Invalid background upsert.');
@@ -36,7 +36,7 @@
     const api=options.api||await firebaseServices();if(!api?.auth.currentUser||api.auth.currentUser.uid!==active.uid)return false;
     const started=Date.now();let count=0,retry=false;const stoppedFeeLocks=new Set();
     for(const candidate of pending){
-      if(candidate.field==='fees'&&candidate.error)stoppedFeeLocks.add(candidate.lockKey);
+      if(['fees','operations'].includes(candidate.field)&&candidate.error)stoppedFeeLocks.add(candidate.lockKey);
       if(candidate.error||stoppedFeeLocks.has(candidate.lockKey))continue;
       if(++count>20||Date.now()-started>18000){retry=true;break;}
       await queue.withLock(candidate.lockKey,async()=>{
@@ -51,8 +51,8 @@
           if(api.auth.currentUser?.uid!==active.uid||!latest?.enabled||latest.uid!==active.uid||latest.schoolId!==active.schoolId)return;
           await execute(job,api);await queue.acknowledge(job);
         }catch(error){
-          if(permanent(error)){await queue.acknowledge(job,error.message||String(error));if(job.field==='fees')stoppedFeeLocks.add(job.lockKey);}
-          else {retry=true;if(job.field==='fees')stoppedFeeLocks.add(job.lockKey);}
+          if(permanent(error)){await queue.acknowledge(job,error.message||String(error));if(['fees','operations'].includes(job.field))stoppedFeeLocks.add(job.lockKey);}
+          else {retry=true;if(['fees','operations'].includes(job.field))stoppedFeeLocks.add(job.lockKey);}
         }
       });
     }

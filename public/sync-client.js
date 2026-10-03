@@ -6,11 +6,14 @@ async function reconcileWorkerSyncAcks(lockKey){
   for(const ack of acks){
     const job=ack.job;if(job.uid!==uid||job.schoolId!==school||job.lockKey!==lockKey)continue;
     if(currentUid!==uid||currentSchoolId!==school)return;
-    if(job.field==='fees'){
-      const queue=feeQueueRead(lockKey);
+    if(job.field==='fees'||job.field==='operations'){
+      const queue=job.field==='operations'?operationsQueueRead(lockKey):feeQueueRead(lockKey);
       if(ack.error){const item=queue.find(x=>x.request.requestId===job.data.requestId);if(item)item.error=ack.error;}
       const next=ack.error?queue:queue.filter(x=>x.request.requestId!==job.data.requestId);
       localStorage.setItem(lockKey,JSON.stringify(next));
+      if(job.field==='operations'&&!ack.error){
+        for(const role of ['head','teacher'])localStorage.removeItem('schoolhub_operations_cache_'+school+'_'+uid+'_'+role);
+      }
     }else{
       const match=syncableFields().find(x=>x.key===job.rawKey);if(!match)continue;
       if(ack.error){syncErrors.set(job.rawKey,true);}
@@ -71,6 +74,18 @@ async function stageWorkerFeeQueue(alreadyLocked=false){
   };
   return alreadyLocked?work():SchoolHubSyncQueue.withLock(key,work);
 }
+async function stageWorkerOperationsQueue(alreadyLocked=false){
+  if(!workerQueueAvailable()||!currentUid||!currentSchoolId||!sessionReady||typeof operationsQueueRead!=='function')return;
+  const uid=currentUid,school=currentSchoolId,key='schoolhub_operations_queue_'+school+'_'+uid;
+  const work=async()=>{
+    await reconcileWorkerSyncAcks(key);if(currentUid!==uid||currentSchoolId!==school)return;
+    const jobs=operationsQueueRead(key).map((entry,index)=>{
+      const job={id:SchoolHubSyncQueue.id(uid,school,'operations',entry.request.requestId),uid,schoolId:school,field:'operations',lockKey:key,kind:'call',name:'updateSchoolOperations',data:entry.request,error:entry.error||'',order:200000+index};job.signature=JSON.stringify(entry.request);return job;
+    });
+    await SchoolHubSyncQueue.replace(uid,school,key,jobs);
+  };
+  return alreadyLocked?work():SchoolHubSyncQueue.withLock(key,work);
+}
 async function stagePendingWorkerSync(){
   if(!workerQueueAvailable()||!currentUid||!currentSchoolId||currentStatus!=='active'||!sessionReady)return false;
   const uid=currentUid,school=currentSchoolId;
@@ -79,6 +94,7 @@ async function stagePendingWorkerSync(){
     await stageWorkerField(match);
   }
   await stageWorkerFeeQueue();
+  await stageWorkerOperationsQueue();
   if(currentUid!==uid||currentSchoolId!==school)return false;
   await SchoolHubSyncQueue.activate(uid,school);
   return true;

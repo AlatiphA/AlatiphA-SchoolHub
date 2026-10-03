@@ -86,7 +86,7 @@ function hasPendingFeeSync() {
 }
 
 function hasPendingSchoolHubSync() {
-  return hasPendingPrimarySync() || hasPendingFeeSync();
+  return hasPendingPrimarySync() || hasPendingFeeSync() || (typeof hasPendingOperationsSync === 'function' && hasPendingOperationsSync());
 }
 
 async function requestSchoolHubBackgroundSync(reason = 'pending-write') {
@@ -298,6 +298,7 @@ function pendingSyncCountForCurrentSchool() {
   try {
     syncableFields().forEach(field => { count += dirtyIdsFor(field.key).length; });
   } catch (e) {}
+  if (currentUid && typeof operationsPendingCount === 'function') count += operationsPendingCount();
   return count;
 }
 
@@ -308,7 +309,7 @@ function updateOfflineModeBanner(message) {
   const pending = pendingSyncCountForCurrentSchool();
   const statusButton = document.getElementById('syncStatusBtn');
   if (statusButton) {
-    const writeFailed = pending > 0 && syncableFields().some(field => syncErrors.has(field.key));
+    const writeFailed = pending > 0 && (syncableFields().some(field => syncErrors.has(field.key)) || (typeof operationsHasErrors === 'function' && operationsHasErrors()));
     const hydrationErrorText = typeof cloudHydrationStatusError === 'string' ? cloudHydrationStatusError : '';
     const hydrationFailed = !!hydrationErrorText;
     const failed = writeFailed || hydrationFailed;
@@ -890,7 +891,7 @@ function saveAttendanceTabState(mode) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
+const views = ['operations', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
   if (!enforceGuestTrial()) return;
   // Never render role-sensitive views while an authenticated session is still
@@ -938,6 +939,10 @@ function showView(name) {
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
   if (name === 'billing') renderBilling();
+  if (name === 'operations') {
+    if (typeof renderSchoolOperations === 'function') renderSchoolOperations();
+    else document.getElementById('operationsWrap').textContent = 'Loading school operations…';
+  }
   if (name === 'fees') {
     const feeHost = document.getElementById('feesWrap');
     const feeContext = `${currentSchoolId}|${currentUid}|${sessionGeneration}`;
@@ -964,6 +969,7 @@ function refreshHeadTeacherSelect() {
 
 function sectionTitle(name) {
   if(name==='fees')return 'Fees & Receipts';
+  if(name==='operations')return 'Stores, Assets & Liabilities';
   const titles = {
     setup: 'Setup', staff: 'Staff', classes: 'Classes', students: 'Students', subjects: 'Subjects',
     attendance: 'Attendance', grades: 'Grades', remarks: 'Remarks', reports: 'Reports', billing: 'Billing & Credits', history: 'Term History',
@@ -988,6 +994,7 @@ window.addEventListener('scroll',()=>{if(floatingPillTicking)return;floatingPill
 
 /* ---------- Home dashboard ---------- */
 const QUICK_ACCESS_CARDS = [
+  {view:'operations',title:'Stores, Assets & Liabilities',description:'School stock, property, supplier bills and stock requests',icon:'<path d="M3 7h18v14H3zM3 7l9-5 9 5M12 7v14"/>'},
   {view:'fees',title:'Fees & Receipts',description:'Fee categories, pupil balances and receipts',headteacherOnly:true,icon:'<path d="M4 4h16v16H4z"/>'},
   { view: 'setup', title: 'Setup', description: 'School info, term, and report layout', headteacherOnly: true,
     icon: '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/>' },
@@ -1023,7 +1030,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','activity','history'];
+  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','operations','reports','activity','history'];
   const cards = QUICK_ACCESS_CARDS.slice().sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view)).filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
@@ -10361,6 +10368,8 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
     else await flushPendingCloudWrites();
     if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode || currentStatus !== 'active') return false;
     if (typeof window.flushPendingSchoolFeeWrites === 'function') await window.flushPendingSchoolFeeWrites();
+    if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode) return false;
+    if (typeof window.flushPendingSchoolOperationWrites === 'function') await window.flushPendingSchoolOperationWrites();
     if (hasPendingSchoolHubSync()) { await requestSchoolHubBackgroundSync(`${source}-remaining`); return false; }
     return true;
   } catch (error) {
@@ -11114,6 +11123,7 @@ async function toggleBrowserNotifications() {
 }
 
 function notificationActionButton(item) {
+  if (item?.action === 'operations' && currentStatus === 'active') return `<button type="button" class="btn-text notification-open-action" data-id="${escapeHtml(item.id)}">Open stock requests</button>`;
   if (!item || !item.action) return '';
   if (item.action === 'manage-teachers' && isHeadTeacher()) {
     return `<button type="button" class="btn-text notification-open-action" data-id="${escapeHtml(item.id)}">Open Manage Teachers</button>`;
@@ -11172,6 +11182,8 @@ function renderNotificationCenter() {
       if (item.action === 'manage-teachers' && isHeadTeacher()) {
         showView('manage-teachers');
         renderManageTeachers();
+      } else if (item.action === 'operations' && currentStatus === 'active') {
+        showView('operations');
       } else if (item.action === 'home' && currentStatus === 'active') {
         showView('home');
       }

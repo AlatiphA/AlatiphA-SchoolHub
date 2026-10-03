@@ -291,5 +291,8 @@ const teacherLifecycle = require('./teacher-lifecycle');
 if (teacherLifecycle) Object.assign(exports, teacherLifecycle.register({onCall, HttpsError, db, admin}));const notificationsModule = require('./notifications');
 if (notificationsModule) Object.assign(exports, notificationsModule.register({onCall, HttpsError, db, admin}));
 
+const schoolOperationsModule = require('./school-operations');
+if (schoolOperationsModule) Object.assign(exports,schoolOperationsModule.register({onCall,HttpsError,db,admin}));
+
 const accountSecurityModule = require('./account-security');
 if (accountSecurityModule) Object.assign(exports, accountSecurityModule.register({onCall,HttpsError,db,admin}));
