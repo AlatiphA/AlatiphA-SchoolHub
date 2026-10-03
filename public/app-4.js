@@ -6682,7 +6682,8 @@ document.getElementById('saveNextRemarksBtn').addEventListener('click', () => {
 // among the remaining subjects. Lower aggregate is better; 6 is the
 // best possible score. This mirrors standard BECE-style aggregate scoring.
 function computeAggregate(entries) {
-  if (!entries.length) return null;
+  // Require six completed subjects before combining four core and two electives.
+  if (entries.length < 6) return null;
   const core = entries.slice(0, 4);
   const electives = entries.slice(4);
   const coreSum = core.reduce((a, b) => a + b.grade, 0);
@@ -7061,7 +7062,7 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
         row.push(en.classScaled, en.examScaled, en.total, en.grade, posText, en.remark);
       }
     });
-    row.push(r.totalSum, r.aggregate !== null ? r.aggregate : '', r.position ? ordinal(r.position) : '');
+    row.push(r.totalSum, r.aggregate !== null ? r.aggregate : '-', r.position ? ordinal(r.position) : '');
     rows.push(row);
   });
 
@@ -7237,7 +7238,7 @@ document.getElementById('historyExportCsvBtn').addEventListener('click', () => {
       if (simple) row.push(en.total, en.grade, posText, en.remark);
       else row.push(en.classScaled, en.examScaled, en.total, en.grade, posText, en.remark);
     });
-    row.push(r.totalSum, r.aggregate !== null ? r.aggregate : '', r.position ? ordinal(r.position) : '');
+    row.push(r.totalSum, r.aggregate !== null ? r.aggregate : '-', r.position ? ordinal(r.position) : '');
     rows.push(row);
   });
 
