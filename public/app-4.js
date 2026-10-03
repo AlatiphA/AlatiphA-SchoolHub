@@ -6696,6 +6696,8 @@ function computeAggregate(entries) {
 function computeClassResults(classId, term, year) {
   const students = studentsForClassYear(classId, year);
   const subjects = getAccessibleSubjects();
+  const listedSubjects = DB.get(KEYS.subjects, subjects);
+  const subjectCount = Math.max(subjects.length, Array.isArray(listedSubjects) ? listedSubjects.length : 0);
   const key = gradeKey(classId, term, year);
   const classGrades = DB.get(KEYS.grades, {})[key] || {};
   const settings = DB.get(KEYS.settings, {});
@@ -6734,7 +6736,7 @@ function computeClassResults(classId, term, year) {
     const avg = entries.length ? totalSum / entries.length : 0;
     const aggregate = computeAggregate(entries);
     return {
-      student: st, entries, totalSum, avg, aggregate,
+      student: st, entries, totalSum, avg, aggregate, subjectCount,
       overallRemark: entries.length ? getRemarkFor(avg) : null
     };
   });
@@ -7574,6 +7576,16 @@ function getStaffSignatures(classInfo, settings, resolvedAssets) {
   };
 }
 
+function reportCompletenessNotes(result) {
+  const completed = result.entries.length;
+  const listed = Number.isInteger(result.subjectCount) ? Math.max(completed, result.subjectCount) : completed;
+  const notes = [];
+  if (completed < listed) notes.push('Subjects shown: ' + completed + ' of ' + listed + '. Only completed results available for this report are shown; other subject results are incomplete or unavailable.');
+  if (completed < 6 && result.aggregate === null) notes.push('Aggregate: - because fewer than six subject results are complete. No aggregate-based class position is assigned.');
+  if (notes.length) notes.push('Please contact the school for clarification or an updated report.');
+  return notes;
+}
+
 function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, resolvedAssets) {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -7707,7 +7719,14 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   const colX = [left];
   colW.forEach(w => colX.push(colX[colX.length - 1] + w));
   const headerH = simple ? 9 : 13;
-  const rowH = 7.5;
+  // Reserve a readable parent note above the footer when results are incomplete.
+  const parentNotes = reportCompletenessNotes(result);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+  const parentNoteLines = parentNotes.flatMap(note => doc.splitTextToSize(note, contentW - 8));
+  const parentNoteH = parentNoteLines.length ? 8 + parentNoteLines.length * 3.4 : 0;
+  const rowsAvailableH = pageHeight - theme.footerH - 4 - (tableY + headerH + 15 + theme.infoH + theme.signatureH + theme.legendH + (parentNoteH ? parentNoteH + 4 : 0));
+  const rowH = parentNoteH && rowsAvailableH >= result.entries.length * 6 ? Math.min(7.5, rowsAvailableH / Math.max(1, result.entries.length)) : 7.5;
+
   const centerCols = simple ? [1,2,3] : [1,2,3,4,5];
 
   setFill(PRIMARY); doc.roundedRect(left, tableY, tableW, headerH, 2.5, 2.5, 'F');
@@ -7838,6 +7857,25 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
     '46-53 Approaching Proficiency   40-45 Developing   0-39 Emerging'
   ]);
 
+  if (parentNoteLines.length) {
+    let noteY = y + legendH + 4;
+    if (noteY + parentNoteH > pageHeight - theme.footerH - 4) {
+      drawReportFooter(); doc.addPage();
+      setFill(PAPER); doc.rect(0, 0, pageWidth, pageHeight, 'F');
+      setText(TEXT); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+      doc.text('Report note: ' + result.student.name, left, 16);
+      noteY = 22;
+    }
+    setFill(WHITE); doc.roundedRect(left, noteY, contentW, parentNoteH, 2, 2, 'F');
+    setDraw(RULE); doc.setLineWidth(0.25); doc.roundedRect(left, noteY, contentW, parentNoteH, 2, 2, 'S');
+    setText(PRIMARY_DARK); doc.setFont('helvetica', 'bold'); doc.setFontSize(7);
+    doc.text('NOTE TO PARENTS / GUARDIANS', left + 4, noteY + 4.5);
+    setText(TEXT); doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+    parentNoteLines.forEach((line, index) => doc.text(line, left + 4, noteY + 8 + index * 3.4));
+  }
+
+  drawReportFooter();
+  function drawReportFooter() {
   // Compact footer branding.
   const footerH = theme.footerH;
   const footerY = pageHeight - footerH;
@@ -7847,6 +7885,7 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   doc.text('Phone: +233243443688', left, footerY + 6);
   doc.setFont('helvetica','bold'); doc.text('Designed with AlatiphA SchoolHub', pageWidth / 2, footerY + 6, {align:'center'});
   doc.setFont('helvetica','normal'); doc.text('Email: alatipha@ymail.com', right, footerY + 6, {align:'right'});
+  }
 }
 
 async function storageRefToDataUrl(ref) {
