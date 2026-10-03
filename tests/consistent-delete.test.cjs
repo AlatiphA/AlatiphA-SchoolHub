@@ -5,7 +5,7 @@ const source=fs.readFileSync('app-4.js','utf8');
 function fixture(){
  const data={students:[{id:'p1',classId:'c1'},{id:'p2',classId:'c1'}],classes:[{id:'c1',classTeacherId:'staff1'},{id:'empty'}],subjects:[{id:'math'},{id:'unused'}],staff:[{id:'staff1'}],settings:{headTeacherId:'staff1'},grades:{term:{p1:{math:{e:70}},p2:{math:{e:50}}}},attendance:{day:{entries:{p1:'present',p2:'absent'}},legacy:{p1:false,p2:true}},remarks:{term:{p1:{conduct:'Good'},p2:{conduct:'Fair'}}},teacherAttendance:{day:{entries:{staff1:'present'}}}};
  const writes=[],alerts=[],confirmations=[],deleted=[],cascadeCalls=[];
- const ctx={DB:{get:(key,fallback)=>structuredClone(data[key]??fallback),set:(key,value)=>{data[key]=structuredClone(value);writes.push(key);}},KEYS:Object.fromEntries(Object.keys(data).map(k=>[k,k])),bulkSelectionsV40:{students:new Set(['p1','p2']),staff:new Set(),classes:new Set(),subjects:new Set()},isHeadTeacher:()=>true,requireClassAccess:()=>true,alert:m=>alerts.push(m),confirm:m=>{confirmations.push(m);return true;},FIREBASE_ENABLED:true,currentSchoolId:'school',currentUid:'head',sessionGeneration:1,cloudHydrationInProgress:false,sessionDataReady:true,offlineAuthenticatedMode:false,navigator:{onLine:true},isCurrentSession:()=>true,schoolRef:()=>({collection:kind=>({doc:id=>({kind,id}),get:async()=>({docs:[]}),where:()=>({limit:()=>({get:async()=>({empty:true})})})})}),commitChunks:async ops=>{ops.forEach(fn=>fn({delete:r=>deleted.push(r)}));},safetyCall:async(name,payload)=>{cascadeCalls.push([name,payload]);return{deletions:(payload.subjectIds||[]).map(id=>({collection:'subjects',id,version:'v'}))};},backupLocalSchoolData:()=>true,rememberDeletions:()=>{},clearSyncDirty:()=>{},auditAction:()=>{},renderStudents:()=>{},renderClasses:()=>{},renderStaff:()=>{},renderSubjects:()=>{},renderStudentClassSelect:()=>{}};
+ const ctx={DB:{get:(key,fallback)=>structuredClone(data[key]??fallback),set:(key,value)=>{data[key]=structuredClone(value);writes.push(key);}},KEYS:Object.fromEntries(Object.keys(data).map(k=>[k,k])),bulkSelectionsV40:{students:new Set(['p1','p2']),staff:new Set(),classes:new Set(),subjects:new Set()},isHeadTeacher:()=>true,requireClassAccess:()=>true,alert:m=>alerts.push(m),confirm:m=>{confirmations.push(m);return true;},FIREBASE_ENABLED:true,currentSchoolId:'school',currentUid:'head',sessionGeneration:1,cloudHydrationInProgress:false,sessionDataReady:true,offlineAuthenticatedMode:false,navigator:{onLine:true},isCurrentSession:()=>true,schoolRef:()=>({collection:kind=>({doc:id=>({kind,id}),get:async()=>({docs:[]}),where:()=>({get:async()=>({empty:true,docs:[]}),limit:()=>({get:async()=>({empty:true,docs:[]})})})})}),commitChunks:async ops=>{ops.forEach(fn=>fn({delete:r=>deleted.push(r)}));},safetyCall:async(name,payload)=>{cascadeCalls.push([name,payload]);return{deletions:(payload.subjectIds||[]).map(id=>({collection:'subjects',id,version:'v'}))};},backupLocalSchoolData:()=>true,rememberDeletions:()=>{},clearSyncDirty:()=>{},auditAction:()=>{},renderStudents:()=>{},renderClasses:()=>{},renderStaff:()=>{},renderSubjects:()=>{},renderStudentClassSelect:()=>{}};
  vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('function classDepsV40('),source.indexOf('const _renderClassesBulkV40')),ctx);
  return {ctx,data,writes,alerts,confirmations,deleted,cascadeCalls};
 }
@@ -35,7 +35,7 @@ test('class deletion remains protected while subject deletion requires an explic
  }
 });
 test('cloud-only dependencies block deletion even when local data looks empty',async()=>{
- const f=fixture();f.ctx.schoolRef=()=>({collection:()=>({where:()=>({limit:()=>({get:async()=>({empty:false})})})})});
+ const f=fixture();f.ctx.schoolRef=()=>({collection:()=>({where:()=>({get:async()=>({empty:false,docs:[{data:()=>({entries:{p:{math:{e:50}}}})}]}),limit:()=>({get:async()=>({empty:false,docs:[]})})})})});
  await f.ctx.deleteRecordsV40('classes',['empty']);assert.equal(f.deleted.length,0);assert.match(f.alerts[0],/Safe Delete blocked/);
 });
 test('permission denial or cloud failure preserves all local records',async()=>{
@@ -57,4 +57,28 @@ test('oversized and offline deletes perform no writes',async()=>{
 });
 test('every individual delete button uses the shared deletion handler',()=>{
  for(const kind of ['classes','students','subjects','staff'])assert.match(source,new RegExp("deleteRecordsV40\\('"+kind+"', \\[String\\(btn.dataset.id\\)\\]\\)"));
+});
+test('empty containers no longer block a zero-pupil class and are cleaned only after deletion',async()=>{
+ const f=fixture();Object.assign(f.data.grades,{'empty__Term 1__2026':{},'empty__Term 2__2026':{gone:{math:{c:'',e:null}}}});f.data.attendance['empty__2026-09-27']={classId:'empty',date:'2026-09-27',entries:{}};f.data.remarks['empty__Term 1__2026']={gone:{conduct:'',interest:' '}};
+ const before=structuredClone(f.data.grades.term);await f.ctx.deleteRecordsV40('classes',['empty']);assert.equal(f.deleted.length,1);assert.equal(f.data.classes.some(x=>x.id==='empty'),false);assert.deepEqual(f.data.grades.term,before);for(const field of ['grades','attendance','remarks'])assert.equal(Object.keys(f.data[field]).some(k=>k.startsWith('empty__')),false);
+});
+test('zero scores, false attendance, and historical remarks remain protected with useful counts',async()=>{
+ for(const [field,value,label]of [['grades',{gone:{math:{c:0}}},'grade'],['attendance',{entries:{gone:false}},'attendance'],['remarks',{gone:{conduct:'Good'}},'remarks']]){
+  const f=fixture();f.data[field]['empty__Term 1__2020']=value;await f.ctx.deleteRecordsV40('classes',['empty']);assert.equal(f.deleted.length,0);assert.match(f.alerts[0],new RegExp(label+' record'));assert.match(f.alerts[0],/older terms\/years/);
+ }
+});
+test('cloud empty buckets are allowed but later real records cannot hide behind an empty first result',async()=>{
+ for(const real of [false,true]){
+  const f=fixture(),queries=[];f.ctx.schoolRef=()=>({collection:kind=>({doc:id=>({kind,id}),where:()=>{const result={empty:true,docs:[]};if(kind==='grades')Object.assign(result,{empty:false,docs:[{data:()=>({classId:'empty',entries:{}})},...(real?[{data:()=>({classId:'empty',entries:{p:{math:{e:0}}}})}]:[])]});return {get:async()=>{queries.push(kind);return result;},limit:()=>({get:async()=>result})};}})});
+  await f.ctx.deleteRecordsV40('classes',['empty']);assert.equal(f.deleted.length,real?0:1);assert(queries.includes('grades'));if(real)assert.match(f.alerts[0],/grade record/);
+ }
+});
+test('malformed cloud records still block deletion',async()=>{
+ const f=fixture();f.ctx.schoolRef=()=>({collection:()=>({where:()=>{const result={empty:false,docs:[{data:()=>({classId:'empty'})}]};return {get:async()=>result,limit:()=>({get:async()=>({empty:true,docs:[]})})};}})});await f.ctx.deleteRecordsV40('classes',['empty']);assert.equal(f.deleted.length,0);assert.match(f.alerts[0],/Safe Delete blocked/);
+});
+test('cancelled and failed class deletion preserve empty containers and dirty work',async()=>{
+ for(const cancel of [false,true]){const f=fixture();f.data.grades['empty__Term 1__2026']={};const before=structuredClone(f.data);if(cancel)f.ctx.confirm=()=>false;else f.ctx.commitChunks=async()=>{throw Error('unavailable');};await f.ctx.deleteRecordsV40('classes',['empty']);assert.deepEqual(f.data,before);assert.equal(f.writes.length,0);}
+});
+test('bulk class deletion is blocked as a whole if one class retains a real record',async()=>{
+ const f=fixture();f.data.grades['empty__Term 1__2026']={};await f.ctx.deleteRecordsV40('classes',['empty','c1']);assert.equal(f.deleted.length,0);assert.equal(f.writes.length,0);assert.match(f.alerts[0],/pupil/);
 });

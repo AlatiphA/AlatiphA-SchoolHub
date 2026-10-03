@@ -12011,7 +12011,40 @@ function installBulkUiV40(kind,listId,rowSelector){
   syncChecks();
   bulkRefreshToolbarV40(kind);
 }
-function classDepsV40(id){const st=DB.get(KEYS.students,[]).filter(x=>x.classId===id).length,g=Object.keys(DB.get(KEYS.grades,{})).filter(k=>k.startsWith(id+'__')).length,a=Object.keys(DB.get(KEYS.attendance,{})).filter(k=>k.startsWith(id+'__')).length,r=Object.keys(DB.get(KEYS.remarks,{})).filter(k=>k.startsWith(id+'__')).length;return{st,g,a,r,total:st+g+a+r};}
+function classDepsV40(id){
+  const st=DB.get(KEYS.students,[]).filter(x=>String(x.classId)===String(id)).length;
+  const count=field=>Object.entries(DB.get(KEYS[field],{})).filter(([key,value])=>key.startsWith(id+'__')&&classRecordHasSavedDataV40(field,value)).length;
+  const g=count('grades'),a=count('attendance'),r=count('remarks');return {st,g,a,r,total:st+g+a+r};
+}
+function classRecordHasSavedDataV40(field,record){
+  // Opening a term/date or removing its last pupil can leave an empty bucket.
+  // Zero scores and false legacy attendance values are still saved data.
+  const entries=field==='attendance'&&record&&typeof record==='object'&&Object.hasOwn(record,'entries')?record.entries:record;
+  const hasValue=value=>{
+    if(value===null||value===undefined)return false;
+    if(typeof value==='string')return value.trim()!=='';
+    if(typeof value==='object')return Object.values(value).some(hasValue);
+    return true;
+  };
+  return hasValue(entries);
+}
+function classDeleteDependencyMessageV40(id,deps){
+  const name=DB.get(KEYS.classes,[]).find(x=>String(x.id)===String(id))?.name||id;
+  const labels=[['st','pupil(s)'],['g','grade record(s)'],['a','attendance record(s)'],['r','remarks record(s)']];
+  const details=labels.filter(([key])=>deps[key]>0).map(([key,label])=>deps[key]+' '+label).join(', ');
+  return 'Safe Delete blocked: '+name+' still has '+details+'. Check older terms/years too. No records were deleted.';
+}
+function removeEmptyClassRecordsLocalV40(ids){
+  for(const field of ['grades','attendance','remarks']){
+    const records=DB.get(KEYS[field],{}),removed=[];
+    for(const [key,value]of Object.entries(records)){
+      if(ids.some(id=>key.startsWith(id+'__'))&&!classRecordHasSavedDataV40(field,value)){
+        delete records[key];removed.push(key);
+      }
+    }
+    if(removed.length){DB.set(KEYS[field],records,{skipCloudSync:true});clearSyncDirty(KEYS[field],removed);}
+  }
+}
 function subjectGradeRefHasScoreV40(entry){
   if(!entry || typeof entry!=='object')return false;
   const hasPart=value=>{
@@ -12093,8 +12126,26 @@ async function checkCloudDeletionDependenciesV40(kind,ids){
     if(snap.docs.some(doc=>Object.values(doc.data().entries||{}).some(student=>student && ids.some(id=>subjectGradeRefHasScoreV40(student[id])))))throw new Error('Safe Delete blocked: a selected subject still has saved grades.');
   }else{
     for(const id of ids){
-      const snaps=await Promise.all(['students','grades','attendance','remarks'].map(field=>schoolRef().collection(field).where('classId','==',id).limit(1).get({source:'server'})));
-      if(snaps.some(snap=>!snap.empty))throw new Error('Safe Delete blocked: a selected class still contains students or academic records.');
+      const fields=['students','grades','attendance','remarks'];
+      const snaps=await Promise.all(fields.map(field=>{
+        const query=schoolRef().collection(field).where('classId','==',id);
+        // Read every academic bucket: an empty first result must not hide a
+        // later real record. One pupil alone is sufficient to block deletion.
+        return (field==='students'?query.limit(1):query).get({source:'server'});
+      }));
+      const deps={st:snaps[0].empty?0:1,g:0,a:0,r:0};
+      for(let i=1;i<fields.length;i++){
+        const snap=snaps[i];
+        if(!Array.isArray(snap.docs))throw new Error('Could not verify all class records. Refresh and try again.');
+        const count=snap.docs.filter(doc=>{
+          const record=doc.data();
+          // Missing or malformed entries fail closed; only proven empty
+          // cloud containers are ignored. Metadata is not pupil data.
+          return !record||!Object.hasOwn(record,'entries')||!record.entries||typeof record.entries!=='object'||classRecordHasSavedDataV40(fields[i],record.entries);
+        }).length;
+        deps[['g','a','r'][i-1]]=count;
+      }
+      if(deps.st+deps.g+deps.a+deps.r)throw new Error(classDeleteDependencyMessageV40(id,deps));
     }
   }
 }
@@ -12109,7 +12160,10 @@ async function deleteRecordsV40(kind,selectedIds){
     if(chosen.length!==ids.length){alert('The student list has changed. Refresh the list before deleting.');return;}
     if(chosen.some(x=>!requireClassAccess(x.classId)))return;
   }
-  if(kind==='classes'&&ids.some(id=>classDepsV40(id).total)){alert('Safe Delete blocked: selected classes still contain students, grades, attendance or remarks.');return;}
+  if(kind==='classes'){
+    const blocked=ids.map(id=>({id,deps:classDepsV40(id)})).filter(item=>item.deps.total);
+    if(blocked.length){alert(blocked.map(item=>classDeleteDependencyMessageV40(item.id,item.deps)).join('\n'));return;}
+  }
   let cascadeSubjectGrades=false,subjectRefs=[];
   if(kind==='subjects'){
     subjectRefs=subjectGradeReferencesV40(ids);
@@ -12145,6 +12199,7 @@ async function deleteRecordsV40(kind,selectedIds){
     }
     // Use the same cleanup for individual and selected-record deletion.
     if(kind==='students')removeStudentRelatedRecordsV40(ids);
+    if(kind==='classes')removeEmptyClassRecordsLocalV40(ids);
     if(kind==='staff'){
       const classes=DB.get(KEYS.classes,[]);let changed=false;
       classes.forEach(c=>{if(ids.includes(String(c.classTeacherId))){c.classTeacherId='';changed=true;}});
@@ -12159,6 +12214,12 @@ async function deleteRecordsV40(kind,selectedIds){
       else pruneEmptySubjectGradeRefsV40(ids);
     }
     DB.set(KEYS[kind],remaining,{skipCloudSync:true});
+    if(kind==='classes'){
+      clearSyncDirty(KEYS.classes,ids);
+      // Retire mirrored empty-container jobs after confirmed deletion rather
+      // than repeatedly trying to upload them to a deleted class.
+      if(typeof stagePendingWorkerSync==='function')stagePendingWorkerSync().catch(error=>console.warn('Background queue cleanup will retry on reopening:',error));
+    }
     auditAction('delete',kind,ids.length===1?ids[0]:'bulk',`Deleted ${ids.length} ${kind} record(s)`);
     ids.forEach(id=>bulkSelectionsV40[kind].delete(id));
     if(kind==='students'){renderStudents();renderClasses();}else if(kind==='staff'){renderStaff();renderClasses();}else if(kind==='classes'){renderClasses();renderStudentClassSelect();}else renderSubjects();
