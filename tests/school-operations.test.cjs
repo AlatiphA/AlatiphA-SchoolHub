@@ -34,3 +34,19 @@ test('double click cannot create two pending requests while confirmation is runn
 test('manager assets are included in hosting, shell cache and navigation restoration',()=>{
  const app=fs.readFileSync('app-4.js','utf8'),html=fs.readFileSync('index.html','utf8'),sw=fs.readFileSync('sw.js','utf8');assert(app.includes("const views = ['operations'"));assert(app.includes('const allowed = views;'));assert(html.includes('id="view-operations"'));for(const file of ['school-operations.js','school-operations.css']){assert.equal(fs.readFileSync(file,'utf8'),fs.readFileSync('public/'+file,'utf8'));assert(sw.includes('./'+file));}assert(app.includes("if (typeof renderSchoolOperations === 'function') renderSchoolOperations();"));
 });
+test('stock save waits for ongoing online verification and confirms once',async()=>{
+ const f=fixture();f.c.offlineAuthenticatedMode=true;let release;
+ f.c.revalidateAndSyncAfterReconnect=()=>new Promise(r=>release=()=>{f.c.offlineAuthenticatedMode=false;r();});
+ const save=f.c.operationsSubmit('receive',{id:'stock-item-01',quantityMilli:1000,reason:'Delivery'});
+ assert.equal(f.calls.length,0);assert.equal(f.storage.size,0);release();await save;assert.equal(f.calls.length,1);assert.equal(f.c.operationsQueueRead().length,0);
+});
+test('failed verification keeps stock save unsent',async()=>{
+ const f=fixture();f.c.offlineAuthenticatedMode=true;f.c.revalidateAndSyncAfterReconnect=async()=>{};
+ await assert.rejects(f.c.operationsSubmit('issue',{}),/Connect to the internet/);assert.equal(f.calls.length,0);assert.equal(f.storage.size,0);
+});
+test('double confirmation during account verification cannot issue stock twice',async()=>{
+ const f=fixture();f.c.offlineAuthenticatedMode=true;let release;f.c.revalidateAndSyncAfterReconnect=()=>new Promise(r=>release=()=>{f.c.offlineAuthenticatedMode=false;r();});
+ const first=f.c.operationsSubmit('issue',{id:'stock-item-01',quantityMilli:1000,reason:'Lesson'});
+ await assert.rejects(f.c.operationsSubmit('issue',{id:'stock-item-01',quantityMilli:1000,reason:'Lesson'}),/current save/);
+ release();await first;assert.equal(f.calls.length,1);
+});

@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const app=fs.readFileSync('app-4.js','utf8'),client=fs.readFileSync('sync-client.js','utf8'),fees=fs.readFileSync('fees.js','utf8');
 const nav=app.slice(app.indexOf('const NAV_VIEW_KEY'),app.indexOf('function refreshHeadTeacherSelect()'));
-const recovery=app.slice(app.indexOf('async function revalidateAndSyncAfterReconnect()'),app.indexOf('function setLastSyncedNow()'));
+const recovery=app.slice(app.indexOf('async function revalidateAndSyncAfterReconnect('),app.indexOf('function setLastSyncedNow()'));
 const background=app.slice(app.indexOf('async function runSchoolHubBackgroundSync('),app.indexOf("if (typeof window !== 'undefined') window.runSchoolHubBackgroundSync"));
 function fixture(){
  const writes=[],events=[],local=new Map([['arc_last_view','fees']]);
@@ -59,4 +59,15 @@ test('visible retry works without native Background Sync; hidden pages do not po
 });
 test('fee queue remains untouched while account recovery is pending',async()=>{
  const queue=JSON.stringify([{request:{requestId:'payment-1'}}]),c={navigator:{onLine:true},offlineAuthenticatedMode:true,feeWithLock:async(_,fn)=>fn(),feeQueueRead:()=>JSON.parse(queue),safetyCall:async()=>assert.fail('unverified payment must not send'),localStorage:{setItem:()=>assert.fail('queue must stay saved')}};vm.createContext(c);vm.runInContext(fees.slice(fees.indexOf('async function feeFlush'),fees.indexOf('function feeCash')),c);await c.feeFlush('fees',()=>true);
+});
+test('brief focus and dialog returns reuse recent verification without another recovery pull',async()=>{
+ const f=fixture();await f.c.runSchoolHubBackgroundSync('online');const reads=f.reads(),pulls=f.events.filter(x=>x==='pull').length;
+ for(const source of ['app-focus','app-visible','app-resume','foreground-retry','app-focus'])await f.c.runSchoolHubBackgroundSync(source);
+ assert.equal(f.reads(),reads);assert.equal(f.events.filter(x=>x==='pull').length,pulls);assert.equal(f.c.offlineAuthenticatedMode,false);
+});
+test('offline boundary and expired or foreign verification always require membership checks',async()=>{
+ const f=fixture();await f.c.runSchoolHubBackgroundSync('online');
+ f.c.offlineAuthenticatedMode=true;await f.c.runSchoolHubBackgroundSync('app-focus');assert.equal(f.reads(),2);
+ f.c.revalidateAndSyncAfterReconnect.verifiedContext.at=Date.now()-300001;await f.c.runSchoolHubBackgroundSync('app-focus');assert.equal(f.reads(),3);
+ f.c.revalidateAndSyncAfterReconnect.verifiedContext.uid='other';await f.c.runSchoolHubBackgroundSync('app-visible');assert.equal(f.reads(),4);
 });

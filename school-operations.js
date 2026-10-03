@@ -1,6 +1,12 @@
 /* School operations: confirmed balances, scoped durable requests, server-owned history. */
 let operationsState=null,operationsStateContext=null,operationsLoad=0,operationsBusy=false;
 const operationsLocks=new Map();
+const OPERATIONS_CATEGORIES=Object.freeze(["Teaching & Learning Materials","Stationery & Office Supplies","Furniture","ICT & Electrical Equipment","Science/Technical Equipment","Sports & PE Equipment","Cleaning & Sanitation Supplies","Health/SHEP & First Aid","Library Materials","Maintenance & Repairs","Administrative Equipment","School Feeding/Kitchen","Uniforms/School Supplies","Consumables/General Supplies"]);
+function operationsCategoryOptions(current=''){
+ const options=[['','Select category'],...OPERATIONS_CATEGORIES.map(value=>[value,value])];
+ if(current&&!OPERATIONS_CATEGORIES.includes(current))options.push([current,current+' (saved category)']);
+ return options;
+}
 function operationsSession(){return {uid:currentUid,school:currentSchoolId,generation:sessionGeneration,head:isHeadTeacher()};}
 function operationsActive(s){return s.uid&&s.school&&isCurrentSession(s.generation,s.uid,s.school)&&sessionReady&&sessionDataReady&&currentStatus==='active'&&s.head===isHeadTeacher();}
 function operationsQueueKey(s=operationsSession()){return 'schoolhub_operations_queue_'+s.school+'_'+s.uid;}
@@ -30,9 +36,11 @@ async function flushPendingSchoolOperationWrites(){
 }
 async function operationsSubmit(action,data){
  if(operationsBusy)throw Error('Wait for the current save.');const s=operationsSession();if(!operationsActive(s))throw Error('Sign in to your active school first.');
- if(navigator.onLine===false||offlineAuthenticatedMode)throw Error('Reconnect and verify your account before recording stock or payments.');
  operationsBusy=true;
  try{
+ if(navigator.onLine!==false&&offlineAuthenticatedMode&&typeof revalidateAndSyncAfterReconnect==='function')await revalidateAndSyncAfterReconnect();
+ if(!operationsActive(s))throw Error('Your school account needs verification before this save.');
+ if(navigator.onLine===false||offlineAuthenticatedMode)throw Error('Connect to the internet to confirm this save. Your entries remain here.');
   const key=operationsQueueKey(s);await operationsWithLock(key,async()=>{
    if(operationsQueueRead(key).length)throw Error('Resolve the pending save before entering another transaction.');
    const request={...data,action,requestId:crypto.randomUUID(),expectedUid:s.uid,expectedSchoolId:s.school};localStorage.setItem(key,JSON.stringify([{request}]));
@@ -97,10 +105,10 @@ function operationsOpenForm(action,recordId,paymentId){
  const itemOptions=items.map(x=>[x.id,x.name+' · '+operationsQty(x.quantityMilli)+' '+x.unit]);
  const item=data.items.find(x=>x.id===recordId),asset=data.assets.find(x=>x.id===recordId),liability=data.liabilities.find(x=>x.id===recordId),request=data.requests.find(x=>x.id===recordId);
  let fields=[],title='',record=item||asset||liability||request;
- if(action==='createItem'){title='Add stock item';fields=[field('code','Stock code'),field('name','Item name'),field('category','Category'),field('unit','Unit (pieces, boxes, kg…)','pieces'),field('quantityMilli','Opening stock','0','quantity'),field('minimumMilli','Low-stock threshold','0','quantity'),field('unitCost','Unit cost (GH₵)','0','money')];}
- if(action==='editItem'){title='Edit stock item';fields=[field('name','Item name',item.name),field('category','Category',item.category),field('minimumMilli','Low-stock threshold',operationsQty(item.minimumMilli),'quantity'),field('unitCost','Unit cost (GH₵)',(item.unitCost/100).toFixed(2),'money'),field('active','Status',String(item.active),'select',[['true','Active'],['false','Archived (zero stock only)']])];}
+ if(action==='createItem'){title='Add stock item';fields=[field('code','Stock code'),field('name','Item name'),field('category','Category','','select',operationsCategoryOptions()),field('unit','Unit (pieces, boxes, kg…)','pieces'),field('quantityMilli','Opening stock','0','quantity'),field('minimumMilli','Low-stock threshold','0','quantity'),field('unitCost','Unit cost (GH₵)','0','money')];}
+ if(action==='editItem'){title='Edit stock item';fields=[field('name','Item name',item.name),field('category','Category',item.category,'select',operationsCategoryOptions(item.category)),field('minimumMilli','Low-stock threshold',operationsQty(item.minimumMilli),'quantity'),field('unitCost','Unit cost (GH₵)',(item.unitCost/100).toFixed(2),'money'),field('active','Status',String(item.active),'select',[['true','Active'],['false','Archived (zero stock only)']])];}
  if(['receive','issue','adjust'].includes(action)){title={receive:'Receive stock',issue:'Issue stock',adjust:'Correct stock'}[action];fields=[field('id','Stock item',recordId||items[0]?.id||'','select',itemOptions),field('quantityMilli',action==='adjust'?'Quantity correction (+ or −)':'Quantity','','quantity'),field('reason',action==='receive'?'Supplier / delivery reference':action==='issue'?'Issued to / purpose':'Reason for correction')];}
- if(action==='createAsset'){title='Register asset';fields=[field('code','Asset tag'),field('name','Asset name'),field('category','Category'),field('cost','Acquisition cost (GH₵)','0','money'),field('value','Recorded value (GH₵)','0','money'),field('purchasedOn','Purchase date','','date'),field('location','Location'),field('custodian','Custodian')];}
+ if(action==='createAsset'){title='Register asset';fields=[field('code','Asset tag'),field('name','Asset name'),field('category','Category','','select',operationsCategoryOptions()),field('cost','Acquisition cost (GH₵)','0','money'),field('value','Recorded value (GH₵)','0','money'),field('purchasedOn','Purchase date','','date'),field('location','Location'),field('custodian','Custodian')];}
  if(action==='editAsset'){title='Update asset';fields=[field('name','Asset name',asset.name),field('location','Location',asset.location),field('custodian','Custodian',asset.custodian),field('condition','Condition',asset.condition,'select',[['good','Good'],['fair','Fair'],['poor','Poor']]),field('status','Status',asset.status,'select',[['in_use','In use'],['repair','Under repair'],['disposed','Disposed']]),field('value','Recorded value (GH₵)',(asset.value/100).toFixed(2),'money'),field('reason','Reason for this update')];}
  if(['createLiability','editLiability'].includes(action)){title=action==='createLiability'?'Add supplier bill / debt':'Edit liability';fields=[field('creditor','Supplier / creditor',liability?.creditor||''),field('description','Description',liability?.description||''),field('amount','Amount owed (GH₵)',liability?String(liability.amount/100):'','money'),field('dueOn','Due date',liability?.dueOn||'','date'),field('reference','Invoice reference',liability?.reference||'')];}
  if(['settle','reverseSettlement'].includes(action)){title=action==='settle'?'Record liability payment':'Reverse recorded payment';fields=action==='settle'?[field('amount','Payment amount (GH₵)','','money'),field('reason','Payment method / reference')]:[field('reason','Reason for reversal')];}

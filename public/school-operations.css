@@ -11,3 +11,21 @@
 .operations-form label{display:flex;flex-direction:column;gap:6px;min-width:0}.operations-form input,.operations-form select{box-sizing:border-box;width:100%;background:var(--surface-alt);color:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:10px;font:inherit}
 .operations-wrap [hidden]{display:none!important}.operations-wrap button:focus-visible,.operations-dialog button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 @media(max-width:600px){.operations-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.operations-form{grid-template-columns:1fr}.operations-tabs button{flex:1 1 140px}.operations-summary>div{padding:12px}}
+
+/* Scoped form layout: avoid About-dialog centering and generic label margins. */
+#operationsDialog{padding:16px;box-sizing:border-box;}
+#operationsDialog .operations-dialog{box-sizing:border-box;width:100%;max-width:600px;max-height:calc(100dvh - 32px);padding:20px;text-align:left;border-radius:12px;}
+#operationsDialog h2{margin:0 0 16px;font-size:21px;}
+#operationsDialog .operations-dialog>p{margin:0 0 12px;}
+#operationsDialog .operations-form{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;}
+#operationsDialog .operations-form label{margin:0;gap:6px;font-size:13px;text-align:left;}
+#operationsDialog .operations-form :is(input,select){margin:0;min-height:44px;padding:10px 12px;font-size:16px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-alt);color:var(--paper);}
+#operationsDialog .operations-form select{appearance:auto;}
+#operationsDialog .operations-form :is(input,select):focus{border-color:var(--gold);outline:2px solid var(--gold);outline-offset:1px;}
+#operationsDialog .operations-form label:last-child:nth-child(odd){grid-column:1/-1;}
+#operationsDialog [data-status]:empty{display:none;}
+#operationsDialog [data-status]{margin:12px 0 0;}
+#operationsDialog .operations-toolbar{margin:16px 0 0;}
+#operationsDialog .operations-toolbar button{min-height:44px;}
+@media(max-width:600px){#operationsDialog{padding:12px;}#operationsDialog .operations-dialog{padding:16px;max-height:calc(100dvh - 24px);}#operationsDialog .operations-form{grid-template-columns:1fr;gap:12px;}}
+#operationsDialog .operations-toolbar button{flex:1 1 120px;width:auto;border:1px solid var(--rule);border-radius:8px;padding:10px 14px;font:inherit;cursor:pointer;}#operationsDialog .operations-toolbar .btn-secondary{background:var(--surface-alt);color:var(--paper);}

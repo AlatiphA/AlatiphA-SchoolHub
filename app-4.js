@@ -247,6 +247,9 @@ function verifiedSessionKey(uidValue) {
 }
 
 function saveVerifiedLocalSession(user, data) {
+  if (data?.status === 'active' && user?.uid === currentUid && data.schoolId === currentSchoolId) {
+    revalidateAndSyncAfterReconnect.verifiedContext = {generation:sessionGeneration,uid:currentUid,school:currentSchoolId,at:Date.now()};
+  }
   if (!user || !user.uid || !data || data.status !== 'active' || !data.schoolId) return;
   const safe = {
     uid: String(user.uid),
@@ -994,7 +997,6 @@ window.addEventListener('scroll',()=>{if(floatingPillTicking)return;floatingPill
 
 /* ---------- Home dashboard ---------- */
 const QUICK_ACCESS_CARDS = [
-  {view:'operations',title:'Stores, Assets & Liabilities',description:'School stock, property, supplier bills and stock requests',icon:'<path d="M3 7h18v14H3zM3 7l9-5 9 5M12 7v14"/>'},
   {view:'fees',title:'Fees & Receipts',description:'Fee categories, pupil balances and receipts',headteacherOnly:true,icon:'<path d="M4 4h16v16H4z"/>'},
   { view: 'setup', title: 'Setup', description: 'School info, term, and report layout', headteacherOnly: true,
     icon: '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/>' },
@@ -1016,6 +1018,7 @@ const QUICK_ACCESS_CARDS = [
     icon: '<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>' },
   { view: 'reports', title: 'Reports', description: 'Generate PDFs, CSV, and view statistics',
     icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="9" y2="17"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="15" y1="15" x2="15" y2="17"/>' },
+  {view:'operations',title:'Stores, Assets & Liabilities',description:'School stock, property, supplier bills and stock requests',icon:'<path d="M3 7h18v14H3zM3 7l9-5 9 5M12 7v14"/>'},
   { view: 'billing', title: 'Billing & Credits', description: 'Buy and manage school report credits',
     icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 14h4"/><circle cx="17" cy="14" r="1"/>' },
   { view: 'activity', title: 'Activity Log', description: 'See who changed school data and when',
@@ -1030,7 +1033,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','operations','reports','activity','history'];
+  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','activity','history'];
   const cards = QUICK_ACCESS_CARDS.slice().sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view)).filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
@@ -10364,7 +10367,7 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
     // revalidate membership before any queued write is allowed to leave the device.
     const token = sessionGeneration, uid = currentUid, school = currentSchoolId;
     if (offlineAuthenticatedMode) await revalidateAndSyncAfterReconnect();
-    else if (['app-visible','app-focus','app-resume','online','foreground-retry'].includes(source)) await revalidateAndSyncAfterReconnect();
+    else if (['app-visible','app-focus','app-resume','online','foreground-retry'].includes(source)) await revalidateAndSyncAfterReconnect(source === 'online');
     else await flushPendingCloudWrites();
     if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode || currentStatus !== 'active') return false;
     if (typeof window.flushPendingSchoolFeeWrites === 'function') await window.flushPendingSchoolFeeWrites();
@@ -10386,10 +10389,16 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
 }
 if (typeof window !== 'undefined') window.runSchoolHubBackgroundSync = runSchoolHubBackgroundSync;
 
-async function revalidateAndSyncAfterReconnect() {
+async function revalidateAndSyncAfterReconnect(force = true) {
   // Overlapping online/resume events must await the same verification. A task
   // belonging to an earlier login or school must never block the new session.
   if (reconnectTask && reconnectTask.generation === sessionGeneration && reconnectTask.uid === currentUid && reconnectTask.school === currentSchoolId) return reconnectTask.promise;
+  const verified = revalidateAndSyncAfterReconnect.verifiedContext;
+  if (!force && !offlineAuthenticatedMode && sessionReady && sessionDataReady && verified &&
+      isCurrentSession(verified.generation, verified.uid, verified.school) && Date.now() - verified.at < 300000) {
+    await flushPendingCloudWrites();
+    return;
+  }
   const task = { generation: sessionGeneration, uid: currentUid, school: currentSchoolId };
   reconnectTask = task;
   task.promise = performReconnectRecovery().finally(() => {
@@ -10469,6 +10478,7 @@ async function performReconnectRecovery() {
     currentAssignedSubjectIds = Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds : [];
     currentUserData = data;
     saveVerifiedLocalSession(authUser, data);
+    revalidateAndSyncAfterReconnect.verifiedContext = {generation:token,uid:uidBefore,school:schoolBefore,at:Date.now()};
     offlineAuthenticatedMode = false;
     sessionReady = true;
     sessionDataReady = true;
