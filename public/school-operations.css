@@ -47,3 +47,7 @@
 #operationsDialog .operations-toolbar button{min-height:44px;}
 @media(max-width:600px){#operationsDialog{padding:12px;}#operationsDialog .operations-dialog{padding:16px;max-height:calc(100dvh - 24px);}#operationsDialog .operations-form{grid-template-columns:1fr;gap:12px;}}
 #operationsDialog .operations-toolbar button{flex:1 1 120px;width:auto;border:1px solid var(--rule);border-radius:8px;padding:10px 14px;font:inherit;cursor:pointer;}#operationsDialog .operations-toolbar .btn-secondary{background:var(--surface-alt);color:var(--paper);}
+
+/* Stock codes need less space than names or creditor labels. */
+#app #view-operations #operations-stock .operations-table :is(th,td):first-child{width:88px;min-width:88px;max-width:88px;padding-inline:8px;overflow-wrap:anywhere;}
+@media(max-width:600px){#app #view-operations #operations-stock .operations-table :is(th,td):first-child{width:76px;min-width:76px;max-width:76px;}}

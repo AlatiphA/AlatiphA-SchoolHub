@@ -1264,7 +1264,7 @@ async function openMyStaffProfile(){
   document.getElementById('myStaffProfileDialog')?.remove();
   const dialog=document.createElement('dialog');dialog.id='myStaffProfileDialog';dialog.className='my-staff-profile';
   dialog.setAttribute('aria-labelledby','myStaffProfileTitle');
-  dialog.innerHTML='<h2 id="myStaffProfileTitle">My Details</h2><p class="hint">Your personal details are shared with your Head Teacher. Updating your contact email does not change your login email.</p><p role="status" id="myStaffProfileStatus">Loading your attached Staff record…</p><form id="myStaffProfileForm" class="stack"></form><button type="button" id="myStaffProfileClose" class="btn-secondary">Close</button>';
+  dialog.innerHTML='<h2 id="myStaffProfileTitle">My Details</h2><p class="hint">Your personal details are shared with your Head Teacher. Updating your contact email does not change your login email.</p><p role="status" id="myStaffProfileStatus">Loading your attached Staff record…</p><form id="myStaffProfileForm" class="stack"></form><button type="button" id="myStaffProfileClose" class="btn-secondary" data-dismiss-ui>Close</button>';
   document.body.append(dialog);dialog.showModal();
   dialog.addEventListener('close',()=>dialog.remove());
   dialog.querySelector('#myStaffProfileClose').onclick=()=>dialog.close();
@@ -2021,7 +2021,7 @@ function renderYearRollover() {
   <div class="rollover-actions">
     <button type="button" id="downloadRolloverBackupBtn" class="btn-secondary">Download Year-End Backup</button>
     <button type="button" id="reviewYearRolloverBtn" class="btn-secondary">Review Rollover</button>
-    <button type="button" id="cancelYearRolloverBtn" class="btn-text">Cancel</button>
+    <button type="button" id="cancelYearRolloverBtn" class="btn-text" data-dismiss-ui>Cancel</button>
   </div>
   <div id="yearRolloverReview"></div>`;
 
@@ -2391,7 +2391,7 @@ function renderYearEndRestorePreview() {
         <h4>Restore Academic Year</h4>
         <p><strong>${escapeHtml(snapshot.fromYear)} pre-rollover state</strong></p>
       </div>
-      <button type="button" id="cancelYearEndRestoreBtn" class="btn-text">Cancel</button>
+      <button type="button" id="cancelYearEndRestoreBtn" class="btn-text" data-dismiss-ui>Cancel</button>
     </div>
     <div class="rollover-restore-meta">
       <div><span>Backup created</span><strong>${escapeHtml(createdText)}</strong></div>
@@ -2683,7 +2683,7 @@ function renderClasses() {
         </label>
         <div class="edit-actions">
           <button class="save-btn save-class" data-id="${c.id}">Update</button>
-          <button class="cancel-btn cancel-class">Cancel</button>
+          <button class="cancel-btn cancel-class" data-dismiss-ui>Cancel</button>
         </div>
       </div>`;
     } else {
@@ -2881,7 +2881,7 @@ function renderStudents() {
         </label>
         <div class="edit-actions">
           <button class="save-btn save-student" data-id="${st.id}">Update</button>
-          <button class="cancel-btn cancel-student">Cancel</button>
+          <button class="cancel-btn cancel-student" data-dismiss-ui>Cancel</button>
         </div>
       </div>`;
     } else {
@@ -3350,7 +3350,7 @@ function renderSubjects() {
         <input type="text" class="edit-subject-name" value="${escapeHtml(sub.name)}">
         <div class="edit-actions">
           <button class="save-btn save-subject" data-id="${sub.id}">Update</button>
-          <button class="cancel-btn cancel-subject">Cancel</button>
+          <button class="cancel-btn cancel-subject" data-dismiss-ui>Cancel</button>
         </div>
       </div>`;
     } else if (subjectArrangeMode) {
@@ -3772,7 +3772,7 @@ function showStudentImportPreview(rows) {
   host.innerHTML = `<h3>Students import preview</h3><p>${added} to add · ${plan.changes.length-added} to update · ${plan.changes.length} total</p>
     <div class="table-scroll"><table class="grades-table"><thead><tr><th>Action</th><th>Student ID</th><th>Name</th><th>Class</th></tr></thead><tbody>` +
     plan.changes.map(x => `<tr><td>${x.mode}</td><td>${escapeHtml(x.record.admissionId)}</td><td>${escapeHtml(x.record.name)}</td><td>${escapeHtml(studentClassName(x.record))}</td></tr>`).join('') +
-    `</tbody></table></div><div class="staff-data-actions"><button type="button" id="applyStudentImport" class="btn-primary">Save imported students</button><button type="button" id="cancelStudentImport">Cancel</button></div>`;
+    `</tbody></table></div><div class="staff-data-actions"><button type="button" id="applyStudentImport" class="btn-primary">Save imported students</button><button type="button" id="cancelStudentImport" data-dismiss-ui>Cancel</button></div>`;
   document.getElementById('cancelStudentImport').onclick = clearStudentImport;
   document.getElementById('applyStudentImport').onclick = saveStudentImport;
   host.scrollIntoView({block:'start',behavior:'smooth'});
@@ -4010,7 +4010,7 @@ function renderStaff() {
         <p class="edit-staff-validation form-validation" role="alert"></p>
         <div class="edit-actions">
           <button class="save-btn save-staff" data-id="${st.id}">Update</button>
-          <button class="cancel-btn cancel-staff">Cancel</button>
+          <button class="cancel-btn cancel-staff" data-dismiss-ui>Cancel</button>
         </div>
       </div>`;
     }
@@ -4324,11 +4324,11 @@ function showStaffImportPreview(rows) {
   host.classList.remove('hidden');
   pendingStaffImport = null;
   if (result.errors.length) {
-    host.innerHTML = '<h3>Correct the file before importing</h3><p>No staff records have been changed.</p><ul>' + result.errors.slice(0, 30).map(error => '<li>' + escapeHtml(error) + '</li>').join('') + '</ul>' + (result.errors.length > 30 ? '<p>Showing the first 30 errors.</p>' : '') + '<button type="button" id="cancelStaffImport">Close</button>';
+    host.innerHTML = '<h3>Correct the file before importing</h3><p>No staff records have been changed.</p><ul>' + result.errors.slice(0, 30).map(error => '<li>' + escapeHtml(error) + '</li>').join('') + '</ul>' + (result.errors.length > 30 ? '<p>Showing the first 30 errors.</p>' : '') + '<button type="button" id="cancelStaffImport" data-dismiss-ui>Close</button>';
   } else {
     const added = result.changes.filter(c => !c.existingId).length;
     pendingStaffImport = { rows, snapshot: JSON.stringify(existing), token: sessionGeneration, schoolId: currentSchoolId, uid: currentUid };
-    host.innerHTML = '<h3>Review staff import</h3><p>' + added + ' new staff; ' + (result.changes.length-added) + ' existing staff to update. Blank cells preserve existing details.</p><div class="table-scroll"><table class="grades-table"><thead><tr><th>Action</th><th>Staff ID</th><th>Full name</th></tr></thead><tbody>' + result.changes.map(c => '<tr><td>' + (c.existingId ? 'Update' : 'Add') + '</td><td>' + escapeHtml(c.values.staffId) + '</td><td>' + escapeHtml(c.values.name) + '</td></tr>').join('') + '</tbody></table></div><div class="staff-data-actions"><button type="button" id="applyStaffImport" class="btn-primary">Save imported staff</button><button type="button" id="cancelStaffImport">Cancel</button></div>';
+    host.innerHTML = '<h3>Review staff import</h3><p>' + added + ' new staff; ' + (result.changes.length-added) + ' existing staff to update. Blank cells preserve existing details.</p><div class="table-scroll"><table class="grades-table"><thead><tr><th>Action</th><th>Staff ID</th><th>Full name</th></tr></thead><tbody>' + result.changes.map(c => '<tr><td>' + (c.existingId ? 'Update' : 'Add') + '</td><td>' + escapeHtml(c.values.staffId) + '</td><td>' + escapeHtml(c.values.name) + '</td></tr>').join('') + '</tbody></table></div><div class="staff-data-actions"><button type="button" id="applyStaffImport" class="btn-primary">Save imported staff</button><button type="button" id="cancelStaffImport" data-dismiss-ui>Cancel</button></div>';
     document.getElementById('applyStaffImport').addEventListener('click', async () => {
       const pending = pendingStaffImport;
       if (!pending || !canManageStaffWorkspace() || !isCurrentSession(pending.token, pending.uid, pending.schoolId)) { clearStaffImport(); return; }
@@ -8225,7 +8225,7 @@ function showPreparedReport(url, filename) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-labelledby', 'preparedReportTitle');
-  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><div class="prepared-report-actions"><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close>Close</button></div></div>';
+  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><div class="prepared-report-actions"><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close data-dismiss-ui>Close</button></div></div>';
   overlay.querySelector('.prepared-report-name').textContent = filename;
   const download = overlay.querySelector('[data-report-download]');
   download.href = url;
@@ -10894,7 +10894,7 @@ function renderManageTeachers() {
           <div class="teacher-assignment-list">${subjectChecks}</div>
           <div class="edit-actions">
             <button class="save-btn save-teacher-assignment" data-uid="${m.uid}">${actionLabel}</button>
-            ${m.status !== 'pending' ? '<button class="cancel-btn cancel-teacher-edit" data-uid="' + m.uid + '">Cancel</button>' : ''}
+            ${m.status !== 'pending' ? '<button class="cancel-btn cancel-teacher-edit" data-uid="' + m.uid + '" data-dismiss-ui>Cancel</button>' : ''}
             ${linkedStaff ? '<button class="cancel-btn unlink-teacher-staff" data-uid="' + m.uid + '">Unlink Staff</button>' : ''}
             ${m.status === 'pending' ? '<button class="cancel-btn reject-teacher-btn" data-uid="' + m.uid + '">Reject</button>' : disableButton + `<button class="remove-teacher-btn" data-uid="${m.uid}">Remove</button>`}
           </div>
@@ -12296,3 +12296,11 @@ const _renderStaffBulkV40=renderStaff;renderStaff=function(){_renderStaffBulkV40
 setTimeout(()=>{try{renderClasses();renderStudents();renderSubjects();renderStaff();}catch(e){console.warn('Bulk selection initial render:',e);}},0);
 
 document.getElementById('syncStatusBtn')?.addEventListener('click', () => document.getElementById('profileSyncCenterBtn')?.click());
+
+/* Collapse add forms without discarding entered values or submitting a save. */
+function closeSchoolHubAddForm(formId,toggleId){
+ const form=document.getElementById(formId),toggle=document.getElementById(toggleId);
+ if(!form||!toggle)return;
+ form.classList.add('hidden');toggle.textContent='Expand';toggle.setAttribute('aria-expanded','false');toggle.focus();
+}
+document.querySelectorAll('[data-close-form]').forEach(button=>button.addEventListener('click',()=>closeSchoolHubAddForm(button.dataset.closeForm,button.dataset.formToggle)));
