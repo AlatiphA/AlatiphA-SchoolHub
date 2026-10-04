@@ -45,13 +45,42 @@ function register({onCall,HttpsError,db,admin}){
   const next=(old,changes)=>({...old,...changes,revision:old.revision+1,updatedAt:now,updatedBy:uid});
   const base=()=>({createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid,revision:0});
   if(action==='createItem'||action==='createAsset'){
-   const asset=action==='createAsset',ref=recordRef(asset?'opAssets':'opItems'),code=text(d.code,asset?'Asset tag':'Stock code',60).toUpperCase(),lock=school.collection('opCodes').doc(hash((asset?'asset:':'item:')+code));
+   const asset=action==='createAsset',ref=recordRef(asset?'opAssets':'opItems');
+   let code,counterRef,nextNumber;
+   if(asset)code=text(d.code,'Asset tag',60).toUpperCase();
+   else{
+    // A shared school counter serializes automatic and legacy manual additions.
+    counterRef=school.collection('opCounters').doc('stockCodes');
+    const counter=await tx.get(counterRef);
+    const suffix=value=>{const match=/^SC-(\d+)$/i.exec(String(value||''));if(!match)return 0;const n=Number(match[1]);if(!Number.isSafeInteger(n)||n>=Number.MAX_SAFE_INTEGER)fail('failed-precondition','Stock code sequence needs administrator review.');return n;};
+    if(counter.exists){nextNumber=counter.data().nextNumber;if(!Number.isSafeInteger(nextNumber)||nextNumber<1||nextNumber>=Number.MAX_SAFE_INTEGER)fail('failed-precondition','Stock code sequence needs administrator review.');}
+    else{
+     const [items,codes]=await Promise.all([tx.get(school.collection('opItems')),tx.get(school.collection('opCodes'))]);
+     nextNumber=1;
+     for(const doc of items.docs)nextNumber=Math.max(nextNumber,suffix(doc.data().code)+1);
+     for(const doc of codes.docs)if(doc.data().kind!=='asset'){
+      // Legacy locks have no kind: include them conservatively, preserving reservations.
+      nextNumber=Math.max(nextNumber,suffix(doc.data().code)+1);
+     }
+    }
+    if(d.code==null||d.code===''){
+     let available=false;
+     for(let attempt=0;attempt<100;attempt++){
+      if(nextNumber>=Number.MAX_SAFE_INTEGER)fail('failed-precondition','Stock code sequence is exhausted.');
+      code='SC-'+String(nextNumber++).padStart(3,'0');
+      if(!(await tx.get(school.collection('opCodes').doc(hash('item:'+code)))).exists){available=true;break;}
+     }
+     if(!available)fail('failed-precondition','Stock code sequence needs administrator review.');
+    }else{code=text(d.code,'Stock code',60).toUpperCase();nextNumber=Math.max(nextNumber,suffix(code)+1);}
+    save(counterRef,{nextNumber,updatedAt:now});result.code=code;
+   }
+   const lock=school.collection('opCodes').doc(hash((asset?'asset:':'item:')+code));
    if((await tx.get(ref)).exists||(await tx.get(lock)).exists)fail('already-exists','That stock code or asset tag is already registered.');
    entityName=text(d.name,'Name');
    const common={...base(),code,name:entityName,category:text(d.category,'Category',100,true)};
    if(asset){const cost=number(d.cost,'Acquisition cost'),value=number(d.value,'Recorded value');if(value>cost)fail('invalid-argument','Recorded value cannot exceed acquisition cost.');save(ref,{...common,cost,value,purchasedOn:date(d.purchasedOn,true),location:text(d.location,'Location',160,true),custodian:text(d.custodian,'Custodian',160,true),condition:'good',status:'in_use'});}
    else save(ref,{...common,unit:text(d.unit,'Unit',30),quantityMilli:number(d.quantityMilli,'Opening stock'),minimumMilli:number(d.minimumMilli,'Minimum stock'),unitCost:number(d.unitCost,'Unit cost'),active:true});
-   save(lock,{id:recordId,code});summary=asset?'Asset registered':'Stock item registered';
+   save(lock,{id:recordId,code,kind:asset?'asset':'item'});summary=asset?'Asset registered':'Stock item registered';
   }else if(action==='editItem'){
    const ref=recordRef('opItems'),old=await read(tx,ref);revision(old,d);entityName=old.name;
    const active=d.active;if(typeof active!=='boolean')fail('invalid-argument','Choose active or archived.');

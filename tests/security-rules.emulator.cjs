@@ -29,7 +29,7 @@ before(async () => {
 });
 after(async()=>{if(env)await env.cleanup();});
 test('operations documents are server-owned even for heads; teachers cannot read financial registers',async()=>{
- for(const collectionName of ['opItems','opAssets','opLiabilities','opRequests','opHistory','opSettlements','opCodes','opReceipts']){
+ for(const collectionName of ['opItems','opAssets','opLiabilities','opRequests','opHistory','opSettlements','opCodes','opReceipts','opCounters']){
   const path='schools/s/'+collectionName+'/security-test';await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),path),{cost:100,createdBy:'teacher'}));
   for(const uid of ['head','teacher','disabled','outsider']){const db=env.authenticatedContext(uid).firestore();await assertFails(getDoc(doc(db,path)));await assertFails(setDoc(doc(db,path),{cost:0}));await assertFails(deleteDoc(doc(db,path)));}
  }
@@ -40,6 +40,11 @@ test('native operations transactions prevent concurrent overspending, duplicate 
  const req=(data,uid='head')=>({auth:{uid},data:{expectedUid:uid,expectedSchoolId:'s',...data}});
  try{
   await h.updateSchoolOperations(req({requestId:'native-item-01',id:'native-stock-01',action:'createItem',code:'NATIVE-BOOK',name:'Synthetic books',unit:'pieces',quantityMilli:5000,minimumMilli:1000,unitCost:100}));
+  const autoRequests=[1,2,3].map(i=>req({requestId:'native-auto-stock-0'+i,action:'createItem',name:'Synthetic auto '+i,unit:'pieces',quantityMilli:0,minimumMilli:0,unitCost:0}));
+  const autoResults=await Promise.all(autoRequests.map(r=>h.updateSchoolOperations(r)));
+  assert.deepEqual(autoResults.map(x=>x.code).sort(),['SC-001','SC-002','SC-003']);
+  assert.deepEqual(await h.updateSchoolOperations(autoRequests[0]),autoResults[0]);
+  assert.equal((await db.doc('schools/s/opCounters/stockCodes').get()).data().nextNumber,4);
   const outcomes=await Promise.allSettled([1,2].map(i=>h.updateSchoolOperations(req({requestId:'native-issue-0'+i,action:'issue',id:'native-stock-01',revision:0,quantityMilli:3000,reason:'Synthetic issue'}))));assert.equal(outcomes.filter(x=>x.status==='fulfilled').length,1);
   await h.updateSchoolOperations(req({requestId:'native-request-01',action:'requestStock',id:'native-stock-request',itemId:'native-stock-01',quantityMilli:1000,purpose:'Synthetic lesson'},'teacher'));
   const approval=req({requestId:'native-approve-01',action:'approveRequest',id:'native-stock-request',revision:0,reason:'Approved'});await h.updateSchoolOperations(approval);await h.updateSchoolOperations(approval);assert.equal((await db.doc('schools/s/opItems/native-stock-01').get()).data().quantityMilli,1000);
