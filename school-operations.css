@@ -60,3 +60,5 @@
 #app #view-operations .operations-search button{min-height:44px;flex-shrink:0;}
 #app #view-operations .operations-search input:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 #app #view-operations .operations-search-status{margin:10px 0;}
+
+.operations-draft-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border,#d9d4c4)}.operations-draft-row p{margin:4px 0;overflow-wrap:anywhere}.operations-draft-row button{flex-shrink:0}
