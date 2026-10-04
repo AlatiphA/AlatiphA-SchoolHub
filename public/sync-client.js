@@ -123,6 +123,11 @@ function recoverVisibleSession(source){
 // native Background Sync support or a second online event.
 window.addEventListener('focus',()=>recoverVisibleSession('app-focus'));
 window.addEventListener('pageshow',event=>{if(event.persisted)recoverVisibleSession('app-resume');});
+// Recovery gets a quicker retry. Healthy sessions and queued-write maintenance
+// retain the slower interval; hidden/offline pages are gated by recoverVisibleSession.
 setInterval(()=>{
-  if(typeof hasPendingSchoolHubSync==='function'&&(offlineAuthenticatedMode||hasPendingSchoolHubSync()))recoverVisibleSession('foreground-retry');
+  if(offlineAuthenticatedMode)recoverVisibleSession('foreground-retry');
+},10000);
+setInterval(()=>{
+  if(!offlineAuthenticatedMode&&typeof hasPendingSchoolHubSync==='function'&&hasPendingSchoolHubSync())recoverVisibleSession('foreground-retry');
 },60000);

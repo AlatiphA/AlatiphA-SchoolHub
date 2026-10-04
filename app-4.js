@@ -310,6 +310,7 @@ function updateOfflineModeBanner(message) {
   if (!banner) return;
   const checking = offlineReconnectInProgress && navigator.onLine !== false;
   const reconnecting = checking && performReconnectRecovery.startedOffline === true;
+  const waiting = navigator.onLine !== false && offlineAuthenticatedMode && !checking;
   const offline = navigator.onLine === false || (offlineAuthenticatedMode && !checking);
   const pending = pendingSyncCountForCurrentSchool();
   const statusButton = document.getElementById('syncStatusBtn');
@@ -319,13 +320,13 @@ function updateOfflineModeBanner(message) {
     const hydrationFailed = !!hydrationErrorText;
     const failed = writeFailed || hydrationFailed;
     statusButton.classList.toggle('hidden', !currentSchoolId || currentStatus !== 'active');
-    statusButton.dataset.state = offline ? 'offline' : checking ? 'pending' : failed ? 'error' : pending ? 'pending' : 'saved';
-    statusButton.textContent = offline ? (pending ? pending + ' pending' : 'Offline')
+    statusButton.dataset.state = waiting ? 'pending' : offline ? 'offline' : checking ? 'pending' : failed ? 'error' : pending ? 'pending' : 'saved';
+    statusButton.textContent = waiting ? 'Waiting to reconnect' : offline ? (pending ? pending + ' pending' : 'Offline')
       : checking ? 'Checking…'
       : !sessionDataReady ? 'Checking…'
       : hydrationFailed ? 'Sync issue'
       : writeFailed ? pending + ' unsynced' : pending ? pending + ' syncing' : 'Up to date';
-    statusButton.title = checking ? 'Checking your account and refreshing school data. Changes remain saved on this device until verified. Open Sync Center.' : hydrationFailed ? `Core school data check ended with an error: ${hydrationErrorText}. Open Sync Center to retry.`
+    statusButton.title = waiting ? 'A network connection is detected, but SchoolHub has not verified your account and cloud connection. Retrying about every 10 seconds while open; changes remain saved on this device. Open Sync Center.' : checking ? 'Checking your account and refreshing school data. Changes remain saved on this device until verified. Open Sync Center.' : hydrationFailed ? `Core school data check ended with an error: ${hydrationErrorText}. Open Sync Center to retry.`
       : pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
       : offline ? 'Offline. No pending record changes. Open Sync Center.' : 'No pending record changes on this device. Open Sync Center.';
     statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
@@ -337,6 +338,11 @@ function updateOfflineModeBanner(message) {
   if (checking) {
     if (title) title.textContent = reconnecting ? 'Reconnecting…' : 'Checking saved changes…';
     if (detail) detail.textContent = message || 'Checking your account and safely syncing pending changes.';
+  } else if (waiting) {
+    if (title) title.textContent = 'Waiting to reconnect';
+    if (detail) detail.textContent = message || (pending
+      ? `${pending} pending change${pending === 1 ? '' : 's'} saved on this device. Rechecking the connection and your account about every 10 seconds while open.`
+      : 'A network connection is detected. SchoolHub is rechecking its cloud connection and your account about every 10 seconds while open.');
   } else if (offline) {
     if (title) title.textContent = 'Offline Mode';
     if (detail) detail.textContent = message || (pending
@@ -10584,7 +10590,7 @@ function renderCloudSyncStatus() {
   const last = localStorage.getItem(LAST_SYNCED_KEY);
   const lastText = last ? new Date(Number(last)).toLocaleString() : 'never';
   const email = firebase.auth().currentUser ? (firebase.auth().currentUser.email || '') : (currentUserData && currentUserData.email || '');
-  const modeText = navigator.onLine === false ? 'Offline mode' : offlineReconnectInProgress ? 'Checking account and school data' : offlineAuthenticatedMode ? 'Offline mode' : 'Cloud connected';
+  const modeText = navigator.onLine === false ? 'Offline mode' : offlineReconnectInProgress ? 'Checking account and school data' : offlineAuthenticatedMode ? 'Waiting to reconnect' : 'Cloud connected';
   wrap.innerHTML = `<p class="hint">Signed in as ${escapeHtml(email)} (${escapeHtml(currentRole)}). ${escapeHtml(modeText)}. Last synced: ${lastText}. Photos, signatures, and the school logo synchronize through Firebase Storage when online.</p>`;
   btn.classList.toggle('hidden', navigator.onLine === false || offlineAuthenticatedMode);
   if (joinCodeWrap) {

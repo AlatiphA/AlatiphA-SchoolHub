@@ -78,3 +78,10 @@ test('healthy expired desktop verification is marked as a routine check and stil
 test('offline boundary marks recovery as reconnecting before account verification',async()=>{
  const f=fixture();await f.c.runSchoolHubBackgroundSync('online');assert.equal(f.c.performReconnectRecovery.startedOffline,true);assert.equal(f.reads(),1);
 });
+
+test('repeated fast retries share in-flight verification and never upload early',async()=>{
+ const f=fixture();let release;f.user.getIdToken=()=>new Promise(r=>release=r);
+ const retries=Array.from({length:4},()=>f.c.runSchoolHubBackgroundSync('foreground-retry'));
+ assert.equal(f.writes.length,0);assert.equal(f.reads(),0);release();await Promise.all(retries);
+ assert.equal(f.reads(),1);assert.equal(f.writes.filter(x=>x==='primary').length,1);assert.equal(f.c.offlineAuthenticatedMode,false);
+});
