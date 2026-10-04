@@ -24,7 +24,14 @@ const required = [
   'FIS pending saves &amp; confirmed balances',
   'Does SchoolHub use Background Sync?',
   'Mobile tables &amp; horizontal scrolling',
-  'Recommended workflow &amp; key reminders'
+  'Recommended workflow &amp; key reminders',
+  'Save draft &amp; add another',
+  'Saved request drafts',
+  'Waiting to reconnect',
+  'six subject results are complete',
+  '15 seconds',
+  'My Details and stock request drafts are not submitted automatically'
+
 ];
 
 test('standalone FAQ covers current auth, FIS, PWA and mobile-table features', () => {
@@ -44,6 +51,8 @@ test('root and public index keep matching inline FAQ content', () => {
   const extract = html => html.match(/<template id="inlineDocTemplateFaq">([\s\S]*?)<\/template>/)?.[1];
   assert.ok(extract(index));
   assert.equal(extract(publicIndex), extract(index));
+  const standalone=faq.match(/<div class="standalone-doc-body">([\s\S]*?)<\/div>\s*<footer/)?.[1];
+  assert.equal(extract(index).trim(),standalone.trim());
 });
 
 test('FAQ preserves important existing help topics and support links', () => {

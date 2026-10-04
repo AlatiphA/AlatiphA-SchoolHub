@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const CACHE_NAME = 'schoolhub-cache-v40-operations-refresh-stability-1';
+const CACHE_NAME = 'schoolhub-cache-v40-faq-current-version-1';
 const APP_SHELL = ['./','./index.html','./faq.html','./privacy.html','./terms.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./offline-drafts.js','./staff-transfer.js','./staff-qualifications.js','./account-security.js','./fees.js','./school-operations.js','./live-class-sync.js','./school-operations.css','./sync-queue.js','./sync-client.js','./sync-worker.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
 const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
 const BACKGROUND_SYNC_TAG = 'schoolhub-pending-sync-v1';
