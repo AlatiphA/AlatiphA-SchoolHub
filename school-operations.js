@@ -177,13 +177,24 @@ function operationsOpenForm(action,recordId,paymentId){
  const overlay=document.createElement('div');overlay.id='operationsDialog';overlay.className='about-overlay';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label',title);
  overlay.innerHTML=`<div class="about-box operations-dialog"><h2>${esc(title)}</h2>${record?`<p>${esc(record.name||record.itemName||record.creditor)}</p>`:''}<form><div class="operations-form">${fields.map(f=>`<label>${esc(f.label)}${f.options?`<select name="${f.name}">${f.options.map(([v,l])=>`<option value="${esc(v)}" ${String(v)===String(f.value)?'selected':''}>${esc(l)}</option>`).join('')}</select>`:`<input name="${f.name}" type="${f.type==='date'?'date':'text'}" ${['quantity','money'].includes(f.type)?'inputmode="decimal"':''} maxlength="500" value="${esc(f.value)}" ${optional.has(f.name)?'':'required'}>`}</label>`).join('')}</div><p class="hint" data-status role="status"></p><div class="operations-toolbar"><button type="submit" class="btn-primary">Confirm save</button><button type="button" class="btn-secondary" data-close data-dismiss-ui>Close</button></div></form></div>`;
  document.body.append(overlay);const form=overlay.querySelector('form'),status=overlay.querySelector('[data-status]');overlay.querySelector('[data-close]').onclick=()=>overlay.remove();overlay.querySelector('input,select')?.focus();
+ const requestDraft=action==='requestStock';let draft=null;
+ if(requestDraft){
+  try{draft=SchoolHubDrafts.read('stock-request',s.uid,s.school);if(draft){for(const [key,value]of Object.entries(draft.values)){const control=form.elements.namedItem(key);if(control)control.value=value;}status.textContent='Draft restored. It has not been submitted.';}}catch(error){status.textContent=error.message;}
+  const saveDraft=()=>{if(!operationsActive(s))return;draft=SchoolHubDrafts.write('stock-request',s.uid,s.school,{values:Object.fromEntries(new FormData(form))});status.textContent='Draft saved on this device. Connect and confirm to send your request.';};
+  form.addEventListener('input',()=>{try{saveDraft();}catch(error){status.textContent='Draft could not be saved. Keep this form open. '+error.message;}});
+  const button=document.createElement('button');button.type='button';button.textContent='Save draft on this device';button.onclick=()=>{try{saveDraft();}catch(error){status.textContent=error.message;}};form.append(button);
+  const discard=document.createElement('button');discard.type='button';discard.textContent='Discard draft';discard.onclick=()=>{SchoolHubDrafts.remove('stock-request',s.uid,s.school);form.reset();status.textContent='Draft discarded.';};form.append(discard);
+ }
  form.onsubmit=async e=>{
   e.preventDefault();if(!operationsActive(s))return;const submit=form.querySelector('[type=submit]');if(submit.disabled)return;submit.disabled=true;
+  let slow,alreadyPending=false;
   try{
+   alreadyPending=requestDraft&&operationsQueueRead(operationsQueueKey(s)).some(x=>x.request.action==='requestStock');
+   if(requestDraft){SchoolHubDrafts.write('stock-request',s.uid,s.school,{values:Object.fromEntries(new FormData(form))});if(navigator.onLine===false||offlineAuthenticatedMode){status.textContent='Draft saved on this device. Reconnect and verify before sending the request.';return;}}
    const values=Object.fromEntries(new FormData(form));for(const f of fields){if(f.type==='money')values[f.name]=operationsMoney(values[f.name]);if(f.type==='quantity')values[f.name]=operationsQuantity(values[f.name],action==='adjust');}if(Object.hasOwn(values,'active'))values.active=values.active==='true';
    const id=values.id||(action==='requestStock'?'':recordId);if(id)values.id=id;const current=['receive','issue','adjust'].includes(action)?data.items.find(x=>x.id===id):record;if(current&&action!=='requestStock')values.revision=current.revision;if(paymentId)values.paymentId=paymentId;
-   status.textContent='Saving and confirming…';await operationsSubmit(action,values);if(!operationsActive(s))return;overlay.remove();await renderSchoolOperations();
-  }catch(error){status.textContent=error.message;}finally{submit.disabled=false;}
+   status.textContent='Saving and confirming…';slow=setTimeout(()=>{if(overlay.isConnected)status.textContent='Waiting for server confirmation. Keep the saved request; do not enter it again.';},25000);await operationsSubmit(action,values);if(!operationsActive(s))return;if(requestDraft)SchoolHubDrafts.remove('stock-request',s.uid,s.school);overlay.remove();await renderSchoolOperations();
+  }catch(error){let pendingRequest=false;try{pendingRequest=requestDraft&&!alreadyPending&&operationsQueueRead(operationsQueueKey(s)).some(x=>x.request.action==='requestStock');}catch(_){}if(pendingRequest){SchoolHubDrafts.remove('stock-request',s.uid,s.school);status.textContent='Request saved pending server confirmation. Use the pending request to retry; do not submit a new copy.';}else status.textContent=error.message;}finally{clearTimeout(slow);submit.disabled=false;}
  };
 }
 function operationsExport(data,tab){

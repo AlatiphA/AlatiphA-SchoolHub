@@ -1282,18 +1282,30 @@ async function openMyStaffProfile(){
   const status=dialog.querySelector('#myStaffProfileStatus'),form=dialog.querySelector('form');
   const fields=[['name','Full name','text'],['sex','Sex','select'],['dob','Date of birth','date'],['registeredNo','Registered No.','text'],['licenseNo','License No.','text'],['emisNo','EMIS No.','text'],['ssnitNo','SSNIT No.','text'],['ghanaCardId','Ghana Card ID','text'],['academicQualification','Academic qualification','qualification'],['professionalQualification','Professional qualification','qualification'],['bankBranch','Bank and branch','text'],['bankAccount','Bank account','text'],['phone','Phone','tel'],['email','Contact email','email']];
   try{
-    let loaded=await safetyCall('getMyStaffProfile',{});if(!valid())return;
+    let draft=SchoolHubDrafts.read('my-details',userId,schoolId),loaded;
+    if(navigator.onLine===false||offlineAuthenticatedMode){
+      if(!draft)throw Error('Connect once to open My Details and save a draft.');
+      loaded={staffRecordId:draft.staffRecordId,profile:{...draft.base}};
+    }else{loaded=await safetyCall('getMyStaffProfile',{});if(!valid())return;if(draft&&draft.staffRecordId!==loaded.staffRecordId)throw Error('Your Staff link changed. Keep the old draft and contact your Head Teacher before submitting.');}
+    let original={...loaded.profile};if(draft)original={...original,...draft.base};
     form.innerHTML=fields.map(([key,label,type])=>`<label>${label}${type==='qualification'?`<select name="${key}"><option value="">Select ${label}</option>${StaffQualifications.options(key).map(([value,text])=>`<option value="${escapeHtml(value)}">${escapeHtml(text)}</option>`).join('')}</select>`:type==='select'?`<select name="${key}"><option value="">Select</option><option value="M">Male</option><option value="F">Female</option></select>`:`<input name="${key}" type="${type}" maxlength="250" ${key==='name'?'required':''}>`}</label>`).join('')+'<p class="hint">School-managed details (read only)</p>'+[['staffId','Staff ID'],['role','Role'],['rank','Rank / Grade'],['notionalDate','Notional date'],['substantiveDate','Substantive date']].map(([key,label])=>`<label>${label}<input data-school-field="${key}" readonly></label>`).join('')+'<button class="btn-primary" type="submit">Save My Details</button>';
     const populate=()=>{fields.forEach(([key])=>{const control=form.elements.namedItem(key),value=loaded.profile[key]||'';control.querySelectorAll?.('[data-legacy]').forEach(option=>option.remove());if(StaffQualifications.choices[key]&&value&&!StaffQualifications.valid(key,value)){const option=document.createElement('option');option.value=value;option.textContent='Existing value: '+value+' (choose a listed qualification to correct it)';option.dataset.legacy='true';control.append(option);}control.value=value;});form.querySelectorAll('[data-school-field]').forEach(input=>{input.value=loaded.profile[input.dataset.schoolField]||'';});};
-    populate();status.textContent='You can edit your personal details below.';
+    populate();if(draft)fields.forEach(([key])=>{if(Object.hasOwn(draft.values,key))form.elements.namedItem(key).value=draft.values[key];});
+    const saveDraft=()=>{if(!valid())return;const values=Object.fromEntries(fields.map(([key])=>[key,form.elements.namedItem(key).value]));draft=SchoolHubDrafts.write('my-details',userId,schoolId,{values,base:original,staffRecordId:loaded.staffRecordId});status.textContent='Draft saved on this device. Connect and press Save My Details to submit it.';};
+    form.addEventListener('input',()=>{try{saveDraft();}catch(error){status.textContent='Draft could not be saved on this device. Keep this form open. '+error.message;}});
+    const draftBtn=document.createElement('button');draftBtn.type='button';draftBtn.textContent='Save draft on this device';draftBtn.className='btn-secondary';draftBtn.onclick=()=>{try{saveDraft();}catch(error){status.textContent=error.message;}};form.append(draftBtn);
+    const discardBtn=document.createElement('button');discardBtn.type='button';discardBtn.textContent='Discard draft';discardBtn.className='btn-secondary';discardBtn.onclick=()=>{SchoolHubDrafts.remove('my-details',userId,schoolId);draft=null;populate();original={...loaded.profile};status.textContent='Draft discarded.';};form.append(discardBtn);
+    status.textContent=draft?'Draft restored from this device. It has not been submitted.':'You can edit your personal details below.';
     form.onsubmit=async event=>{
       event.preventDefault();if(!valid())return;
-      const changes={},base={};fields.forEach(([key])=>{const raw=form.elements.namedItem(key).value;const value=StaffQualifications.choices[key]&&raw===(loaded.profile[key]||'')?raw:raw.trim();if(value!==(loaded.profile[key]||'')){changes[key]=value;base[key]=loaded.profile[key]||'';}});
+      const changes={},base={};fields.forEach(([key])=>{const raw=form.elements.namedItem(key).value;const value=StaffQualifications.choices[key]&&raw===(loaded.profile[key]||'')?raw:raw.trim();if(value!==(loaded.profile[key]||'')){changes[key]=value;base[key]=original[key]||'';}});
       if(!Object.keys(changes).length){status.textContent='No changes to save.';return;}
+      try{saveDraft();}catch(error){status.textContent='Could not save the draft. '+error.message;return;}if(navigator.onLine===false||offlineAuthenticatedMode){status.textContent='Draft saved on this device. Reconnect and verify your account before submitting.';return;}
+      const slow=setTimeout(()=>{if(valid())status.textContent='Confirmation is taking longer. Your draft is saved here; keep this form open until the request finishes.';},25000);
       const button=form.querySelector('[type="submit"]');Array.from(form.elements).forEach(input=>input.disabled=true);status.textContent='Saving…';
-      try{const result=await safetyCall('updateMyStaffProfile',{staffRecordId:loaded.staffRecordId,changes,base});if(!valid())return;loaded=result;populate();status.textContent='Your details have been updated. Your Head Teacher will see them after syncing.';}
+      try{const result=await safetyCall('updateMyStaffProfile',{staffRecordId:loaded.staffRecordId,changes,base});if(!valid())return;loaded=result;original={...loaded.profile};SchoolHubDrafts.remove('my-details',userId,schoolId);draft=null;populate();status.textContent='Confirmed by the server. Your details have been updated. Your Head Teacher will see them after syncing.';}
       catch(error){if(valid())status.textContent=error.message||'Could not save. Your entries are still here; reconnect and retry.';}
-      finally{if(valid()){Array.from(form.elements).forEach(input=>input.disabled=false);status.scrollIntoView({block:'nearest'});}}
+      finally{clearTimeout(slow);if(valid()){Array.from(form.elements).forEach(input=>input.disabled=false);status.scrollIntoView({block:'nearest'});}}
     };
   }catch(error){if(valid())status.textContent=error.message||'Unable to load your details.';}
 }
@@ -3044,9 +3056,25 @@ function renderStudents() {
       if(admissionId&&students.some(x=>x.id!==current.id&&String(x.admissionId||'').trim().toLowerCase()===admissionId.toLowerCase())){alert('Another student already uses this Student ID. Student IDs must be unique.');return;}
       const updated=Object.assign({},current,{name,dob,gender,admissionId,parentPhone:li.querySelector('.edit-student-phone').value.trim(),disability:li.querySelector('.edit-student-disability')?.value||'',guardianName:li.querySelector('.edit-student-guardian')?.value.trim()||'',houseGps:li.querySelector('.edit-student-house-gps')?.value.trim()||''});
       const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId,oldText=btn.textContent;btn.disabled=true;btn.textContent='Saving…';
-      try{if(FIREBASE_ENABLED&&currentSchoolId){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');await schoolRef().collection('students').doc(String(updated.id)).set(stripImagesForCloud('students',updated),{merge:true});if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
-        const latest=DB.get(KEYS.students,[]),pos=latest.findIndex(x=>x.id===updated.id);if(pos<0)throw new Error('Student details changed while saving. Please reopen the student.');latest[pos]=updated;DB.set(KEYS.students,latest,{skipCloudSync:true});auditAction('update','student',updated.id,`Updated student: ${updated.name}`);editingStudentId=null;renderStudents();renderClasses();
-      }catch(error){btn.disabled=false;btn.textContent=oldText;alert('Student changes were NOT saved. Existing details have been left unchanged.\n\n'+(error.message||error));}
+      let savedLocally=false;
+      try {
+        if(FIREBASE_ENABLED&&(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady))throw new Error('School data is still synchronizing. Please wait before saving.');
+        if(!isCurrentSession(token,userId,schoolId))return;
+        const latest=DB.get(KEYS.students,[]),pos=latest.findIndex(x=>x.id===updated.id);
+        if(pos<0)throw new Error('Student details changed while saving. Please reopen the student.');
+        if(!requireClassAccess(latest[pos].classId))return;
+        // Persist the edit and its durable outbox together. Cloud confirmation
+        // happens through the existing verified queue, never inside this form.
+        const next=latest.slice();next[pos]=Object.assign({},latest[pos],updated);
+        DB.set(KEYS.students,next);savedLocally=true;
+        editingStudentId=null;
+        auditAction('update','student',updated.id,`Updated student: ${updated.name}`);
+        renderStudents();renderClasses();
+      } catch(error) {
+        alert((savedLocally?'Student changes are saved on this device. Reopen the student list to view them.':'Student changes were NOT saved on this device. Keep the form open and retry.')+'\n\n'+(error.message||error));
+      } finally {
+        if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=oldText;}
+      }
     });
   });
   list.querySelectorAll('.del-student').forEach(btn => {
@@ -3078,16 +3106,19 @@ if (newStudentDob && newStudentAge) {
   newStudentDob.addEventListener('change', updateNewStudentAge);
 }
 
+const studentCreatePending = new Map();
 document.getElementById('addStudentBtn').addEventListener('click', async () => {
   const classId=document.getElementById('studentClassSelect').value;if(!classId){alert('Add a class first.');return;}if(!requireClassAccess(classId))return;
   const nameInput=document.getElementById('newStudentName'),dobInput=document.getElementById('newStudentDob'),validation=document.getElementById('addStudentValidation'),name=nameInput.value.trim(),dob=dobInput.value.trim();
   if(!name||!dob){validation.textContent=!name&&!dob?'Full name and Date of Birth are required before the student can be added.':(!name?'Full name is required before the student can be added.':'Date of Birth is required before the student can be added.');validation.classList.add('show');return;}
   validation.classList.remove('show');const gender=document.getElementById('newStudentGender').value;if(!gender){validation.textContent='Sex is required before the student can be added.';validation.classList.add('show');return;}
   const admissionId=document.getElementById('newStudentId').value.trim(),students=DB.get(KEYS.students,[]);if(admissionId&&students.some(x=>String(x.admissionId||'').trim().toLowerCase()===admissionId.toLowerCase())){validation.textContent='Another student already uses this Student ID. Student IDs must be unique.';validation.classList.add('show');return;}
-  const record={id:uid(),classId,name,dob,gender,admissionId,parentPhone:document.getElementById('newStudentPhone').value.trim(),disability:document.getElementById('newStudentDisability')?.value||'',guardianName:document.getElementById('newStudentGuardian')?.value.trim()||'',houseGps:document.getElementById('newStudentHouseGps')?.value.trim()||''};
+  const createKey=JSON.stringify([sessionGeneration,currentUid,currentSchoolId,classId]);
+  const createId=studentCreatePending.get(createKey)||uid();studentCreatePending.set(createKey,createId);
+  const record={id:createId,classId,name,dob,gender,admissionId,parentPhone:document.getElementById('newStudentPhone').value.trim(),disability:document.getElementById('newStudentDisability')?.value||'',guardianName:document.getElementById('newStudentGuardian')?.value.trim()||'',houseGps:document.getElementById('newStudentHouseGps')?.value.trim()||''};
   const btn=document.getElementById('addStudentBtn'),oldText=btn.textContent,token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;btn.disabled=true;btn.textContent='Saving…';
-  try{if(FIREBASE_ENABLED&&currentSchoolId){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');await schoolRef().collection('students').doc(String(record.id)).set(stripImagesForCloud('students',record));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
-    const latest=DB.get(KEYS.students,[]);latest.push(record);DB.set(KEYS.students,latest,{skipCloudSync:true});nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';renderStudents();renderClasses();addStudentForm.classList.add('hidden');toggleAddStudentBtn.textContent='Expand';toggleAddStudentBtn.setAttribute('aria-expanded','false');auditAction('create','student',record.id,`Added student: ${record.name}`);
+  try{const localOnly=FIREBASE_ENABLED&&(navigator.onLine===false||offlineAuthenticatedMode);if(FIREBASE_ENABLED&&(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady))throw new Error('School data is still synchronizing.');if(FIREBASE_ENABLED&&currentSchoolId&&!localOnly){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');await schoolRef().collection('students').doc(String(record.id)).set(stripImagesForCloud('students',record));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
+    recoverSyncJournal();const latest=DB.get(KEYS.students,[]),existing=latest.findIndex(x=>x.id===record.id);if(existing<0)latest.push(record);else latest[existing]=record;DB.set(KEYS.students,latest,{skipCloudSync:!localOnly});studentCreatePending.delete(createKey);document.getElementById('studentSearchInput').value='';nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';renderStudents();renderClasses();addStudentForm.classList.add('hidden');toggleAddStudentBtn.textContent='Expand';toggleAddStudentBtn.setAttribute('aria-expanded','false');auditAction('create','student',record.id,`Added student: ${record.name}`);
   }catch(error){alert('Student was NOT added to SchoolHub.\n\n'+(error.message||error));}finally{if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=oldText;}}
 });
 
@@ -3134,6 +3165,14 @@ async function bulkAddPeople(kind) {
   let saved = 0;
   button.disabled = true; textarea.disabled = true;
   try {
+    if(!staff&&FIREBASE_ENABLED&&(navigator.onLine===false||offlineAuthenticatedMode)){
+      if(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady)throw Error('School data is still synchronizing.');
+      recoverSyncJournal();const latest=DB.get(KEYS.students,[]),ids=new Set(latest.map(record=>record.id));
+      DB.set(KEYS.students,latest.concat(plan.items.filter(({record})=>!ids.has(record.id)).map(item=>item.record)));
+      saved=plan.items.length;plan.items.splice(0);textarea.value='';document.getElementById('studentSearchInput').value='';bulkAddPending.delete(pendingKey);
+      auditAction('import','students','',`Bulk added ${saved} students locally.`);
+      alert(`Saved ${saved} pupils on this device. Pending upload after account verification.`);return;
+    }
     while (plan.items.length) {
       if (!isCurrentSession(token, userId, schoolId)) return;
       // Each create checks a deletion marker. Stay within the rules' 20-read
@@ -3154,6 +3193,7 @@ async function bulkAddPeople(kind) {
       textarea.value = plan.items.map(item => item.line).join('\n');
     }
     bulkAddPending.delete(pendingKey);
+    if(!staff)document.getElementById('studentSearchInput').value='';
     auditAction('import', kind, '', `Bulk added ${saved} ${kind} records.`);
     alert(`Added ${saved} ${staff ? 'staff member(s)' : 'student(s)'} and saved to SchoolHub.`);
   } catch (error) {

@@ -9,8 +9,8 @@ function fixture(kind = 'students') {
   const input = {value:'', disabled:false}, button = {textContent:'Add All', disabled:false};
   nodes[kind === 'staff' ? 'bulkStaffInput' : 'bulkStudentInput'] = input;
   nodes[kind === 'staff' ? 'bulkAddStaffBtn' : 'bulkAddStudentsBtn'] = button;
-  nodes.studentClassSelect = {value:'class1'};
-  const ctx = {Map, Set, JSON, FIREBASE_ENABLED:true, sessionGeneration:1, currentUid:'head', currentSchoolId:'school', sessionDataReady:true, cloudHydrationInProgress:false,
+  nodes.studentClassSelect = {value:'class1'}; nodes.studentSearchInput={value:'Filter'};
+  const ctx = {Map, Set, JSON, FIREBASE_ENABLED:true,navigator:{onLine:true},offlineAuthenticatedMode:false,sessionReady:true,currentStatus:'active', sessionGeneration:1, currentUid:'head', currentSchoolId:'school', sessionDataReady:true, cloudHydrationInProgress:false,
     KEYS:{students:'students',staff:'staff'}, DB:{get:(key)=>data[key],set:(key,value)=>data[key]=value},
     document:{getElementById:id=>nodes[id]}, uid:()=>`id-${++sequence}`,
     requireHeadTeacher:()=>true, requireClassAccess:()=>true,
@@ -25,7 +25,7 @@ function fixture(kind = 'students') {
       batch.forEach(([path,record])=>cloud.set(path,record)); writes.push(batch);
       if (ctx.failAt === calls) throw Error('Acknowledgement lost');
       if (ctx.changeSessionAt === calls) ctx.sessionGeneration++;
-    }, setLastSyncedNow(){}, auditAction(){}, renderStudents(){}, renderClasses(){}, renderStaff(){}, alert:message=>alerts.push(message)};
+    }, recoverSyncJournal(){}, setLastSyncedNow(){}, auditAction(){}, renderStudents(){}, renderClasses(){}, renderStaff(){}, alert:message=>alerts.push(message)};
   vm.createContext(ctx);
   vm.runInContext(source.slice(source.indexOf('const bulkAddPending ='), source.indexOf("document.getElementById('bulkAddStudentsBtn').addEventListener",source.indexOf('const bulkAddPending ='))),ctx);
   return {ctx,data,input,button,alerts,writes,cloud,run:()=>ctx.bulkAddPeople(kind)};
@@ -34,6 +34,7 @@ test('one click adds 30 students, preserving IDs and clearing the input', async(
   const f=fixture(); f.input.value=Array.from({length:30},(_,i)=>`Student ${i}, 00${i}`).join('\n');
   await f.run(); assert.equal(f.data.students.length,30); assert.equal(f.writes.length,3);
   assert.equal(f.data.students[0].admissionId,'000'); assert.equal(f.input.value,''); assert.equal(f.button.disabled,false);
+  assert.equal(f.ctx.document.getElementById('studentSearchInput').value,'');
 });
 test('staff bulk add handles 65 records and defaults their role to Teacher', async()=>{
   const f=fixture('staff'); f.input.value=Array.from({length:65},(_,i)=>`Staff ${i}, 00${i}`).join('\n');
@@ -61,4 +62,11 @@ test('duplicate clicks cannot start another save, and session changes stop furth
 test('existing Student IDs are rejected without saving any part of the list',async()=>{
   const f=fixture(); f.data.students.push({id:'existing',admissionId:'ABC'}); f.input.value='Jane, abc\nJohn, new';
   await f.run(); assert.equal(f.writes.length,0); assert.equal(f.data.students.length,1);
+});
+
+test('offline bulk pupils save locally without network confirmation and show the full class',async()=>{
+ const f=fixture();f.ctx.navigator.onLine=false;f.data.students.push({id:'real',name:'Existing pupil'});f.input.value='Offline test, TEST-ID';await f.run();assert.equal(f.data.students.length,2);assert.equal(f.writes.length,0);assert.equal(f.input.value,'');assert.equal(f.ctx.document.getElementById('studentSearchInput').value,'');assert(f.alerts.some(x=>x.includes('Pending upload')));assert.equal(f.button.disabled,false);
+});
+test('offline bulk pupil creation refuses incomplete or disabled school sessions',async()=>{
+ for(const state of [{sessionReady:false},{currentStatus:'disabled'},{cloudHydrationInProgress:true}]){const f=fixture();f.ctx.navigator.onLine=false;Object.assign(f.ctx,state);f.input.value='Test';await f.run();assert.equal(f.data.students.length,0);assert.equal(f.input.value,'Test');assert.equal(f.button.disabled,false);}
 });

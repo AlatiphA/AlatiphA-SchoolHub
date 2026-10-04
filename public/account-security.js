@@ -63,10 +63,11 @@ async function openAccountSecurity(){
   if(pending){const field=dialog.querySelector('[name="newEmail"]');if(field)field.value=pending;status.textContent='Verification requested for '+pending+'. If the email did not arrive, resend the link.';}
   let busy=false;
   const perform=async(operation)=>{
-    if(busy||!valid())return;busy=true;dialog.dataset.busy='true';dialog.querySelectorAll('button,input').forEach(element=>element.disabled=true);status.textContent='Working…';
+    if(busy||!valid())return;if(navigator.onLine===false||offlineAuthenticatedMode){status.textContent='Connect and verify your account before changing login details. Passwords are never saved as offline drafts.';return;}busy=true;dialog.dataset.busy='true';dialog.querySelectorAll('button,input').forEach(element=>element.disabled=true);status.textContent='Working…';
+    const slow=setTimeout(()=>{if(valid())status.textContent='Still waiting for account confirmation. Do not submit another change. Passwords are not saved on this device.';},25000);
     try{if(navigator.onLine===false)throw Error('Connect to the internet. Credential changes cannot be saved offline.');const message=await operation();if(valid()){display();status.textContent=message;}}
     catch(error){if(valid())status.textContent=accountSecurityError(error);}
-    finally{dialog.querySelectorAll('input[type="password"]').forEach(input=>input.value='');busy=false;delete dialog.dataset.busy;if(valid())dialog.querySelectorAll('button,input').forEach(element=>element.disabled=false);}
+    finally{clearTimeout(slow);dialog.querySelectorAll('input[type="password"]').forEach(input=>input.value='');busy=false;delete dialog.dataset.busy;if(valid())dialog.querySelectorAll('button,input').forEach(element=>element.disabled=false);}
   };
   dialog.querySelector('#accountSecurityClose').onclick=()=>dialog.close();
   // Do not allow Escape to hide an in-flight credential change.
