@@ -384,6 +384,7 @@ function startCachedAuthenticatedSession(user, cached) {
 }
 
 function resetWorkspaceState() {
+  if (typeof stopLiveClassSync === 'function') stopLiveClassSync();
   syncErrors.clear();
   document.getElementById('preparedReportDialog')?.remove();
   if (preparedReportUrl) { URL.revokeObjectURL(preparedReportUrl); preparedReportUrl = null; }
@@ -10172,6 +10173,7 @@ function pullCloudData(sessionToken) {
         scheduleCloudPush(KEYS.subjects);
       }
       updateOfflineModeBanner();
+      if (typeof startLiveClassSync === 'function') startLiveClassSync();
     }
   });
 }

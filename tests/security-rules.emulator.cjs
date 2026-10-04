@@ -1,7 +1,7 @@
 const { test, before, after } = require('node:test');
 const { readFileSync } = require('node:fs');
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, getDoc, writeBatch, collection, getDocs, query, where, deleteDoc } = require('firebase/firestore');
+const { doc, setDoc, getDoc, writeBatch, collection, getDocs, query, where, deleteDoc, onSnapshot } = require('firebase/firestore');
 const { ref, uploadBytes, getBytes } = require('firebase/storage');
 let env;
 before(async () => {
@@ -224,3 +224,25 @@ test('atomic teacher lifecycle, concurrent approval, removal and rejoining prese
 });
 
 test('verified user cannot bypass server-owned email reconciliation but can edit display name',async()=>{const db=env.authenticatedContext('head',{email:'new@example.test',email_verified:true}).firestore();await assertFails(setDoc(doc(db,'users/head'),{email:'new@example.test'},{merge:true}));await assertSucceeds(setDoc(doc(db,'users/head'),{displayName:'Head Teacher'},{merge:true}));});
+
+
+test('native live class listeners deliver rename and confirmed deletion within existing permissions',async()=>{
+ const assert=require('node:assert/strict'),head=env.authenticatedContext('head').firestore(),teacher=env.authenticatedContext('teacher').firestore();
+ function watch(reference){
+  let latest,error;const waiting=[];
+  const unsubscribe=onSnapshot(reference,{includeMetadataChanges:true},snapshot=>{if(snapshot.metadata.fromCache||snapshot.metadata.hasPendingWrites)return;latest=snapshot;for(const w of [...waiting])if(w.predicate(snapshot)){waiting.splice(waiting.indexOf(w),1);clearTimeout(w.timer);w.resolve();}},e=>{error=e;waiting.splice(0).forEach(w=>{clearTimeout(w.timer);w.reject(e)});});
+  return {wait(predicate){if(error)return Promise.reject(error);if(latest&&predicate(latest))return Promise.resolve();return new Promise((resolve,reject)=>{const w={predicate,resolve,reject,timer:null};w.timer=setTimeout(()=>{const i=waiting.indexOf(w);if(i>=0)waiting.splice(i,1);reject(Error('Live snapshot timed out'));},15000);waiting.push(w);});},stop:unsubscribe};
+ }
+ const list=watch(collection(head,'schools/s/classes')),assigned=watch(doc(teacher,'schools/s/classes/c1')),markers=watch(query(collection(teacher,'schools/s/deletedRecords'),where('collection','==','classes')));
+ const hasName=name=>snapshot=>snapshot.docs.some(d=>d.id==='c1'&&d.data().name===name);
+ try{
+  await setDoc(doc(head,'schools/s/classes/c1'),{id:'c1',name:'Live class test'});
+  await Promise.all([list.wait(hasName('Live class test')),assigned.wait(d=>d.exists()&&d.data().name==='Live class test')]);
+  await setDoc(doc(head,'schools/s/classes/c1'),{id:'c1',name:'Remote live rename'});
+  await Promise.all([list.wait(hasName('Remote live rename')),assigned.wait(d=>d.exists()&&d.data().name==='Remote live rename')]);
+  const batch=writeBatch(head);batch.set(doc(head,'schools/s/deletedRecords/classes__c1'),{collection:'classes',id:'c1',version:'native-live-delete'});batch.delete(doc(head,'schools/s/classes/c1'));await batch.commit();
+  await Promise.all([list.wait(s=>!s.docs.some(d=>d.id==='c1')),assigned.wait(d=>!d.exists()),markers.wait(s=>s.docs.some(d=>d.data().id==='c1'&&d.data().version==='native-live-delete'))]);
+  await assertFails(getDocs(collection(teacher,'schools/s/classes')));
+  assert.equal((await getDoc(doc(head,'schools/s/classes/c1'))).exists(),false);
+ }finally{list.stop();assigned.stop();markers.stop();}
+});
