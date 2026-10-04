@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const code=fs.readFileSync('school-operations.js','utf8');
 function fixture(){
  const storage=new Map(),calls=[],c={console,crypto:webcrypto,currentUid:'u',currentSchoolId:'s',currentStatus:'active',sessionGeneration:1,sessionReady:true,sessionDataReady:true,offlineAuthenticatedMode:false,navigator:{onLine:true},isHeadTeacher:()=>true,FIREBASE_ENABLED:true,isCurrentSession:(g,u,s)=>g===c.sessionGeneration&&u===c.currentUid&&s===c.currentSchoolId,localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},document:{body:{},getElementById:()=>null,addEventListener(){}},MutationObserver:class{observe(){}},window:{},updateOfflineModeBanner(){},setTimeout,URL,Blob,safetyCall:async(name,d)=>calls.push({name,data:structuredClone(d)}),requestSchoolHubBackgroundSync:async()=>{}};
- vm.createContext(c);vm.runInContext(code,c);return {c,calls,storage};
+ vm.createContext(c);c.window.addEventListener=()=>{};c.setInterval=()=>{};vm.runInContext(code,c);return {c,calls,storage};
 }
 test('quantity and money parsing retains precision and rejects invalid inputs',()=>{
  const f=fixture();assert.equal(f.c.operationsQuantity('1.125'),1125);assert.equal(f.c.operationsQuantity('-1.5',true),-1500);assert.equal(f.c.operationsMoney('12.34'),1234);for(const v of ['1e2','NaN','Infinity','1.2345','-1'])assert.throws(()=>f.c.operationsQuantity(v));for(const v of ['1.234','-1','Infinity'])assert.throws(()=>f.c.operationsMoney(v));

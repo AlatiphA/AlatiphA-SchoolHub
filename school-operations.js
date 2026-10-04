@@ -8,6 +8,7 @@ function operationsCategoryOptions(current=''){
  return options;
 }
 function operationsSession(){return {uid:currentUid,school:currentSchoolId,generation:sessionGeneration,head:isHeadTeacher()};}
+function operationsContextMatches(s){return !!s&&s.uid&&s.school&&isCurrentSession(s.generation,s.uid,s.school)&&sessionReady&&currentStatus==='active'&&s.head===isHeadTeacher();}
 function operationsActive(s){return s.uid&&s.school&&isCurrentSession(s.generation,s.uid,s.school)&&sessionReady&&sessionDataReady&&currentStatus==='active'&&s.head===isHeadTeacher();}
 function operationsQueueKey(s=operationsSession()){return 'schoolhub_operations_queue_'+s.school+'_'+s.uid;}
 function operationsCacheKey(s){return 'schoolhub_operations_cache_'+s.school+'_'+s.uid+'_'+(s.head?'head':'teacher');}
@@ -51,23 +52,23 @@ async function operationsSubmit(action,data,stableRequestId){
   const pending=operationsQueueRead();if(pending.length)throw Error(pending[0].error||'Save is not yet confirmed. Your request is retained; retry it instead of entering it again.');
  }finally{operationsBusy=false;}
 }
-async function renderSchoolOperations(){
+async function renderSchoolOperations(quiet=false){
  const host=document.getElementById('operationsWrap'),s=operationsSession();if(!host)return;
- if(operationsStateContext&&!operationsActive(operationsStateContext)){operationsState=null;operationsStateContext=null;document.getElementById('operationsDialog')?.remove();host.replaceChildren();}
+ if(operationsStateContext&&!operationsContextMatches(operationsStateContext)){operationsState=null;operationsStateContext=null;document.getElementById('operationsDialog')?.remove();host.replaceChildren();}
  const load=++operationsLoad;
- if(!operationsActive(s)||!FIREBASE_ENABLED){host.textContent='Sign in to your active school to use stores and school property records.';return;}
+ if(!operationsActive(s)||!FIREBASE_ENABLED){if(FIREBASE_ENABLED&&operationsState&&operationsContextMatches(operationsStateContext)){const status=host.querySelector('[data-ops-status]');if(status)status.textContent='Checking school data. Saved records remain visible; actions resume after verification.';return;}host.textContent='Sign in to your active school to use stores and school property records.';return;}
  try{operationsQueueRead();}catch(e){host.textContent=e.message;return;}
  if(!s.head)localStorage.removeItem('schoolhub_operations_cache_'+s.school+'_'+s.uid+'_head');
- const key=operationsCacheKey(s),cached=localStorage.getItem(key);let data;
- try{if(cached){data=JSON.parse(cached);if(data.role!==(s.head?'headteacher':'teacher'))data=null;}}catch(_){}
+ const key=operationsCacheKey(s),cached=localStorage.getItem(key),retained=operationsState&&operationsContextMatches(operationsStateContext);let data=retained?operationsState:null;
+ try{if(!data&&cached){data=JSON.parse(cached);if(data.role!==(s.head?'headteacher':'teacher'))data=null;}}catch(_){}
  const current=()=>load===operationsLoad&&operationsActive(s);
- if(data){operationsState=data;operationsStateContext=s;operationsRender(data,s,host,true);}else host.textContent='Loading school operations…';
- if(navigator.onLine===false||offlineAuthenticatedMode){if(!data)host.textContent='Connect once to load the stock catalogue. Changes require a verified online account.';return;}
+ if(data){operationsState=data;operationsStateContext=s;if(!retained||!host.querySelector('[data-ops-status]'))operationsRender(data,s,host,true);else if(!quiet)host.querySelector('[data-ops-status]').textContent='Updating school operations… Saved records remain visible.';}else host.textContent='Loading school operations…';
+ if(navigator.onLine===false||offlineAuthenticatedMode){if(data){const status=host.querySelector('[data-ops-status]');if(status)status.textContent='Saved records shown. Connect and verify to refresh or submit.';}if(!data)host.textContent='Connect once to load the stock catalogue. Changes require a verified online account.';return;}
  try{
   await flushPendingSchoolOperationWrites();if(!current())return;
   data=await safetyCall('getSchoolOperations',{expectedUid:s.uid,expectedSchoolId:s.school});if(!current())return;
   if(data.role!==(s.head?'headteacher':'teacher')){localStorage.removeItem(key);operationsState=null;operationsStateContext=null;host.textContent='Your account role changed. Reopen SchoolHub to refresh your access.';return;}
-  localStorage.setItem(key,JSON.stringify(data));operationsState=data;operationsStateContext=s;operationsRender(data,s,host,false);
+  const changed=JSON.stringify(operationsState)!==JSON.stringify(data);localStorage.setItem(key,JSON.stringify(data));operationsState=data;operationsStateContext=s;if(changed||!host.querySelector('[data-ops-status]'))operationsRender(data,s,host,false);else host.querySelector('[data-ops-status]').textContent='Confirmed school records. Stock and payment changes require internet.';
  }catch(e){if(current()){if(!data)host.textContent=e.message||'Could not load school operations.';else host.querySelector('[data-ops-status]').textContent='Cached records shown. '+(e.message||'Reconnect to refresh.');}}
 }
 function operationsSearchMatches(text,query){
@@ -88,6 +89,7 @@ function operationsApplySearch(host,query){
 }
 function operationsRender(data,s,host,cached){
  const previousSearch=host.querySelector('[data-ops-search]'),query=previousSearch?.value||'';
+ const tablePositions=[...host.querySelectorAll('.operations-table-scroll')].map(node=>({left:node.scrollLeft,top:node.scrollTop}));
  const searchFocused=!!previousSearch&&document.activeElement===previousSearch;
  const selection=searchFocused?[previousSearch.selectionStart,previousSearch.selectionEnd]:null;
  const esc=escapeHtml,queue=operationsQueueRead(),tabs=s.head?[['stock','Stores & Inventory'],['requests','Stock Requests'],['assets','Assets'],['liabilities','Liabilities'],['history','History']]:[['stock','Stock Catalogue'],['requests','My Requests']];
@@ -106,6 +108,7 @@ function operationsRender(data,s,host,cached){
  ${s.head?`<section role="tabpanel" id="operations-assets" data-ops-panel="assets" ${selected!=='assets'?'hidden':''}><h3>Assets</h3>${button('createAsset','Register asset')}<p class="hint">Track furniture, equipment and other school property by asset tag, location and custodian. Recorded values are entered by the school.</p>${table(['Tag','Asset','Location','Custodian','Condition','Status','Recorded value','Actions'],data.assets.map(x=>[esc(x.code),esc(x.name),esc(x.location),esc(x.custodian),esc(x.condition),esc(x.status.replace('_',' ')),operationsCash(x.value),button('viewAsset','View',x.id)+button('editAsset','Edit',x.id)]))}</section>
  <section role="tabpanel" id="operations-liabilities" data-ops-panel="liabilities" ${selected!=='liabilities'?'hidden':''}><h3>Liabilities</h3>${button('createLiability','Add supplier bill / debt')}<p class="hint">Recording a payment updates this register; it does not transfer money.</p>${table(['Supplier / creditor','Description','Due','Amount owed','Paid','Balance','Actions'],liabilities.map(x=>[esc(x.creditor),esc(x.description),esc(x.dueOn)+(x.amount>x.paid&&x.dueOn<today?' · Overdue':''),operationsCash(x.amount),operationsCash(x.paid),operationsCash(x.amount-x.paid),button('viewLiability','View',x.id)+button('editLiability','Edit',x.id)+(x.amount>x.paid?button('settle','Record payment',x.id):'Settled')]))}</section>
  <section role="tabpanel" id="operations-history" data-ops-panel="history" ${selected!=='history'?'hidden':''}><h3>Recent History</h3><p class="hint">Latest 150 confirmed management events. Earlier history remains on the server.</p>${table(['Date','Action','Record','Quantity / amount','Reference','Actions'],data.history.map(x=>[esc(x.createdAt.slice(0,19).replace('T',' ')),esc(x.summary),esc(x.entityName),x.quantityMilli!==undefined?esc(operationsQty(x.quantityMilli)):x.amount!==undefined?operationsCash(x.amount):'—',esc(x.reason||''),button('viewHistory','View',x.id)+(x.action==='settle'?button('reverseSettlement','Reverse payment',x.entityId,`data-payment="${esc(x.paymentId)}"`):'')]))}</section>`:''}</div>`;
+ [...host.querySelectorAll('.operations-table-scroll')].forEach((node,i)=>{if(tablePositions[i]){node.scrollLeft=tablePositions[i].left;node.scrollTop=tablePositions[i].top;}});
  operationsRenderDrafts(s);
  const search=host.querySelector('[data-ops-search]');
  search.oninput=()=>{if(operationsActive(s))operationsApplySearch(host,search.value);};
@@ -136,7 +139,7 @@ function operationsRecordDetails(kind,record,head){
 }
 function operationsViewRecord(kind,recordId){
  const s=operationsSession(),data=operationsState;
- if(!operationsActive(s)||!data||(operationsStateContext&&!operationsActive(operationsStateContext)))return;
+ if(!operationsActive(s)||!data||(operationsStateContext&&!operationsContextMatches(operationsStateContext)))return;
  if(!s.head&&!['viewItem','viewRequest'].includes(kind))return;
  const collections={viewItem:'items',viewRequest:'requests',viewAsset:'assets',viewLiability:'liabilities',viewHistory:'history'};
  const record=(data[collections[kind]]||[]).find(x=>x.id===recordId);if(!record)return;
@@ -213,10 +216,23 @@ function operationsExport(data,tab){
  const headers=[...new Set(rows.flatMap(Object.keys))],cell=v=>{let text=v==null?'':typeof v==='object'?JSON.stringify(v):String(v);if(/^[=+\-@\t\r]/.test(text))text="'"+text;return '"'+text.replace(/"/g,'""')+'"';};
  const csv=[headers.map(cell).join(','),...rows.map(row=>headers.map(k=>cell(row[k])).join(','))].join('\r\n'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='SchoolHub-'+tab+'-'+new Date().toISOString().slice(0,10)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-new MutationObserver(()=>{if(!sessionReady||currentStatus!=='active'||(operationsStateContext&&!operationsActive(operationsStateContext))){document.getElementById('operationsDialog')?.remove();const host=document.getElementById('operationsWrap');if(host?.textContent)host.replaceChildren();operationsState=null;operationsStateContext=null;operationsLoad++;}}).observe(document.body,{attributes:true,attributeFilter:['class'],childList:true,subtree:true});
+new MutationObserver(()=>{if(!sessionReady||currentStatus!=='active'||(operationsStateContext&&!operationsContextMatches(operationsStateContext))){document.getElementById('operationsDialog')?.remove();const host=document.getElementById('operationsWrap');if(host?.textContent)host.replaceChildren();operationsState=null;operationsStateContext=null;operationsLoad++;}}).observe(document.body,{attributes:true,attributeFilter:['class'],childList:true,subtree:true});
 window.flushPendingSchoolOperationWrites=flushPendingSchoolOperationWrites;
 // The restored page can become ready before this script finishes downloading.
 document.addEventListener('DOMContentLoaded',()=>{
  const view=document.getElementById('view-operations');
  if(view&&!view.classList.contains('hidden')&&typeof sessionReady!=='undefined'&&sessionReady)renderSchoolOperations().catch(error=>console.warn('Operations restoration:',error));
 },{once:true});
+
+// Refresh this section only; background recovery retains its existing verification gates.
+let operationsVisibleRefresh=null;
+function operationsRefreshVisible(){
+ const view=document.getElementById('view-operations'),s=operationsSession();
+ if(document.visibilityState!=='visible'||!view||view.classList.contains('hidden')||!operationsActive(s)||navigator.onLine===false||offlineAuthenticatedMode||operationsBusy||document.getElementById('operationsDialog'))return Promise.resolve(false);
+ if(operationsVisibleRefresh&&operationsContextMatches(operationsVisibleRefresh.session))return operationsVisibleRefresh.promise;
+ const task={session:s};operationsVisibleRefresh=task;
+ task.promise=renderSchoolOperations(true).then(()=>true).catch(error=>{console.warn('Operations refresh:',error);return false;}).finally(()=>{if(operationsVisibleRefresh===task)operationsVisibleRefresh=null;});return task.promise;
+}
+document.addEventListener('visibilitychange',operationsRefreshVisible);
+window.addEventListener('focus',operationsRefreshVisible);
+setInterval(operationsRefreshVisible,15000);

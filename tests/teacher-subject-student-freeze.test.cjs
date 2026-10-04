@@ -16,6 +16,6 @@ assert(index.includes('Registered / EMIS number (optional)'));
 assert(ui.includes('#app #view-students .student-details-table :is(th,td):first-child'));
 assert(ui.includes('position:sticky;'));
 assert(ui.includes('left:0;'));
-assert(sw.includes('schoolhub-cache-v40-multiple-stock-drafts-1'));
+assert(sw.includes('schoolhub-cache-v40-operations-refresh-stability-1'));
 
 console.log('teacher identity, subject cleanup, and student freeze regression: PASS');
