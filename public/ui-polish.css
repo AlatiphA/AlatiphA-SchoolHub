@@ -711,3 +711,13 @@
  .my-staff-profile #myStaffProfileStatus{background:var(--surface-alt);color:var(--paper);}
 }
 @media screen{#app .edit-actions{flex-wrap:wrap;}}
+
+/* Header dismissals use their content width; footer dismissals retain a full row. */
+@media screen{
+ :is(#app,#operationsDialog,.about-overlay,.my-staff-profile) button[data-dismiss-ui="header"]{width:auto!important;max-width:100%!important;flex:0 0 auto!important;grid-column:auto;min-width:64px;min-height:48px!important;margin:0!important;padding:10px 14px!important;white-space:nowrap;}
+ #notificationCenterDialog .notification-center-head{flex:0 0 auto;align-items:flex-start;text-align:left;}
+ #notificationCenterDialog .notification-center-head>div{flex:1 1 auto;min-width:0;}
+ #notificationCenterDialog .notification-center-head :is(h2,p){overflow-wrap:anywhere;text-align:left;}
+ #notificationCenterDialog .notification-center-head h2{font-size:clamp(20px,5vw,28px);line-height:1.2;}
+ .inline-doc-footer{flex-wrap:wrap;}
+}
