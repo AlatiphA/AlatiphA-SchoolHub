@@ -3912,7 +3912,7 @@ function renderStudentDetailsTable() {
       '</tbody></table></div></div>';
   document.getElementById('toggleStudentTableBtn').onclick = () => { studentTableVisible=!studentTableVisible; renderStudentDetailsTable(); };
   panel.querySelectorAll('.table-view-student').forEach(b => b.onclick=()=>showStudentDetails(b.dataset.id));
-  panel.querySelectorAll('.table-edit-student').forEach(b => b.onclick=()=>{editingStudentId=b.dataset.id; renderStudents(); document.getElementById('studentList')?.scrollIntoView({behavior:'smooth'});});
+  panel.querySelectorAll('.table-edit-student').forEach(b => b.onclick=()=>{editingStudentId=b.dataset.id; renderStudents();});
 }
 
 function printDetailsTable(title, columns, records, valueFn) {
@@ -4083,7 +4083,7 @@ function renderStaff() {
     btn.addEventListener('click', () => showStaffDetails(btn.dataset.id));
   });
   list.querySelectorAll('.edit-staff').forEach(btn => {
-    btn.addEventListener('click', () => { editingStaffId = btn.dataset.id; renderStaff(); document.querySelector('.staff-editor-list')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+    btn.addEventListener('click', () => { editingStaffId = btn.dataset.id; renderStaff(); });
   });
   list.querySelectorAll('.cancel-staff').forEach(btn => {
     btn.addEventListener('click', () => { editingStaffId = null; renderStaff(); });

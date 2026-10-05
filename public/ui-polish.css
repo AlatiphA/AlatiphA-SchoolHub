@@ -721,3 +721,23 @@
  #notificationCenterDialog .notification-center-head h2{font-size:clamp(20px,5vw,28px);line-height:1.2;}
  .inline-doc-footer{flex-wrap:wrap;}
 }
+
+/* Existing record save handlers are presented inside a scrollable dialog. */
+@media screen{
+ #recordEditDialog{z-index:1100;padding:12px;box-sizing:border-box;}
+ #recordEditDialog .record-edit-box{box-sizing:border-box;width:min(640px,100%);max-height:calc(100dvh - 24px);overflow:auto;text-align:left;padding:24px;}
+ #recordEditDialog .record-edit-fields{list-style:none;margin:0;padding:0;}
+ #recordEditDialog .record-edit-fields>li{margin:0;padding:0;border:0;display:block;}
+ #recordEditDialog .edit-row{display:grid;gap:12px;margin:0;padding:0;width:100%;min-width:0;}
+ #recordEditDialog label{display:flex;flex-direction:column;gap:6px;margin:0;color:var(--muted);font-size:13px;}
+ #recordEditDialog :is(input,select){box-sizing:border-box;width:100%;max-width:100%;margin:0;padding:10px 12px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-alt);color:var(--paper);font:inherit;font-size:16px;}
+ #recordEditDialog .edit-actions{display:flex;flex-wrap:wrap;gap:8px;position:sticky;bottom:-24px;background:var(--surface);padding:12px 0;margin-top:6px;}
+ #recordEditDialog button{min-height:48px;border:1px solid var(--rule);border-radius:8px;padding:10px 16px;background:var(--surface-alt);color:var(--paper);font:inherit;cursor:pointer;}
+ #recordEditDialog .save-btn{flex:1 1 100%;background:var(--gold);color:var(--bg);font-weight:600;}
+ #recordEditDialog button[data-dismiss-ui]{width:100%;flex:1 0 100%;}
+ #recordEditDialog :is(input,select,button):focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+ #recordEditDialog .student-dob-age-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+ @media(max-width:420px){#recordEditDialog .record-edit-box{padding:18px;}#recordEditDialog .edit-actions{bottom:-18px;}#recordEditDialog .student-dob-age-grid{grid-template-columns:1fr;}}
+}
+
+@media screen{#recordEditDialog :is(.edit-photo-preview,.staff-signature-preview){max-width:100%;height:auto;max-height:140px;object-fit:contain;}}
