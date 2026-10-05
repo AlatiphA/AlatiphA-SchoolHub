@@ -4229,29 +4229,41 @@ document.getElementById('addStaffBtn').addEventListener('click', async () => {
   const role = document.getElementById('newStaffRole').value;
   const values = {};
   STAFF_FIELDS.forEach(f => { values[f.key] = document.getElementById('newStaff_' + f.key).value.trim(); });
-  const file = document.getElementById('newStaffSignature').files[0];
+  const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId,button=document.getElementById('addStaffBtn');
+  if(button.disabled)return;
+  if(FIREBASE_ENABLED&&!isActiveGuest()&&(!sessionReady||!sessionDataReady||cloudHydrationInProgress||currentStatus!=='active')){alert('School data is still synchronizing. Keep the form open and retry when ready.');return;}
+  let file=null;
   const existingStaff = DB.get(KEYS.staff, []).find(s => String(s.staffId || '').trim().toLowerCase() === staffIdValue.toLowerCase());
   if (existingStaff) {
     validation.textContent = `Staff ID ${staffIdValue} is already assigned to ${existingStaff.name || 'another staff member'}. Use a unique Staff ID.`;
     validation.classList.add('show'); staffIdInput.focus(); return;
   }
-  const staffId = uid(); const signaturePath = file ? schoolAssetPath(file, 'signatures', staffId) : ''; let signatureDataUrl = ''; let signatureUrl = '';
+  const staffId=uid();let signaturePath='',signatureDataUrl='',signatureUrl='',savedLocally=false;
+  const controls=[...addStaffForm.querySelectorAll('input,select,button')],disabled=controls.map(c=>c.disabled);controls.forEach(c=>c.disabled=true);button.textContent='Saving…';
   try {
+    SchoolHubStaffAddDraft.stash();file=await SchoolHubStaffAddDraft.file();
+    if(!isCurrentSession(token,userId,schoolId))throw Error('Your account changed. Reopen Add Staff.');
+    if(!requireHeadTeacher('manage staff'))return;
+    signaturePath=file?schoolAssetPath(file,'signatures',staffId):'';
     if (file) { signatureDataUrl = await fileToDataUrl(file); if (!isDataImage(signatureDataUrl)) throw new Error('The selected signature file is not a readable image.'); await cacheLocalImageWithMeta(imageCacheKey('staff', staffId), signatureDataUrl, { storagePath: signaturePath, sourceUrl: '', updatedAt: new Date().toISOString() }); }
+    if(!isCurrentSession(token,userId,schoolId))throw Error('Your account changed before saving.');
     const staffList = DB.get(KEYS.staff, []);
+    if(staffList.some(s=>String(s.staffId||'').trim().toLowerCase()===staffIdValue.toLowerCase()))throw Error('That Staff ID was added while you were choosing the signature. Review the staff list.');
     const record = Object.assign({ id: staffId, name, role, signature: signatureDataUrl, signatureUrl: '', signatureStoragePath: signaturePath }, values);
-    staffList.push(record); DB.set(KEYS.staff, staffList); auditAction('create', 'staff', record.id, `Added staff: ${record.name}`);
+    staffList.push(record); DB.set(KEYS.staff, staffList); savedLocally=true; auditAction('create', 'staff', record.id, `Added staff: ${record.name}`);
+    SchoolHubStaffAddDraft.clear();
     nameInput.value = ''; STAFF_FIELDS.forEach(f => { document.getElementById('newStaff_' + f.key).value = ''; }); document.getElementById('newStaffSignature').value = ''; validation.classList.remove('show');
     renderStaff();
     addStaffForm.classList.add('hidden'); toggleAddStaffBtn.textContent = 'Expand'; toggleAddStaffBtn.setAttribute('aria-expanded', 'false');
     if (file) {
       try {
-        signatureUrl = await uploadSchoolAsset(file, 'signatures', staffId); const latestStaff = DB.get(KEYS.staff, []); const latest = latestStaff.find(x => x.id === staffId); if (latest) latest.signatureUrl = signatureUrl || ''; DB.set(KEYS.staff, latestStaff);
-        await persistStaffSignature(staffId, signatureUrl || '', signaturePath); await upsertImageManifest('staff', staffId, { storagePath: signaturePath, sourceUrl: signatureUrl || '', storageUpdatedAt: new Date().toISOString() });
+        signatureUrl = await uploadSchoolAsset(file, 'signatures', staffId); if(!isCurrentSession(token,userId,schoolId))return; const latestStaff = DB.get(KEYS.staff, []); const latest = latestStaff.find(x => x.id === staffId); if (latest) latest.signatureUrl = signatureUrl || ''; DB.set(KEYS.staff, latestStaff);
+        await persistStaffSignature(staffId, signatureUrl || '', signaturePath); if(!isCurrentSession(token,userId,schoolId))return; await upsertImageManifest('staff', staffId, { storagePath: signaturePath, sourceUrl: signatureUrl || '', storageUpdatedAt: new Date().toISOString() });
       } catch (cloudError) { console.warn('New staff signature cloud backup pending:', cloudError); alert(`Staff member saved locally. Signature Firebase backup is pending.\n\n${cloudError.message || cloudError}`); }
     }
     renderStaff();
-  } catch (err) { alert('Could not save the staff member: ' + (err.message || err)); }
+  } catch (err) { alert((savedLocally?'The staff member is saved on this device, but the form could not finish. Check the staff list before adding another copy. ':'The staff member was not saved. Your entered details are retained. ')+(err.message||err)); }
+  finally { if(isCurrentSession(token,userId,schoolId)){controls.forEach((c,i)=>c.disabled=disabled[i]);button.textContent='Add Staff';} }
 });
 
 
