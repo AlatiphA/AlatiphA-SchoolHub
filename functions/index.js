@@ -296,3 +296,6 @@ if (schoolOperationsModule) Object.assign(exports,schoolOperationsModule.registe
 
 const accountSecurityModule = require('./account-security');
 if (accountSecurityModule) Object.assign(exports, accountSecurityModule.register({onCall,HttpsError,db,admin}));
+
+const weeklySupervisionModule = require('./weekly-supervision');
+if (weeklySupervisionModule) Object.assign(exports,weeklySupervisionModule.register({onCall,HttpsError,db}));

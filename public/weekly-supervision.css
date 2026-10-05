@@ -1,0 +1,24 @@
+#supervisionWrap .supervision-tools{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:12px}
+#supervisionWrap label{display:flex;flex-direction:column;gap:6px}
+.supervision-table-scroll{overflow:auto;max-height:65vh;border:1px solid var(--rule);border-radius:12px}
+.supervision-table{border-collapse:separate;border-spacing:0;width:100%;min-width:850px;text-align:left}
+.supervision-table :is(th,td){padding:12px;border-bottom:1px solid var(--rule);background:var(--surface);vertical-align:top}
+.supervision-table th{position:sticky;top:0;z-index:2;background:var(--surface-alt)}
+.supervision-table :is(th,td):first-child{position:sticky;left:0;min-width:140px;max-width:190px;z-index:1}
+.supervision-table th:first-child{z-index:3}.supervision-table td:last-child{white-space:nowrap}.supervision-table button{margin-right:6px}
+body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:0;z-index:20000;background:#0008;display:flex;align-items:center;justify-content:center;padding:16px}
+.supervision-box{box-sizing:border-box;display:flex;flex-direction:column;width:min(850px,100%);max-height:90dvh;background:var(--surface);color:var(--paper);border:1px solid var(--rule);border-radius:20px;padding:22px;gap:14px;overflow:hidden}
+.supervision-box h3{margin:0}.supervision-body{overflow:auto;min-height:0}.supervision-grid,.supervision-subject{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.supervision-box label{display:flex;flex-direction:column;gap:6px;font-size:14px;text-align:left}.supervision-box :is(input,select,textarea){box-sizing:border-box;width:100%;min-width:0;margin:0;padding:10px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-alt);color:var(--paper);font:inherit;font-size:16px}
+.supervision-box input[type=checkbox]{width:24px;height:24px}.supervision-box textarea{min-height:80px}.supervision-subject{border:1px solid var(--rule);border-radius:10px;padding:12px;margin-bottom:12px}
+.supervision-actions{display:flex;flex-wrap:wrap;gap:8px;flex-shrink:0}.supervision-actions button{flex:1 1 140px;min-height:48px}.supervision-detail{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid var(--rule);padding:10px 0}.supervision-detail strong{text-align:right;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:560px){.supervision-grid,.supervision-subject{grid-template-columns:1fr}.supervision-box{padding:16px}.supervision-detail{flex-direction:column;gap:4px}.supervision-detail strong{text-align:left}}
+
+:is(#supervisionWrap,.supervision-box) button{min-height:44px;padding:9px 14px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-alt);color:var(--paper);font:inherit;cursor:pointer}
+:is(#supervisionWrap,.supervision-box) button.btn-primary{background:var(--gold);color:var(--bg);font-weight:600}
+:is(#supervisionWrap,.supervision-box) button:disabled{opacity:.65;cursor:wait}
+:is(#supervisionWrap,.supervision-box) :is(button,input,select,textarea):focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+#supervisionWrap .supervision-tools input{font:inherit;padding:10px;border:1px solid var(--rule);border-radius:8px;background:var(--surface-alt);color:var(--paper)}
+.supervision-box .supervision-actions button{min-height:48px}
+
+.supervision-box label{margin:0;padding:0}.supervision-box form{margin:0}.supervision-box .hint{font-size:14px;line-height:1.5}

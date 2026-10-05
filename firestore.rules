@@ -145,6 +145,10 @@ service cloud.firestore {
         allow delete: if isHeadTeacher(schoolId);
       }
 
+      // Weekly supervision is managed by authenticated callable Functions.
+      match /weeklySupervision/{id} { allow read, write: if false; }
+      match /supervisionReceipts/{id} { allow read, write: if false; }
+      match /supervisionHistory/{id} { allow read, write: if false; }
       // Operations balances, settlements, requests and idempotency receipts are server-owned.
       match /{operationsCollection}/{recordId} {
         allow read, write: if operationsCollection in ['opItems','opAssets','opLiabilities','opRequests','opHistory','opSettlements','opCodes','opReceipts'] && false;

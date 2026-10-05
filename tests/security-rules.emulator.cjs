@@ -29,7 +29,7 @@ before(async () => {
 });
 after(async()=>{if(env)await env.cleanup();});
 test('operations documents are server-owned even for heads; teachers cannot read financial registers',async()=>{
- for(const collectionName of ['opItems','opAssets','opLiabilities','opRequests','opHistory','opSettlements','opCodes','opReceipts','opCounters']){
+ for(const collectionName of ['opItems','opAssets','opLiabilities','opRequests','opHistory','opSettlements','opCodes','opReceipts','opCounters','weeklySupervision','supervisionReceipts','supervisionHistory']){
   const path='schools/s/'+collectionName+'/security-test';await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),path),{cost:100,createdBy:'teacher'}));
   for(const uid of ['head','teacher','disabled','outsider']){const db=env.authenticatedContext(uid).firestore();await assertFails(getDoc(doc(db,path)));await assertFails(setDoc(doc(db,path),{cost:0}));await assertFails(deleteDoc(doc(db,path)));}
  }
@@ -250,4 +250,17 @@ test('native live class listeners deliver rename and confirmed deletion within e
   await assertFails(getDocs(collection(teacher,'schools/s/classes')));
   assert.equal((await getDoc(doc(head,'schools/s/classes/c1'))).exists(),false);
  }finally{list.stop();assigned.stop();markers.stop();}
+});
+test('native weekly supervision restricts feedback to linked staff and protects revisions and retries',async()=>{
+ const assert=require('node:assert/strict'),admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'supervision-server'),db=app.firestore();
+ const serverRequire=require('node:module').createRequire(require('node:path').resolve('functions/index.js')),{HttpsError}=serverRequire('firebase-functions/v2/https'),h=require('../functions/weekly-supervision').register({db,HttpsError,onCall:(_,fn)=>fn});
+ const req=(data,uid='head')=>({auth:{uid},data:{expectedUid:uid,expectedSchoolId:'s',...data}});
+ try{
+  await db.doc('schools/s/staff/weekly-native-staff').set({name:'Synthetic Teacher'});await db.doc('schools/s/subjects/weekly-math').set({name:'Mathematics'});await db.doc('schools/s/classes/weekly-native-class').set({name:'Synthetic Class'});await db.doc('users/weeklyTeacher').set({status:'active',role:'teacher',schoolId:'s',staffId:'weekly-native-staff'});
+  const value={requestId:'native-weekly-check',staffId:'weekly-native-staff',classId:'weekly-native-class',week:'2026-10-05',year:'2026/2027',term:'1',checkedOn:'2026-10-05',lessonReviewed:true,lessonStatus:'submitted',registerReviewed:true,registerStatus:'up_to_date',followUpStatus:'none',assessments:[{subjectId:'weekly-math',exercises:3,assessments:1,booksChecked:4,booksMarked:4}]};
+  const saved=await h.saveWeeklySupervision(req(value));assert.deepEqual(await h.saveWeeklySupervision(req(value)),saved);
+  assert.equal((await h.getWeeklySupervision(req({week:value.week},'weeklyTeacher'))).records[0].staffId,'weekly-native-staff');assert.deepEqual((await h.getWeeklySupervision(req({week:value.week},'teacher'))).records,[]);
+  await assert.rejects(h.saveWeeklySupervision(req({...value,requestId:'teacher-cannot-write'},'weeklyTeacher')),e=>e.code==='permission-denied');
+  const concurrent=await Promise.allSettled(['A','B'].map(feedback=>h.saveWeeklySupervision(req({...value,...saved,requestId:'native-weekly-edit-'+feedback,feedback}))));assert.equal(concurrent.filter(r=>r.status==='fulfilled').length,1);assert.equal(concurrent.find(r=>r.status==='rejected').reason.code,'aborted');
+ }finally{await app.delete();}
 });

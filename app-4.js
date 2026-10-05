@@ -903,7 +903,7 @@ function saveAttendanceTabState(mode) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['operations', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
+const views = ['operations', 'supervision', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
   if (!enforceGuestTrial()) return;
   // Never render role-sensitive views while an authenticated session is still
@@ -951,6 +951,7 @@ function showView(name) {
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
   if (name === 'billing') renderBilling();
+  if (name === 'supervision' && typeof renderWeeklySupervision === 'function') renderWeeklySupervision();
   if (name === 'operations') {
     if (typeof renderSchoolOperations === 'function') renderSchoolOperations();
     else document.getElementById('operationsWrap').textContent = 'Loading school operations…';
@@ -981,6 +982,7 @@ function refreshHeadTeacherSelect() {
 
 function sectionTitle(name) {
   if(name==='fees')return 'Fees & Receipts';
+  if(name==='supervision')return 'Weekly Supervision';
   if(name==='operations')return 'Stores, Assets & Liabilities';
   const titles = {
     setup: 'Setup', staff: 'Staff', classes: 'Classes', students: 'Students', subjects: 'Subjects',
@@ -1028,6 +1030,7 @@ const QUICK_ACCESS_CARDS = [
   { view: 'reports', title: 'Reports', description: 'Generate PDFs, CSV, and view statistics',
     icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="9" y2="17"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="15" y1="15" x2="15" y2="17"/>' },
   {view:'operations',title:'Stores, Assets & Liabilities',description:'School stock, property, supplier bills and stock requests',icon:'<path d="M3 7h18v14H3zM3 7l9-5 9 5M12 7v14"/>'},
+  {view:'supervision',title:'Weekly Supervision',description:'Lesson plans, exercises, register checks and teacher feedback',icon:'<path d="M4 4h16v16H4zM7 8h10M7 12h10M7 16h6"/>'},
   { view: 'billing', title: 'Billing & Credits', description: 'Buy and manage school report credits',
     icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 14h4"/><circle cx="17" cy="14" r="1"/>' },
   { view: 'activity', title: 'Activity Log', description: 'See who changed school data and when',
@@ -1042,7 +1045,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','activity','history'];
+  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','supervision','activity','history'];
   const cards = QUICK_ACCESS_CARDS.slice().sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view)).filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
