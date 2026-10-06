@@ -1723,6 +1723,7 @@ function showSystemHealth() {
   const dialog = document.getElementById('systemHealthDialog');
   if (!dialog) return;
   dialog.classList.remove('hidden');
+  document.getElementById('secureImageLinksWrap')?.classList.toggle('hidden', !isHeadTeacher());
   checkHealth();
 }
 function hideSystemHealth() {
@@ -1790,6 +1791,19 @@ if (syncCenterRecoverBtn) {
 document.getElementById('systemHealthCloseBtn').addEventListener('click', hideSystemHealth);
 document.getElementById('systemHealthDialog').addEventListener('click', e => { if (e.target.id === 'systemHealthDialog') hideSystemHealth(); });
 document.getElementById('systemHealthRefreshBtn').addEventListener('click', checkHealth);
+let imageLinksMaintenanceBusy=false;
+document.getElementById('secureImageLinksBtn').addEventListener('click',async()=>{
+ if(imageLinksMaintenanceBusy||!isHeadTeacher())return;
+ const status=document.getElementById('secureImageLinksStatus'),button=document.getElementById('secureImageLinksBtn');
+ if(navigator.onLine===false||offlineAuthenticatedMode){status.textContent='Reconnect and verify your school before securing old links.';return;}
+ if(!confirm('Revoke previously issued school image links? Updated SchoolHub keeps images available through signed-in access. Old app versions may need to reopen online. Downloaded copies cannot be recalled.'))return;
+ const generation=sessionGeneration,uid=currentUid,school=currentSchoolId;imageLinksMaintenanceBusy=true;button.disabled=true;
+ let cursor='',total=0,scanned=0;
+ try{do{if(!isCurrentSession(generation,uid,school)||!isHeadTeacher())throw Error('Your account or school changed.');status.textContent='Securing old image links…';const result=await safetyCall('revokeSchoolImageLinks',{expectedUid:uid,expectedSchoolId:school,cursor});if(!isCurrentSession(generation,uid,school))throw Error('Your account or school changed.');total+=result.revoked;scanned+=result.scanned;cursor=result.cursor||'';}while(cursor);
+ status.textContent='Complete: '+scanned+' image files checked; '+total+' files had old links revoked.';
+ }catch(error){status.textContent='Not complete. Some files may already be secured; retry to finish. '+(error.message||error);}finally{imageLinksMaintenanceBusy=false;button.disabled=false;}
+});
+
 
 document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async () => {
   const status = document.getElementById('aboutUpdateStatus');
@@ -8078,16 +8092,8 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
 
 async function storageRefToDataUrl(ref) {
   if (!ref) return '';
-  const meta = await ref.getMetadata();
-  const bytes = await ref.getBytes(10 * 1024 * 1024);
-  const mime = (meta && meta.contentType) || 'application/octet-stream';
-  const blob = new Blob([bytes], { type: mime });
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('Could not read image bytes.'));
-    reader.readAsDataURL(blob);
-  });
+  const result = await downloadCloudImageDataUrl({sourceUrl: 'gs://' + ref.bucket + '/' + ref.fullPath});
+  return result.data;
 }
 
 // jsPDF is deliberately fed PNG data URLs. Firebase Storage may contain JPG,
@@ -8140,37 +8146,26 @@ async function reportImageToDataUrl(source) {
     }
   }
 
-  // IMPORTANT: Firebase Storage getBytes() is used here instead of relying on
-  // a public download URL. The browser therefore reads the object through the
-  // authenticated Firebase Storage SDK and then normalizes it locally.
-  if (typeof firebase !== 'undefined' && firebase.storage) {
+  // Cloud images always pass current school, bucket and account checks.
+  if (!/^blob:/i.test(value)) {
     try {
-      const ref = /^https?:\/\//i.test(value)
-        ? firebase.storage().refFromURL(value)
-        : firebase.storage().ref().child(value.replace(/^\/+/, ''));
-      const data = await storageRefToDataUrl(ref);
-      if (data) return await normalizeReportImage(data);
+      const result = await downloadCloudImageDataUrl({
+        storagePath: /^(https?:|gs:)/i.test(value) ? '' : value.replace(/^\/+/, ''),
+        sourceUrl: /^(https?:|gs:)/i.test(value) ? value : ''
+      });
+      return result.data;
     } catch (err) {
-      console.warn('Firebase Storage report image read/normalize failed:', value, err);
+      console.warn('Authenticated report image read failed:', err);
+      return '';
     }
   }
-
-  // Backwards-compatible fallback for old blob/download URLs.
-  if (/^blob:/i.test(value) || /^https?:\/\//i.test(value)) {
-    try {
-      const response = await fetch(value, { mode: 'cors', credentials: 'omit' });
-      if (!response.ok) throw new Error(`Image request failed: ${response.status}`);
-      const blob = await response.blob();
-      const raw = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ''));
-        reader.onerror = () => reject(reader.error || new Error('Could not read image.'));
-        reader.readAsDataURL(blob);
-      });
-      return await normalizeReportImage(raw);
-    } catch (err) {
-      console.warn('Report image URL fallback failed:', err);
-    }
+  // Blob URLs refer to images already held locally by this page.
+  try {
+    const response = await fetch(value);
+    if (!response.ok) return '';
+    return await normalizeReportImage(await blobToDataUrlForSync(await response.blob()));
+  } catch (err) {
+    console.warn('Local report image read failed:', err);
   }
 
   return '';
@@ -8995,7 +8990,7 @@ function cacheLocalImageWithMeta(cacheKey, dataUrl, meta) {
         tx.objectStore(IMAGE_DB_STORE).put({
           dataUrl: value,
           storagePath: meta && meta.storagePath ? String(meta.storagePath) : '',
-          sourceUrl: meta && meta.sourceUrl ? String(meta.sourceUrl) : '',
+          sourceUrl: '',
           updatedAt: meta && meta.updatedAt ? String(meta.updatedAt) : '',
           cachedAt: Date.now()
         }, cacheKey);
@@ -9028,12 +9023,13 @@ async function cloudImageDescriptor(kind, id, storagePath, sourceUrl) {
   if (!storagePath && !sourceUrl) return null;
   let updatedAt = '';
   try {
-    const ref = storagePath ? storageRef(storagePath) : firebase.storage().refFromURL(sourceUrl);
+    const ref = SchoolHubPrivateImages.reference({storage:firebase.storage(),schoolId:currentSchoolId,storagePath:storagePath||'',legacyUrl:sourceUrl||''});
     const meta = await ref.getMetadata();
     updatedAt = meta && meta.updated ? String(meta.updated) : '';
     clearMissingCloudImage(kind, id);
     return { storagePath: storagePath || (meta && meta.fullPath ? meta.fullPath : ''), sourceUrl: sourceUrl || '', updatedAt, missing: false };
   } catch (e) {
+    if (e.code === 'storage/unauthorized' || e.code === 'storage/unauthenticated') throw e;
     const missing = isMissingStorageObjectError(e);
     if (missing) rememberMissingCloudImage(kind, id);
     return { storagePath: storagePath || '', sourceUrl: sourceUrl || '', updatedAt: '', missing };
@@ -9050,73 +9046,13 @@ async function blobToDataUrlForSync(blob) {
   });
 }
 
-async function fetchImageUrlForSync(url) {
-  if (!url) throw new Error('No download URL was available.');
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), 20000) : null;
-  try {
-    const response = await fetch(url, {
-      method: 'GET',
-      mode: 'cors',
-      credentials: 'omit',
-      cache: 'no-store',
-      signal: controller ? controller.signal : undefined
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText || ''}`.trim());
-    const blob = await response.blob();
-    if (!blob || !blob.size) throw new Error('Downloaded image is empty.');
-    const raw = await blobToDataUrlForSync(blob);
-    const normalized = await normalizeReportImage(raw);
-    if (!normalized) throw new Error(`Browser could not decode image (${blob.type || 'unknown MIME'}).`);
-    return normalized;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
-
 async function downloadCloudImageDataUrl(descriptor) {
-  const attempts = [];
-  const path = descriptor && descriptor.storagePath ? String(descriptor.storagePath) : '';
-  const suppliedUrl = descriptor && descriptor.sourceUrl ? String(descriptor.sourceUrl) : '';
-
-  // v34: Prefer a fresh Firebase download URL + ordinary CORS fetch. This
-  // avoids browser-specific failures in Storage getBytes(), while keeping the
-  // Storage rules unchanged. The SDK is retained as a fallback.
-  if (path && FIREBASE_ENABLED && firebase.storage) {
-    try {
-      const ref = storageRef(path);
-      const freshUrl = await ref.getDownloadURL();
-      const data = await fetchImageUrlForSync(freshUrl);
-      return { data, method: 'fresh-download-url', attempts };
-    } catch (e) {
-      attempts.push(`fresh-download-url: ${formatImageSyncError(e)}`);
-    }
-    try {
-      const ref = storageRef(path);
-      const bytes = await ref.getBytes(10 * 1024 * 1024);
-      const blob = new Blob([bytes], { type: 'application/octet-stream' });
-      const raw = await blobToDataUrlForSync(blob);
-      const data = await normalizeReportImage(raw);
-      if (!data) throw new Error('Browser could not decode Storage bytes.');
-      return { data, method: 'storage-sdk-bytes', attempts };
-    } catch (e) {
-      attempts.push(`storage-sdk-bytes: ${formatImageSyncError(e)}`);
-    }
-  }
-
-  if (suppliedUrl) {
-    try {
-      const data = await fetchImageUrlForSync(suppliedUrl);
-      return { data, method: 'manifest-download-url', attempts };
-    } catch (e) {
-      attempts.push(`manifest-download-url: ${formatImageSyncError(e)}`);
-    }
-  }
-
-  const message = attempts.length ? attempts.join(' | ') : 'No usable Storage path or download URL.';
-  const err = new Error(message);
-  err.syncAttempts = attempts;
-  throw err;
+ const generation=sessionGeneration,uid=currentUid,school=currentSchoolId;
+ const blob=await SchoolHubPrivateImages.read({storage:firebase.storage(),auth:firebase.auth(),schoolId:school,uid,storagePath:descriptor?.storagePath||'',legacyUrl:descriptor?.sourceUrl||'',isCurrent:()=>isCurrentSession(generation,uid,school)});
+ const raw=await blobToDataUrlForSync(blob),data=await normalizeReportImage(raw);
+ if(!isCurrentSession(generation,uid,school))throw new Error('The image session changed.');
+ if(!data)throw new Error('Browser could not decode the private image.');
+ return {data,method:'authenticated-storage',attempts:[]};
 }
 
 function formatImageSyncError(error) {
@@ -9171,7 +9107,7 @@ async function storageItemDescriptor(item) {
   if (!item) return null;
   try {
     const meta = await item.getMetadata();
-    const sourceUrl = await item.getDownloadURL();
+    const sourceUrl = '';
     return {
       storagePath: (meta && meta.fullPath) ? String(meta.fullPath) : String(item.fullPath || ''),
       sourceUrl: sourceUrl || '',
@@ -9259,7 +9195,7 @@ async function repairCloudImageMetadata(inventory) {
   let repaired = 0;
 
   for (const item of (inventory || [])) {
-    if (!item || !item.storagePath || !item.sourceUrl) continue;
+    if (!item || !item.storagePath) continue;
     try {
       if (item.kind === 'logo') {
         const snap = await schoolRef().get();
@@ -9411,7 +9347,7 @@ async function getCloudImageInventory(options) {
         try {
           const ref = storageRef(path);
           const meta = await ref.getMetadata();
-          const url = await ref.getDownloadURL();
+          const url = '';
           await upsertImageManifest('student', st.id, {
             classId: st.classId, storagePath: path, sourceUrl: url,
             storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
@@ -9426,7 +9362,7 @@ async function getCloudImageInventory(options) {
           try {
             const ref = storageRef(path);
             const meta = await ref.getMetadata();
-            const url = await ref.getDownloadURL();
+            const url = '';
             await upsertImageManifest('staff', st.id, {
               storagePath: path, sourceUrl: url,
               storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
@@ -9438,7 +9374,7 @@ async function getCloudImageInventory(options) {
       try {
         const ref = storageRef(logoPath);
         const meta = await ref.getMetadata();
-        const url = await ref.getDownloadURL();
+        const url = '';
         await upsertImageManifest('logo', 'school', {
           storagePath: logoPath, sourceUrl: url,
           storageUpdatedAt: meta && meta.updated ? String(meta.updated) : new Date().toISOString()
@@ -9576,7 +9512,7 @@ async function publishLocalImagesToCloud() {
     try {
       const ref = storageRef(storagePath);
       await ref.put(blob, { contentType: blob.type || 'image/png' });
-      const url = await ref.getDownloadURL();
+      const url = '';
       const meta = await ref.getMetadata();
       const updatedAt = meta && meta.updated ? String(meta.updated) : new Date().toISOString();
 
@@ -9695,12 +9631,11 @@ async function uploadSchoolAsset(file, kind, id) {
   const ref = storageRef(path);
   let lastError = null;
 
-  // v36: upload and download-URL generation are separate operations. A
-  // successful Storage PUT must not be reported as a failed image upload just
-  // because getDownloadURL briefly returns object-not-found on mobile.
+  // Retry the upload; private images are subsequently read by storagePath.
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await ref.put(file, { contentType: file.type || 'application/octet-stream' });
+      lastError = null;
       break;
     } catch (e) {
       lastError = e;
@@ -9708,20 +9643,8 @@ async function uploadSchoolAsset(file, kind, id) {
     }
   }
   if (lastError) throw lastError;
-
-  for (let attempt = 1; attempt <= 4; attempt++) {
-    try {
-      return await ref.getDownloadURL();
-    } catch (e) {
-      lastError = e;
-      if (attempt < 4) await new Promise(r => setTimeout(r, attempt * 700));
-    }
-  }
-
-  // The object is already in Storage. Return an empty URL and let Firestore
-  // keep the deterministic storagePath. Future sync can request a fresh URL.
-  console.warn('Storage upload succeeded but download URL is temporarily unavailable:', path, lastError);
   return '';
+
 }
 
 function persistStaffSignature(staffId, url, storagePath) {

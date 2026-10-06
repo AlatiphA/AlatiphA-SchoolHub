@@ -2,6 +2,12 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function noDownloadTokenWrite() {
+      return request.resource == null || (!('firebaseStorageDownloadTokens' in request.resource.metadata)
+        && (!('schoolhubPrivateTokenHash' in request.resource.metadata)
+          || (resource != null && request.resource.metadata.schoolhubPrivateTokenHash == resource.metadata.get('schoolhubPrivateTokenHash', ''))));
+    }
+
     function signedIn() {
       return request.auth != null;
     }
@@ -39,10 +45,10 @@ service firebase.storage {
           isHeadTeacher(schoolId)
           || isCurrentAssignedStudent(schoolId, fileName)
         );
-      allow write: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId)
+      allow write: if noDownloadTokenWrite() && (isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId)
         && classId in myUser().assignedClassIds
         && (!firestore.exists(/databases/(default)/documents/schools/$(schoolId)/students/$(fileName))
-          || isCurrentAssignedStudent(schoolId, fileName)));
+          || isCurrentAssignedStudent(schoolId, fileName))));
       allow delete: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId)
         && classId in myUser().assignedClassIds
         && (!firestore.exists(/databases/(default)/documents/schools/$(schoolId)/students/$(fileName))
@@ -59,7 +65,8 @@ service firebase.storage {
 
     match /schools/{schoolId}/{assetType}/{fileName} {
       allow read: if isMember(schoolId);
-      allow write, delete: if isHeadTeacher(schoolId);
+      allow write: if noDownloadTokenWrite() && isHeadTeacher(schoolId);
+      allow delete: if isHeadTeacher(schoolId);
     }
   }
 }

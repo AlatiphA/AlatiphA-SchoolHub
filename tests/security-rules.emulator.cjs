@@ -320,3 +320,37 @@ test('assigned pupils without photo manifests return missing without breaking te
  const snapshot=await assertSucceeds(getDoc(doc(teacher,target)));require('node:assert/strict').equal(snapshot.exists(),false);
  for(const uid of ['outsider','disabled','current-photo-teacher'])await assertFails(getDoc(doc(env.authenticatedContext(uid).firestore(),target)));
 });
+
+test('authenticated image reader survives token revocation and blocks former teachers and foreign schools',async()=>{
+ const assert=require('node:assert/strict'),admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit',storageBucket:'demo-schoolhub-audit.appspot.com'},'private-image-audit'),db=app.firestore();
+ const {initializeApp,deleteApp}=require('firebase/app'),{getAuth,connectAuthEmulator,signInWithEmailAndPassword}=require('firebase/auth'),{getStorage,connectStorageEmulator,getDownloadURL}=require('firebase/storage');
+ const uid='private-reader',email='private-reader@synthetic.example',password='Synthetic-private-123!',blob='schools/s/student-photos/c1/private-pupil';let client;
+ const originalStorageHost=process.env.STORAGE_EMULATOR_HOST;process.env.STORAGE_EMULATOR_HOST='http://'+process.env.FIREBASE_STORAGE_EMULATOR_HOST;
+ try{
+  await app.auth().createUser({uid,email,password,emailVerified:true});await db.doc('users/'+uid).set({schoolId:'s',role:'teacher',status:'active',assignedClassIds:['c1']});await db.doc('schools/s/students/private-pupil').set({id:'private-pupil',classId:'c1'});
+  const head=env.authenticatedContext('head').storage(),uploaded=await uploadBytes(ref(head,blob),new Uint8Array([1,2,3]),{contentType:'image/png'}),oldURL=await getDownloadURL(uploaded.ref);assert.equal((await fetch(oldURL)).status,200);
+  client=initializeApp({projectId:'demo-schoolhub-audit',apiKey:'demo-api-key',storageBucket:uploaded.ref.bucket},'private-image-client');const auth=getAuth(client);connectAuthEmulator(auth,'http://'+process.env.FIREBASE_AUTH_EMULATOR_HOST,{disableWarnings:true});await signInWithEmailAndPassword(auth,email,password);const storage=getStorage(client),[host,port]=process.env.FIREBASE_STORAGE_EMULATOR_HOST.split(':');connectStorageEmulator(storage,host,Number(port));
+  const compatStorage={ref:p=>ref(storage,p),refFromURL:u=>ref(storage,u)},images=require('../private-images'),options={storage:compatStorage,auth,uid,schoolId:'s',storagePath:blob,isCurrent:()=>true,endpoint:'http://'+process.env.FIREBASE_STORAGE_EMULATOR_HOST};
+  assert.equal((await images.read(options)).size,3);
+  const {HttpsError}=require('node:module').createRequire(require('node:path').resolve('functions/index.js'))('firebase-functions/v2/https');const h=require('../functions/private-images').register({db,admin:{storage:()=>({bucket:name=>app.storage().bucket(name||uploaded.ref.bucket)})},HttpsError,onCall:(_,fn)=>fn,onObjectFinalized:(_,fn)=>fn});
+  await assert.rejects(h.revokeSchoolImageLinks({auth:{uid},data:{expectedUid:uid,expectedSchoolId:'s'}}),e=>e.code==='permission-denied');
+  const result=await h.revokeSchoolImageLinks({auth:{uid:'head'},data:{expectedUid:'head',expectedSchoolId:'s'}});assert(result.revoked>=1,JSON.stringify(result));assert.equal((await fetch(oldURL)).status,403);assert.equal((await images.read(options)).size,3);
+  await db.doc('schools/s/students/private-pupil').update({classId:'c2'});await assert.rejects(images.read(options),/403/);await assert.rejects(images.read({...options,storagePath:'schools/other/student-photos/c1/private-pupil'}));
+  // The handler does not delete the file or alter its binary content.
+  assert.equal((await getBytes(ref(head,blob))).byteLength,3);
+ }finally{if(client)await deleteApp(client);await app.delete();if(originalStorageHost===undefined)delete process.env.STORAGE_EMULATOR_HOST;else process.env.STORAGE_EMULATOR_HOST=originalStorageHost;}
+});
+
+test('metadata protection revokes reintroduced tokens and prevents clients forging its marker',async()=>{
+ const assert=require('node:assert/strict'),{updateMetadata}=require('firebase/storage'),admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'private-metadata-audit');
+ const blob='schools/s/student-photos/c1/token-write-test',head=env.authenticatedContext('head').storage(),uploaded=await uploadBytes(ref(head,blob),new Uint8Array([1,2,3]),{contentType:'image/png'}),originalHost=process.env.STORAGE_EMULATOR_HOST;process.env.STORAGE_EMULATOR_HOST='http://'+process.env.FIREBASE_STORAGE_EMULATOR_HOST;
+ try{
+  await updateMetadata(ref(head,blob),{customMetadata:{firebaseStorageDownloadTokens:'synthetic-public-again'}});
+  const publicURL='http://'+process.env.FIREBASE_STORAGE_EMULATOR_HOST+'/v0/b/'+encodeURIComponent(uploaded.ref.bucket)+'/o/'+encodeURIComponent(blob)+'?alt=media&token=synthetic-public-again';assert.equal((await fetch(publicURL)).status,200);
+  const {HttpsError}=require('node:module').createRequire(require('node:path').resolve('functions/index.js'))('firebase-functions/v2/https'),h=require('../functions/private-images').register({db:app.firestore(),admin:{storage:()=>({bucket:name=>app.storage().bucket(name||uploaded.ref.bucket)})},HttpsError,onCall:(_,fn)=>fn,onObjectFinalized:(_,fn)=>fn,onObjectMetadataUpdated:(_,fn)=>fn});
+  const file=app.storage().bucket(uploaded.ref.bucket).file(blob),[meta]=await file.getMetadata(),event={data:{name:blob,bucket:uploaded.ref.bucket,generation:meta.generation}};await h.protectSchoolImageMetadata(event);assert.equal((await fetch(publicURL)).status,403);
+  // Replayed metadata protection is idempotent rather than triggering a token loop.
+  await h.protectSchoolImageMetadata(event);
+  await assertFails(updateMetadata(ref(head,blob),{customMetadata:{schoolhubPrivateTokenHash:'forged'}}));
+ }finally{await app.delete();if(originalHost===undefined)delete process.env.STORAGE_EMULATOR_HOST;else process.env.STORAGE_EMULATOR_HOST=originalHost;}
+});

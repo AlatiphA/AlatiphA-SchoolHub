@@ -299,3 +299,6 @@ if (accountSecurityModule) Object.assign(exports, accountSecurityModule.register
 
 const weeklySupervisionModule = require('./weekly-supervision');
 if (weeklySupervisionModule) Object.assign(exports,weeklySupervisionModule.register({onCall,HttpsError,db}));
+
+const privateImagesModule=require('./private-images');
+if(privateImagesModule){const {onObjectFinalized,onObjectMetadataUpdated}=require('firebase-functions/v2/storage');Object.assign(exports,privateImagesModule.register({db,admin,HttpsError,onCall,onObjectFinalized,onObjectMetadataUpdated}));}
