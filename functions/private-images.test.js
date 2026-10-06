@@ -7,3 +7,9 @@ test('a failed token mutation never reports completed maintenance',async()=>{con
 test('private image scopes exclude foreign service objects and traversal',()=>{assert(privatePath('schools/s/student-photos/c/p'));assert(!privatePath('exports/s/photo'));assert(!privatePath('schools/s/ledger/doc'));});
 
 test('metadata updates use the same private token protection as new uploads',async()=>{const f=fixture();await f.h.protectSchoolImageMetadata({data:{name:f.file.name,bucket:'bucket',generation:'1'}});assert.equal(f.writes.length,1);await f.h.protectSchoolImageMetadata({data:{name:f.file.name,bucket:'bucket',generation:'1'}});assert.equal(f.writes.length,1);});
+
+test('private image triggers match the production bucket region while callable retains client routing',()=>{
+ const options={};register({db:{},admin:{},HttpsError:Error,onCall:(opts,fn)=>{options.call=opts;return fn;},onObjectFinalized:(opts,fn)=>{options.upload=opts;return fn;},onObjectMetadataUpdated:(opts,fn)=>{options.metadata=opts;return fn;}});
+ assert.equal(options.call.region,'us-central1');
+ for(const entry of [options.upload,options.metadata]){assert.equal(entry.region,'africa-south1');assert.equal(entry.retry,true);}
+});

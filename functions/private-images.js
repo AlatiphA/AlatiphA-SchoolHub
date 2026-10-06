@@ -30,8 +30,8 @@ function register({db,admin,HttpsError,onCall,onObjectFinalized,onObjectMetadata
   const {name,bucket,generation}=event.data||{};if(!privatePath(name)||!bucket)return;
   const file=admin.storage().bucket(bucket).file(name);try{const [meta]=await file.getMetadata();if(String(meta.generation)!==String(generation))return;await revoke(file);}catch(e){if(Number(e.code)===404)return;throw e;}
  };
- const protectSchoolImageUpload=onObjectFinalized({region:'us-central1',retry:true},protect);
- const protectSchoolImageMetadata=onObjectMetadataUpdated?onObjectMetadataUpdated({region:'us-central1',retry:true},protect):undefined;
+ const protectSchoolImageUpload=onObjectFinalized({region:'africa-south1',retry:true},protect);
+ const protectSchoolImageMetadata=onObjectMetadataUpdated?onObjectMetadataUpdated({region:'africa-south1',retry:true},protect):undefined;
  return {revokeSchoolImageLinks,protectSchoolImageUpload,...(protectSchoolImageMetadata?{protectSchoolImageMetadata}:{})};
 }
 module.exports={register,revoke,privatePath};
