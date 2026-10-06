@@ -1114,7 +1114,7 @@ function tourSlidesForHeadTeacher() {
   },
   {
     "title": "10. Backups and rollover",
-    "body": "Use Setup → Backup & Restore to export a backup. Use Term History for a new term. Review promotions, repeats, completions and transfers in Academic Year Rollover; retain its year-end backup for recovery. Setup → Academic Year Rollover → Restore Year-End Backup is the emergency restore tool."
+    "body": "Use Setup → Backup & Restore to export a backup. Use Term History for a new term. Review promotions, repeats, completions and transfers in Academic Year Rollover; retain its year-end backup for recovery. Setup → Academic Year Rollover → Restore Year-End Backup is the emergency restore tool. Setup → Academic Year Rollover → Restore Year-End Backup is the emergency restore tool."
   },
   {
     "title": "You’re ready",

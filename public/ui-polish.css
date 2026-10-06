@@ -754,3 +754,9 @@
 #emailVerificationGate.hidden{display:none}
 
 .verification-box .btn-secondary{border:1px solid var(--rule);border-radius:8px;padding:10px 14px;background:var(--surface-alt);color:var(--paper);font:inherit;cursor:pointer}.verification-box button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* Complete guide is available throughout every role tour. */
+.tour-complete-guide{display:block;margin-top:14px;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;color:var(--paper);text-align:center;font-weight:600;line-height:1.4}
+.tour-complete-guide span{display:block;font-size:.75rem;font-weight:400;color:var(--muted)}
+.account-tools-grid .complete-guide-link{display:flex;flex-direction:column;justify-content:center;text-decoration:none;box-sizing:border-box}
+.complete-guide-link small{font-size:.75rem;color:var(--muted)}
