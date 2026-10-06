@@ -360,7 +360,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 </ol>
 
 <h3 id="backup-restore">4.3 Backup &amp; Restore</h3>
-<p>SchoolHub can export a school backup in JSON format. The <strong>Export Backup (.json)</strong> option provides an additional copy of important school information outside the application.</p>
+<p>SchoolHub can export a school backup in JSON format. The <strong>Export Backup (.json)</strong> option provides a copy of core school records outside the application. It excludes FIS, inventory, Weekly Supervision, notifications and cloud image files, so it is not a complete cloud disaster-recovery backup. Signed-in imports require the online Head Teacher and a matching school identity. Older unscoped backups need review in a separate guest test workspace. Import loads core records and queues supported changes; it does not automatically delete cloud records missing from the file.</p>
 
 <h3 id="pin-lock">4.4 PIN Lock</h3>
 <p>The optional PIN Lock provides an additional privacy screen on a device where SchoolHub may be accessible to other people.</p>

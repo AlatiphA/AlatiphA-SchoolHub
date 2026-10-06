@@ -38,7 +38,7 @@ service cloud.firestore {
     }
 
     // A student's image manifest may retain an older classId after promotion.
-    // Authorize by the student's CURRENT class as well as the manifest class.
+    // Authorize by the student's CURRENT class; an old class must not retain access.
     function hasCurrentStudent(schoolId, studentId) {
       return isActiveTeacher(schoolId)
         && studentId is string
@@ -287,14 +287,18 @@ service cloud.firestore {
       // school record. Teachers may manage manifests only for student photos
       // in their assigned classes. Head Teachers may manage all school assets.
       match /imageAssets/{assetId} {
+        // A pupil without a photo must return a missing document, not break the teacher sync.
+        allow get: if isActiveTeacher(schoolId)
+          && !exists(/databases/$(database)/documents/schools/$(schoolId)/imageAssets/$(assetId))
+          && assetId.matches('student__.+')
+          && hasCurrentStudent(schoolId, assetId.replace('^student__', ''));
         allow read: if isHeadTeacher(schoolId) || (isActiveTeacher(schoolId)
           && (
             resource.data.kind in ['logo','staff']
             || (
               resource.data.kind == 'student'
               && (
-                hasClass(schoolId, resource.data.classId)
-                || hasCurrentStudent(schoolId, resource.data.recordId)
+                hasCurrentStudent(schoolId, resource.data.recordId)
               )
             )
           ));
@@ -304,7 +308,10 @@ service cloud.firestore {
             isActiveTeacher(schoolId)
             && request.resource.data.kind == 'student'
             && request.resource.data.classId is string
+            && request.resource.data.recordId is string
             && hasClass(schoolId, request.resource.data.classId)
+            && (!exists(/databases/$(database)/documents/schools/$(schoolId)/students/$(request.resource.data.recordId))
+              || hasCurrentStudent(schoolId, request.resource.data.recordId))
           );
 
         allow update: if isHeadTeacher(schoolId)
@@ -325,8 +332,7 @@ service cloud.firestore {
             && resource.data.kind == 'student'
             && resource.data.recordId is string
             && (
-              hasClass(schoolId, resource.data.classId)
-              || hasCurrentStudent(schoolId, resource.data.recordId)
+              hasCurrentStudent(schoolId, resource.data.recordId)
             )
           );
       }

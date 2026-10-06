@@ -21,8 +21,8 @@ before(async () => {
       'schools/s/grades/g': {classId:'c1',entries:{}},
       'schools/s/attendance/a': {classId:'c1',entries:{}},
       'schools/s/remarks/r': {classId:'c1',entries:{}},
-      'schools/s/imageAssets/p2': {kind:'student',classId:'c2',sourceUrl:'private'},
-      'schools/s/imageAssets/p1': {kind:'student',classId:'c1'},
+      'schools/s/imageAssets/p2': {kind:'student',recordId:'p2',classId:'c2',sourceUrl:'private'},
+      'schools/s/imageAssets/p1': {kind:'student',recordId:'p1',classId:'c1'},
       'joinCodes/owned': {schoolId:'s'}
     })) await setDoc(doc(db,path),value);
   });
@@ -90,7 +90,8 @@ test('explicit head recovery removes a marker and restores a pupil atomically',a
 test('pupil photo manifests follow the same class permissions as photos',async()=>{
   const db=env.authenticatedContext('teacher').firestore();
   await assertFails(getDoc(doc(db,'schools/s/imageAssets/p2')));
-  await assertSucceeds(getDocs(query(collection(db,'schools/s/imageAssets'),where('kind','==','student'),where('classId','==','c1'))));
+  // The app reads manifests by the current accessible pupil IDs, not stale manifest classes.
+  await assertSucceeds(getDoc(doc(db,'schools/s/imageAssets/p1')));
 });
 test('storage enforces pupil class and head-only school assets',async()=>{
   const storage=env.authenticatedContext('teacher').storage(), bytes=new Uint8Array([1,2,3]);
@@ -273,4 +274,49 @@ test('new school and head membership require a verified Auth email, not client v
  await assertSucceeds(setDoc(doc(verified,'joinCodes/VERIFY-SCHOOL'),{schoolId:'verification-school'}));
  const member={schoolId:'verification-school',role:'headteacher',status:'active'};
  await assertFails(setDoc(doc(unverified,'users/'+uid),{...member,emailVerified:true}));await assertSucceeds(setDoc(doc(verified,'users/'+uid),member));
+});
+
+test('promoted pupil photo access follows current class; stale paths cannot grant former teachers access',async()=>{
+ const path='schools/s/imageAssets/student__moved-photo',blob='schools/s/student-photos/c1/moved-photo',bytes=new Uint8Array([1,2,3]);
+ await env.withSecurityRulesDisabled(async ctx=>{
+  const db=ctx.firestore();await setDoc(doc(db,'users/current-photo-teacher'),{schoolId:'s',role:'teacher',status:'active',assignedClassIds:['c2'],assignedSubjectIds:['math']});
+  await setDoc(doc(db,'schools/s/students/moved-photo'),{id:'moved-photo',classId:'c2'});
+  await setDoc(doc(db,path),{kind:'student',recordId:'moved-photo',classId:'c1',storagePath:blob});
+  await uploadBytes(ref(ctx.storage(),blob),bytes);
+ });
+ const former=env.authenticatedContext('teacher'),current=env.authenticatedContext('current-photo-teacher');
+ await assertFails(getDoc(doc(former.firestore(),path)));
+ await assertFails(getBytes(ref(former.storage(),blob)));
+ await assertFails(uploadBytes(ref(former.storage(),blob),bytes));
+ await assertFails(deleteDoc(doc(former.firestore(),path)));
+ await assertSucceeds(getDoc(doc(current.firestore(),path)));
+ await assertSucceeds(getBytes(ref(current.storage(),blob)));
+ for(const uid of ['outsider','disabled']){const ctx=env.authenticatedContext(uid);await assertFails(getDoc(doc(ctx.firestore(),path)));await assertFails(getBytes(ref(ctx.storage(),blob)));}
+});
+
+test('two-school record boundary blocks cross-school reads writes and deletes',async()=>{
+ const own=env.authenticatedContext('outsider').firestore(),foreign=env.authenticatedContext('head').firestore();
+ const records=['students/private-pupil','staff/private-staff','grades/private-grade','attendance/private-day','remarks/private-remark','imageAssets/private-photo','billing/account','billingTransactions/private-payment','feeCharges/private-charge','weeklySupervision/private-check','opItems/private-stock'];
+ await env.withSecurityRulesDisabled(async ctx=>{await setDoc(doc(ctx.firestore(),'schools/other'),{ownerUid:'outsider',profile:{schoolName:'Synthetic other school'}});for(const p of records)await setDoc(doc(ctx.firestore(),'schools/other/'+p),{classId:'other-class',kind:'student',recordId:'private-pupil',name:'Other school private fixture'});});
+ await assertSucceeds(getDoc(doc(own,'schools/other/students/private-pupil')));
+ for(const p of records){const target=doc(foreign,'schools/other/'+p);await assertFails(getDoc(target));await assertFails(setDoc(target,{classId:'c1',name:'tamper'}));await assertFails(deleteDoc(target));}
+ await assertFails(getDoc(doc(foreign,'users/outsider')));
+});
+test('protected callables reject changed school identity and foreign restore snapshots without writes',async()=>{
+ const assert=require('node:assert/strict'),admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'pilot-boundaries'),db=app.firestore(),{HttpsError}=require('node:module').createRequire(require('node:path').resolve('functions/index.js'))('firebase-functions/v2/https'),deps={db,admin,HttpsError,onCall:(_,fn)=>fn};
+ const r=data=>({auth:{uid:'head'},data:{expectedUid:'head',expectedSchoolId:'other',...data}});
+ try{
+  const op=require('../functions/school-operations').register(deps),weekly=require('../functions/weekly-supervision').register(deps),fees=require('../functions/fees').register(deps),safety=require('../functions/safety').register(deps);
+  for(const [fn,data] of [[op.getSchoolOperations,{}],[weekly.getWeeklySupervision,{week:'2026-10-05'}],[fees.getSchoolFees,{}],[safety.saveSchoolRecord,{field:'grades',key:'c1__Term 3__2026/2027',base:{},value:{}}]])await assert.rejects(fn(r(data)),e=>e.code==='failed-precondition');
+  const before=(await db.doc('schools/s').get()).data(),archives=(await db.collection('schools/s/yearRollovers').get()).size;
+  await assert.rejects(safety.applySchoolYearChange({auth:{uid:'head'},data:{mode:'restore',expectedYear:before.profile.currentYear,snapshot:{schoolId:'other',type:'academic-year-rollover',data:{students:[],settings:{schoolName:'Foreign'}}}}}),e=>e.code==='invalid-argument');
+  assert.deepEqual((await db.doc('schools/s').get()).data(),before);assert.equal((await db.collection('schools/s/yearRollovers').get()).size,archives);
+ }finally{await app.delete();}
+});
+
+test('assigned pupils without photo manifests return missing without breaking teacher synchronization',async()=>{
+ await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'schools/s/students/no-photo'),{id:'no-photo',classId:'c1'}));
+ const teacher=env.authenticatedContext('teacher').firestore(),target='schools/s/imageAssets/student__no-photo';
+ const snapshot=await assertSucceeds(getDoc(doc(teacher,target)));require('node:assert/strict').equal(snapshot.exists(),false);
+ for(const uid of ['outsider','disabled','current-photo-teacher'])await assertFails(getDoc(doc(env.authenticatedContext(uid).firestore(),target)));
 });

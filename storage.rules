@@ -37,11 +37,16 @@ service firebase.storage {
       allow read: if isMember(schoolId)
         && (
           isHeadTeacher(schoolId)
-          || classId in myUser().assignedClassIds
           || isCurrentAssignedStudent(schoolId, fileName)
         );
-      allow write: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId) && classId in myUser().assignedClassIds);
-      allow delete: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId) && classId in myUser().assignedClassIds);
+      allow write: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId)
+        && classId in myUser().assignedClassIds
+        && (!firestore.exists(/databases/(default)/documents/schools/$(schoolId)/students/$(fileName))
+          || isCurrentAssignedStudent(schoolId, fileName)));
+      allow delete: if isHeadTeacher(schoolId) || (isActiveTeacherForStorage(schoolId)
+        && classId in myUser().assignedClassIds
+        && (!firestore.exists(/databases/(default)/documents/schools/$(schoolId)/students/$(fileName))
+          || isCurrentAssignedStudent(schoolId, fileName)));
     }
 
     function isActiveTeacherForStorage(schoolId) {

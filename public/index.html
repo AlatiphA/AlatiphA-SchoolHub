@@ -12,10 +12,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-complete-guide-tour-1">
-<link rel="stylesheet" href="weekly-supervision.css?v=v40-complete-guide-tour-1">
-<link rel="stylesheet" href="school-operations.css?v=v40-complete-guide-tour-1">
-<link rel="stylesheet" href="ui-polish.css?v=v40-complete-guide-tour-1">
+<link rel="stylesheet" href="style-3.css?v=v40-pilot-safety-1">
+<link rel="stylesheet" href="weekly-supervision.css?v=v40-pilot-safety-1">
+<link rel="stylesheet" href="school-operations.css?v=v40-pilot-safety-1">
+<link rel="stylesheet" href="ui-polish.css?v=v40-pilot-safety-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
 <script>
@@ -299,11 +299,12 @@
 
     <div class="backup-section">
       <h3 class="subsection-title">Backup &amp; Restore</h3>
+      <p class="hint">Core school records only. This JSON excludes Fees &amp; Receipts, inventory, Weekly Supervision, notifications and cloud image files. It is not a complete cloud disaster-recovery backup. Import into a signed-in school requires an online Head Teacher and a matching school identity.</p>
       <button id="exportBackupBtn" class="btn-primary">Export Backup (.json)</button>
       <label>Import Backup
         <input type="file" id="importBackupInput" accept="application/json,.json">
       </label>
-      <p class="hint">Export saves everything — classes, students, subjects, grades, remarks and staff — to a file you can keep safe or move to another phone. Importing replaces all current data with the contents of that file, so keep a recent backup before you do.</p>
+      <p class="hint">Keep the exported file safe. Import loads the included core records locally and queues supported changes; it does not restore the excluded ledgers or automatically remove cloud records missing from the file.</p>
     </div>
 
     <div class="backup-section">
@@ -1047,7 +1048,7 @@
 
       <section class="inline-doc-section">
         <h2>Backup, recovery &amp; rollover</h2>
-        <details><summary>How do I create a backup?</summary><div class="inline-doc-answer"><p>Go to <strong>Setup → Backup &amp; Restore → Export Backup (.json)</strong>. Store the downloaded JSON file somewhere safe.</p></div></details>
+        <details><summary>How do I create a backup?</summary><div class="inline-doc-answer"><p>Go to <strong>Setup → Backup &amp; Restore → Export Backup (.json)</strong>. Store the downloaded JSON file somewhere safe. This is a <strong>core-record backup</strong>; it excludes FIS, inventory, Weekly Supervision, notifications and cloud image files. Import into a signed-in school requires the online Head Teacher and a matching school identity. Older files without a school identity must be reviewed in a separate guest test workspace. Import loads core records and queues supported changes; it is not a full cloud restore and does not automatically delete cloud records absent from the file.</p></div></details>
         <details><summary>Can SchoolHub recover missing students or staff?</summary><div class="inline-doc-answer"><p>Recovery tools can compare the current list with available browser snapshots/saved copies and cloud records. Recovery only works when the missing record exists in one of those sources.</p></div></details>
         <details><summary>How do I start a new term?</summary><div class="inline-doc-answer"><p>Use <strong>Term History</strong> to start the next term/year while preserving the school structure and historical records.</p></div></details>
         <details><summary>What is Academic Year Rollover?</summary><div class="inline-doc-answer"><p>At year end, the Head Teacher reviews each student as <strong>Promote</strong>, <strong>Repeat</strong>, <strong>Graduate/Complete</strong>, or <strong>Transfer/Leave</strong>. The rollover creates a year-end backup/archive and starts the new academic year at Term 1.</p></div></details>
@@ -1231,20 +1232,20 @@
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
-<script src="staff-qualifications.js?v=v40-complete-guide-tour-1"></script>
-<script src="account-security.js?v=v40-complete-guide-tour-1"></script>
-<script src="sync-queue.js?v=v40-complete-guide-tour-1"></script>
-<script src="sync-client.js?v=v40-complete-guide-tour-1"></script>
-<script src="offline-drafts.js?v=v40-complete-guide-tour-1"></script>
-<script src="app-4.js?v=v40-complete-guide-tour-1"></script>
-<script src="fees.js?v=v40-complete-guide-tour-1"></script>
-<script src="school-operations.js?v=v40-complete-guide-tour-1"></script>
-<script src="live-class-sync.js?v=v40-complete-guide-tour-1"></script>
+<script src="staff-qualifications.js?v=v40-pilot-safety-1"></script>
+<script src="account-security.js?v=v40-pilot-safety-1"></script>
+<script src="sync-queue.js?v=v40-pilot-safety-1"></script>
+<script src="sync-client.js?v=v40-pilot-safety-1"></script>
+<script src="offline-drafts.js?v=v40-pilot-safety-1"></script>
+<script src="app-4.js?v=v40-pilot-safety-1"></script>
+<script src="fees.js?v=v40-pilot-safety-1"></script>
+<script src="school-operations.js?v=v40-pilot-safety-1"></script>
+<script src="live-class-sync.js?v=v40-pilot-safety-1"></script>
 <script src="install.js"></script>
-<script src="record-edit-dialogs.js?v=v40-complete-guide-tour-1"></script>
-<script src="staff-add-draft.js?v=v40-complete-guide-tour-1"></script>
-<script src="weekly-supervision.js?v=v40-complete-guide-tour-1"></script>
+<script src="record-edit-dialogs.js?v=v40-pilot-safety-1"></script>
+<script src="staff-add-draft.js?v=v40-pilot-safety-1"></script>
+<script src="weekly-supervision.js?v=v40-pilot-safety-1"></script>
 <section id="emailVerificationGate" class="hidden"><div class="verification-box"><h1>Verify your email</h1><p>A verification email is required before you create or join a school.</p><strong id="verificationEmail"></strong><p id="verificationStatus" role="status"></p><button id="verificationCheckBtn" type="button" class="btn-primary">I have verified my email</button><button id="verificationResendBtn" type="button" class="btn-secondary">Resend verification email</button><button id="verificationLogoutBtn" type="button" class="btn-secondary">Sign out</button></div></section>
-<script src="email-verification.js?v=v40-complete-guide-tour-1"></script>
+<script src="email-verification.js?v=v40-pilot-safety-1"></script>
 </body>
 </html>

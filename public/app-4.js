@@ -2707,8 +2707,32 @@ if (restoreYearEndBackupBtn && restoreYearEndBackupInput) {
 
 
 /* ---------- Backup & Restore ---------- */
+function validateCoreBackupForImport(parsed, context) {
+  const object = value => value && typeof value === 'object' && !Array.isArray(value);
+  if (!object(parsed) || parsed.app !== 'AlatiphA SchoolHub' || !object(parsed.data)) throw new Error('Choose a valid AlatiphA SchoolHub core-record backup.');
+  if (parsed.type && parsed.type !== 'core-school-records') throw new Error('Use the dedicated recovery tool for this backup type.');
+  if (context.cloud) {
+    if (!context.head || !context.ready || !context.online || !context.schoolId) throw new Error('Restore requires the active Head Teacher with the school loaded online.');
+    if (!parsed.schoolId) throw new Error('This older backup has no school identity. Do not import it into a live school; review it in a separate guest test workspace.');
+    if (String(parsed.schoolId) !== String(context.schoolId)) throw new Error('This backup belongs to a different school.');
+  }
+  const arrays = ['classes','subjects','students','staff'];
+  for (const field of arrays) if (Object.hasOwn(parsed.data,field)) {
+    const rows=parsed.data[field];if (!Array.isArray(rows)) throw new Error('Invalid backup '+field+'.');
+    const ids=new Set();for(const row of rows){if(!object(row)||typeof row.id!=='string'||!row.id||row.id.includes('/')||ids.has(row.id))throw new Error('Invalid or duplicate record in '+field+'.');ids.add(row.id);}
+  }
+  for (const field of ['settings','grades','attendance','teacherAttendance','schoolCalendar','remarks']) if (Object.hasOwn(parsed.data,field) && !object(parsed.data[field])) throw new Error('Invalid backup '+field+'.');
+  if (!Object.keys(parsed.data).some(field=>[...arrays,'settings','grades','attendance','teacherAttendance','schoolCalendar','remarks'].includes(field))) throw new Error('No core school records found in this backup.');
+  return parsed.data;
+}
+
 document.getElementById('exportBackupBtn').addEventListener('click', () => {
+  if (!requireHeadTeacher('export a school backup')) return;
+  if (FIREBASE_ENABLED && !isActiveGuest() && (!sessionDataReady || cloudHydrationInProgress)) { alert('Wait for the school to finish loading before exporting.'); return; }
   const payload = {
+    type: 'core-school-records',
+    schoolId: isActiveGuest() ? null : currentSchoolId,
+    scope: 'Core school records only; excludes FIS, inventory, supervision, notifications and cloud image binaries.',
     app: 'AlatiphA SchoolHub',
     exportedAt: new Date().toISOString(),
     version: APP_VERSION,
@@ -2741,8 +2765,12 @@ document.getElementById('exportBackupBtn').addEventListener('click', () => {
 document.getElementById('importBackupInput').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!requireHeadTeacher('import a school backup')) { e.target.value = ''; return; }
+  if (file.size > 50 * 1024 * 1024) { alert('That backup is too large to import safely.'); e.target.value = ''; return; }
+  const importOwner = { uid: currentUid, school: currentSchoolId, generation: sessionGeneration };
   const reader = new FileReader();
   reader.onload = () => {
+    if (importOwner.uid !== currentUid || importOwner.school !== currentSchoolId || importOwner.generation !== sessionGeneration) { alert('Your account or school changed. Select the backup again.'); e.target.value = ''; return; }
     let parsed;
     try {
       parsed = JSON.parse(reader.result);
@@ -2751,13 +2779,11 @@ document.getElementById('importBackupInput').addEventListener('change', e => {
       e.target.value = '';
       return;
     }
-    if (!parsed || !parsed.data) {
-      alert('That file does not look like an AlatiphA SchoolHub backup.');
-      e.target.value = '';
-      return;
-    }
-    const ok = confirm('This will replace ALL current classes, students, subjects, grades, remarks and staff with the contents of this backup. This cannot be undone. Continue?');
+    try { validateCoreBackupForImport(parsed, {cloud:FIREBASE_ENABLED && !isActiveGuest(),head:isHeadTeacher(),ready:sessionDataReady && !cloudHydrationInProgress,online:navigator.onLine !== false && !offlineAuthenticatedMode,schoolId:currentSchoolId}); }
+    catch(error) { alert(error.message); e.target.value=''; return; }
+    const ok = confirm('This imports backed-up core records on this device and queues supported school changes. It is not a complete cloud restore: FIS, inventory, supervision, notifications and cloud image files are excluded, and cloud records missing from the backup are not automatically deleted. Continue?');
     if (!ok) { e.target.value = ''; return; }
+    if (currentSchoolId && !backupLocalSchoolData('before-core-backup-import')) { alert('Import stopped: the recovery snapshot could not be saved.'); e.target.value=''; return; }
     const d = parsed.data;
     if (d.settings) DB.set(KEYS.settings, d.settings);
     if (d.classes) DB.set(KEYS.classes, d.classes);
@@ -2770,7 +2796,7 @@ document.getElementById('importBackupInput').addEventListener('change', e => {
     if (d.remarks) DB.set(KEYS.remarks, d.remarks);
     if (d.staff) DB.set(KEYS.staff, d.staff);
     auditAction('restore', 'backup', 'local', 'Restored a local backup');
-    alert('Backup restored. The app will now reload.');
+    alert('Core records imported locally. After reloading, review pending uploads and confirmed school records. This did not restore the excluded ledgers.');
     location.reload();
   };
   reader.readAsText(file);
