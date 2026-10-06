@@ -18,7 +18,7 @@ function identityFixture(){
 
 test('server join uses authenticated email and enforces membership and identity locks',async()=>{
   const f=identityFixture();f.records.set('joinCodes/GUARD1',{schoolId:'s'});
-  const req=(uid,email)=>({auth:{uid,token:{email}},data:{code:'GUARD1',email:'spoof@example.test'}});
+  const req=(uid,email)=>({auth:{uid,token:{email,email_verified:true}},data:{code:'GUARD1',email:'spoof@example.test'}});
   assert.equal((await f.handlers.joinSchoolWithCodeSafe(req('new',' Same@Example.Test '))).status,'pending');
   assert.equal(f.records.get('users/new').email,'same@example.test');
   assert.equal((await f.handlers.joinSchoolWithCodeSafe(req('new','same@example.test'))).alreadyPending,true);
@@ -38,7 +38,7 @@ test('legacy duplicate memberships block server approval and reactivation',async
 
 test('rejecting a pending identity releases its lock for another UID',async()=>{
   const f=identityFixture();f.records.set('joinCodes/GUARD1',{schoolId:'s'});
-  const req=uid=>({auth:{uid,token:{email:'same@example.test'}},data:{code:'GUARD1'}});
+  const req=uid=>({auth:{uid,token:{email:'same@example.test',email_verified:true}},data:{code:'GUARD1'}});
   await f.handlers.joinSchoolWithCodeSafe(req('first'));
   await f.handlers.manageTeacherLifecycle(f.req({action:'reject',teacherUid:'first'}));
   assert.equal((await f.handlers.joinSchoolWithCodeSafe(req('second'))).status,'pending');
@@ -115,6 +115,6 @@ test('identity lock collection is server-only',()=>{
 });
 
 test('service worker release is bumped for the identity guard delivery',()=>{
-  assert.ok(sw.includes("schoolhub-cache-v40-supervision-selections-1"));
+  assert.ok(sw.includes("schoolhub-cache-v40-account-menu-verification-1"));
   assert.equal(hostedSw,sw);
 });

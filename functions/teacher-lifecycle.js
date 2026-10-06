@@ -10,6 +10,7 @@ function register({onCall,HttpsError,db,admin}){
  return {
  joinSchoolWithCodeSafe:call(async r=>{
   if(!r.auth)fail('unauthenticated','Sign in first.');
+  if(r.auth.token?.email_verified!==true)fail('failed-precondition','Verify your login email before joining a school.');
   const code=String((r.data&&r.data.code)||'').trim().toUpperCase();
   if(!/^[A-Z0-9-]{4,32}$/.test(code))fail('invalid-argument','Enter a valid school join code.');
   const email=norm(r.auth.token&&r.auth.token.email);
@@ -49,6 +50,7 @@ function register({onCall,HttpsError,db,admin}){
   if(typeof id!=='string'||!id||id.includes('/')||id===r.auth.uid)fail('invalid-argument','Select a teacher account.');
   const userRef=db.collection('users').doc(id),u=(await tx.get(userRef)).data();
   if(!u||u.schoolId!==h.schoolId||u.role!=='teacher'||!['pending','active','disabled'].includes(u.status))fail('failed-precondition','This teacher membership changed. Reload Manage Teachers.');
+  if(d.action==='save'&&u.status==='pending'){const authUser=await admin.auth().getUser(id);if(authUser.disabled||!authUser.emailVerified)fail('failed-precondition','This teacher must verify their login email before approval.');if(u.email&&norm(authUser.email)!==norm(u.email))fail('failed-precondition','The verified login email changed. Ask the teacher to sign in with the correct account.');}
   const school=db.collection('schools').doc(h.schoolId),staffSnap=await tx.get(school.collection('staff'));
   const staff=staffSnap.docs.map(x=>({id:x.id,...x.data()})),linked=staff.filter(s=>s.userUid===id),next={...u};
   const remembered=await tx.get(school.collection('teacherLinks').doc(id));

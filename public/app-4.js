@@ -903,7 +903,7 @@ function saveAttendanceTabState(mode) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['operations', 'supervision', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
+const views = ['operations', 'app-settings', 'help-about', 'supervision', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
   if (!enforceGuestTrial()) return;
   // Never render role-sensitive views while an authenticated session is still
@@ -943,6 +943,7 @@ function showView(name) {
     return;
   }
 
+  if (name === 'app-settings' || name === 'help-about') refreshProfileMenu();
   if (name === 'home') renderHome();
   if (name === 'setup') { refreshHeadTeacherSelect(); renderCloudSyncStatus(); renderYearRollover(); renderYearEndRestorePreview(); }
   if (name === 'students') renderStudentClassSelect();
@@ -981,6 +982,8 @@ function refreshHeadTeacherSelect() {
 }
 
 function sectionTitle(name) {
+  if(name==='app-settings')return 'Settings';
+  if(name==='help-about')return 'Help & About';
   if(name==='fees')return 'Fees & Receipts';
   if(name==='supervision')return 'Weekly Supervision';
   if(name==='operations')return 'Stores, Assets & Liabilities';
@@ -1035,6 +1038,8 @@ const QUICK_ACCESS_CARDS = [
     icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 14h4"/><circle cx="17" cy="14" r="1"/>' },
   { view: 'activity', title: 'Activity Log', description: 'See who changed school data and when',
     icon: '<path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h6M8 17h4"/>' },
+  {view:'app-settings',title:'Settings',description:'School setup, notifications, sync and app health',icon:'<path d="M4 7h16M4 12h16M4 17h16M8 4v6M16 9v6M10 14v6"/>'},
+  {view:'help-about',title:'Help & About',description:'Guided tour, FAQ, installation and policies',icon:'<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4M12 17h.01"/>'},
   { view: 'history', title: 'Term History', description: 'Browse and export past terms',
     icon: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/>' }
 ];
@@ -1045,7 +1050,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','supervision','activity','history'];
+  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','supervision','activity','history','app-settings','help-about'];
   const cards = QUICK_ACCESS_CARDS.slice().sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view)).filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
@@ -1080,7 +1085,7 @@ function tourSlidesForHeadTeacher() {
     { title: '8. Backups & recovery', body: 'Use Setup → Backup & Restore to export a JSON backup. Recovery tools can compare saved copies for missing student or staff records. Keep downloaded backups somewhere safe.' },
     { title: '9. Term & year rollover', body: 'Use Term History for a new term. At the end of the academic year, Academic Year Rollover lets you Promote, Repeat, Graduate/Complete, or Transfer/Leave students and creates a year-end backup before applying changes.' },
     { title: '10. Emergency restore', body: 'If a year rollover needs to be reversed, Setup → Academic Year Rollover → Restore Year-End Backup validates the rollover JSON and restores the backed-up roster/settings without wiping later records unnecessarily.' },
-    { title: "You're set", body: 'Use the profile menu for Guided Tour, Help & FAQ, Sync Center, System Health, About, Privacy and Terms. Head Teachers also see Billing & Credits when available.' }
+    { title: "You're set", body: 'Use Home → Settings for app controls and Home → Help & About for guidance and policies. Profile contains account actions. Head Teachers also see Billing & Credits when available.' }
   ];
 }
 
@@ -1217,7 +1222,7 @@ function refreshProfileMenu() {
   const activeTeacher = isTeacher() && currentStatus === 'active';
   document.getElementById('profileMyDetailsBtn')?.classList.toggle('hidden', !activeTeacher);
   const setupLink = document.getElementById('profileSetupLink');
-  if (setupLink) setupLink.textContent = activeTeacher ? 'Home' : 'Go to Setup';
+  if (setupLink) { setupLink.textContent='School Setup'; setupLink.classList.toggle('hidden',isTeacher()); }
   const billingLink = document.getElementById('profileBillingBtn');
   if (billingLink) billingLink.classList.toggle('hidden', !isHeadTeacher());
   const settings = DB.get(KEYS.settings, {});
@@ -1259,6 +1264,7 @@ document.getElementById('profileBtn').addEventListener('click', e => {
   e.stopPropagation();
   refreshProfileMenu();
   document.getElementById('profileDropdown').classList.toggle('hidden');
+  document.getElementById('profileBtn').setAttribute('aria-expanded',String(!document.getElementById('profileDropdown').classList.contains('hidden')));
 });
 document.getElementById('profileSetupLink').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
@@ -1749,6 +1755,9 @@ document.addEventListener('click', e => {
   }
 });
 
+const accountMenuButton=document.getElementById('profileBtn'),accountMenuDropdown=document.getElementById('profileDropdown');
+new MutationObserver(()=>accountMenuButton.setAttribute('aria-expanded',String(!accountMenuDropdown.classList.contains('hidden')))).observe(accountMenuDropdown,{attributes:true,attributeFilter:['class']});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!accountMenuDropdown.classList.contains('hidden')){accountMenuDropdown.classList.add('hidden');accountMenuButton.focus();}});
 /* ---------- Setup ---------- */
 function loadSettingsForm() {
   const s = DB.get(KEYS.settings, {});
@@ -11534,6 +11543,7 @@ function initAuth() {
         .catch(err => setAuthError(err.message));
     } else {
       firebase.auth().createUserWithEmailAndPassword(email, password)
+        .then(result => SchoolHubEmailVerification.send(result.user))
         .catch(err => setAuthError(err.message));
     }
   });
@@ -11675,6 +11685,12 @@ function initAuth() {
           if(!isCurrentSession(token,user.uid,null))return;
           data={...data,email:result.data.email,pendingLoginEmail:result.data.pendingEmail};
         }
+        if(!window.SchoolHubEmailVerification)await withSessionVerificationDeadline(new Promise(resolve=>window.addEventListener('schoolhub-email-verification-ready',resolve,{once:true})));
+        if(!isCurrentSession(token,user.uid,null))return;
+        if(SchoolHubEmailVerification.required(user,data)){
+          clearVerifiedLocalSession(user.uid);hideSessionRestoring();hideSyncingMessage();hideAuthGate();hideSchoolChoiceGate();hidePendingGate();hideDisabledGate();SchoolHubEmailVerification.show(user);return;
+        }
+        SchoolHubEmailVerification.hide();
         currentUserData = data || null;
         const authProfileUpdates = {};
         if (data && data.schoolId && firebase.auth().currentUser) {

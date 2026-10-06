@@ -194,7 +194,7 @@ test('server join blocks a second membership with the same normalized email',asy
  const h=register({db,admin,HttpsError,onCall:(_,fn)=>fn}),assert=require('node:assert/strict');
  try{
   await db.doc('joinCodes/GUARD1').set({schoolId:'s'});
-  const req=(uid,email)=>({auth:{uid,token:{email,name:uid}},data:{code:'GUARD1'}});
+  const req=(uid,email)=>({auth:{uid,token:{email,name:uid,email_verified:true}},data:{code:'GUARD1'}});
   const first=await h.joinSchoolWithCodeSafe(req('identity-a','Same.Email@Example.Test'));
   assert.equal(first.status,'pending');
   assert.equal((await db.doc('users/identity-a').get()).data().email,'same.email@example.test');
@@ -204,7 +204,7 @@ test('server join blocks a second membership with the same normalized email',asy
 test('atomic teacher lifecycle, concurrent approval, removal and rejoining preserve one staff record',async()=>{
  const admin=require('../functions/node_modules/firebase-admin'),app=admin.initializeApp({projectId:'demo-schoolhub-audit'},'teacher-lifecycle'),db=app.firestore();
  const {register}=require('../functions/teacher-lifecycle');class HttpsError extends Error{constructor(code,message){super(message);this.code=code;}}
- const h=register({db,admin,HttpsError,onCall:(_,fn)=>fn}),assert=require('node:assert/strict'),req=data=>({auth:{uid:'head'},data});
+ const h=register({db,admin:{firestore:admin.firestore,auth:()=>({getUser:async()=>({emailVerified:true,email:'life@example.test',disabled:false})})},HttpsError,onCall:(_,fn)=>fn}),assert=require('node:assert/strict'),req=data=>({auth:{uid:'head'},data});
  const teacherDb=env.authenticatedContext('lifecycle-teacher').firestore();
  const pending={schoolId:'s',role:'teacher',status:'pending',assignedClassIds:[],assignedSubjectIds:[],email:'life@example.test',displayName:'Lifecycle Teacher'};
  try{
@@ -263,4 +263,14 @@ test('native weekly supervision restricts feedback to linked staff and protects 
   await assert.rejects(h.saveWeeklySupervision(req({...value,requestId:'teacher-cannot-write'},'weeklyTeacher')),e=>e.code==='permission-denied');
   const concurrent=await Promise.allSettled(['A','B'].map(feedback=>h.saveWeeklySupervision(req({...value,...saved,requestId:'native-weekly-edit-'+feedback,feedback}))));assert.equal(concurrent.filter(r=>r.status==='fulfilled').length,1);assert.equal(concurrent.find(r=>r.status==='rejected').reason.code,'aborted');
  }finally{await app.delete();}
+});
+test('new school and head membership require a verified Auth email, not client verification fields',async()=>{
+ const uid='verification-new-head',unverified=env.authenticatedContext(uid,{email:'head@example.test',email_verified:false}).firestore(),verified=env.authenticatedContext(uid,{email:'head@example.test',email_verified:true}).firestore();
+ const school={ownerUid:uid,profile:{schoolName:'Synthetic verification school'}};
+ await assertFails(setDoc(doc(unverified,'schools/verification-school'),{...school,emailVerified:true}));
+ await assertSucceeds(setDoc(doc(verified,'schools/verification-school'),school));
+ await assertFails(setDoc(doc(unverified,'joinCodes/VERIFY-SCHOOL'),{schoolId:'verification-school'}));
+ await assertSucceeds(setDoc(doc(verified,'joinCodes/VERIFY-SCHOOL'),{schoolId:'verification-school'}));
+ const member={schoolId:'verification-school',role:'headteacher',status:'active'};
+ await assertFails(setDoc(doc(unverified,'users/'+uid),{...member,emailVerified:true}));await assertSucceeds(setDoc(doc(verified,'users/'+uid),member));
 });

@@ -1,7 +1,7 @@
 /* Native Firebase Auth verification/password flow, using only a demo emulator. */
 const {test,after}=require('node:test'),assert=require('node:assert/strict');
 const {initializeApp,deleteApp}=require('firebase/app');
-const {getAuth,connectAuthEmulator,createUserWithEmailAndPassword,verifyBeforeUpdateEmail,applyActionCode,signInWithEmailAndPassword,reauthenticateWithCredential,EmailAuthProvider,updatePassword,signOut}=require('firebase/auth');
+const {getAuth,sendEmailVerification,reload,getIdTokenResult,connectAuthEmulator,createUserWithEmailAndPassword,verifyBeforeUpdateEmail,applyActionCode,signInWithEmailAndPassword,reauthenticateWithCredential,EmailAuthProvider,updatePassword,signOut}=require('firebase/auth');
 const host=process.env.FIREBASE_AUTH_EMULATOR_HOST;
 if(!host)throw Error('Run this test through the demo Auth emulator; production Auth is forbidden.');
 const app=initializeApp({projectId:'demo-schoolhub-audit',apiKey:'demo-api-key',authDomain:'localhost'},'account-security-test');
@@ -33,4 +33,12 @@ test('repeated login and credential refresh keep the same synthetic teacher UID'
   assert(token&&token.split('.').length===3,'native SDK refresh returns a signed-in token');
   assert.equal(auth.currentUser.uid,uid);
  }
+});
+
+test('signup verification email proves inbox access and refreshes the verified token claim',async()=>{
+ const email='signup-'+Date.now()+'@example.test',user=(await createUserWithEmailAndPassword(auth,email,'Synthetic-password-123')).user,uid=user.uid;
+ assert.equal(user.emailVerified,false);assert.equal((await getIdTokenResult(user,true)).claims.email_verified,false);
+ await sendEmailVerification(user);const response=await fetch('http://'+host+'/emulator/v1/projects/demo-schoolhub-audit/oobCodes');assert(response.ok);
+ const code=(await response.json()).oobCodes.find(c=>c.requestType==='VERIFY_EMAIL'&&c.email===email);assert(code,'signup verification action code');await applyActionCode(auth,code.oobCode);await reload(user);
+ assert.equal(user.uid,uid);assert.equal(user.emailVerified,true);assert.equal((await getIdTokenResult(user,true)).claims.email_verified,true);await signOut(auth);
 });

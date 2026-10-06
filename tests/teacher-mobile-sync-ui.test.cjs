@@ -8,7 +8,7 @@ const firestore=fs.readFileSync('firestore.rules','utf8');
 const storage=fs.readFileSync('storage.rules','utf8');
 const sw=fs.readFileSync('sw.js','utf8');
 
-assert(app.includes("setupLink.textContent = activeTeacher ? 'Home' : 'Go to Setup'"));
+assert(app.includes("setupLink.classList.toggle('hidden',isTeacher())"));
 assert(app.includes("showView(isTeacher() ? 'home' : 'setup')"));
 assert(app.includes("billingLink.classList.toggle('hidden', !isHeadTeacher())"));
 
@@ -31,6 +31,6 @@ assert(storage.includes('isCurrentAssignedStudent(schoolId, fileName)'));
 
 assert(index.includes('Accessible cloud images'));
 assert(index.includes('Cached accessible images'));
-assert(sw.includes('schoolhub-cache-v40-supervision-selections-1'));
+assert(sw.includes('schoolhub-cache-v40-account-menu-verification-1'));
 
 console.log('teacher mobile/profile/sync regression: PASS');

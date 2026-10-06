@@ -741,3 +741,16 @@
 }
 
 @media screen{#recordEditDialog :is(.edit-photo-preview,.staff-signature-preview){max-width:100%;height:auto;max-height:140px;object-fit:contain;}}
+
+.account-tools-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.account-tools-grid .tool-link{width:100%;min-height:52px;padding:12px 16px;border:1px solid var(--rule);border-radius:12px;background:var(--surface);color:var(--paper);font:inherit;cursor:pointer;text-align:left}
+.account-tools-grid .tool-link:hover{background:var(--surface-alt)}
+.emailVerification body>:not(#emailVerificationGate){display:none!important}
+#emailVerificationGate{min-height:100dvh;display:grid;place-items:center;padding:24px;box-sizing:border-box}
+.verification-box{width:min(440px,100%);padding:24px;border:1px solid var(--rule);border-radius:18px;background:var(--surface);color:var(--paper);box-sizing:border-box}
+.verification-box button{width:100%;min-height:48px;margin-top:10px}.verification-box strong{overflow-wrap:anywhere}
+.account-tools-grid button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+#emailVerificationGate.hidden{display:none}
+
+.verification-box .btn-secondary{border:1px solid var(--rule);border-radius:8px;padding:10px 14px;background:var(--surface-alt);color:var(--paper);font:inherit;cursor:pointer}.verification-box button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}

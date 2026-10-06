@@ -53,13 +53,14 @@ service cloud.firestore {
       return !existsAfter(/databases/$(database)/documents/schools/$(schoolId)/deletedRecords/$(collection + '__' + id));
     }
 
+    function verifiedEmail() { return signedIn() && request.auth.token.get('email_verified', false) == true; }
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isHeadTeacher(resource.data.schoolId));
 
       // Head Teacher creation remains client-authorized. Teacher join/rejoin is
       // server-only through joinSchoolWithCodeSafe so duplicate identities can
       // be checked atomically before a membership is created.
-      allow create: if signedIn()
+      allow create: if verifiedEmail()
         && request.auth.uid == uid
         && request.resource.data.role == 'headteacher'
         && request.resource.data.status == 'active'
@@ -94,6 +95,7 @@ service cloud.firestore {
       // recovery and for first-time school creation. Once the user profile
       // exists, normal Head Teacher management still applies.
       allow create: if signedIn()
+        && (verifiedEmail() || isHeadTeacher(request.resource.data.schoolId))
         && request.resource.data.schoolId != null
         && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId))
         && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == request.auth.uid;
@@ -114,7 +116,7 @@ service cloud.firestore {
           )
         );
 
-      allow create: if signedIn()
+      allow create: if verifiedEmail()
         && request.auth.uid == request.resource.data.ownerUid
         && request.resource.data.profile.schoolName is string;
 
