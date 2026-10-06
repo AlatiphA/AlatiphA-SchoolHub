@@ -74,5 +74,5 @@ test('FIS spacing and controls follow the shared SchoolHub screen rhythm on desk
 });
 
 test('service worker cache is bumped for the FIS build and caches fees.js',()=>{
- assert.match(sw,/schoolhub-cache-v40-account-menu-verification-1/);assert.match(sw,/\.\/fees\.js/);
+ assert.match(sw,/schoolhub-cache-v40-profile-settings-help-1/);assert.match(sw,/\.\/fees\.js/);
 });

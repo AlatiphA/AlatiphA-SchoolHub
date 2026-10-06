@@ -12,10 +12,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-account-menu-verification-1">
-<link rel="stylesheet" href="weekly-supervision.css?v=v40-account-menu-verification-1">
-<link rel="stylesheet" href="school-operations.css?v=v40-account-menu-verification-1">
-<link rel="stylesheet" href="ui-polish.css?v=v40-account-menu-verification-1">
+<link rel="stylesheet" href="style-3.css?v=v40-profile-settings-help-1">
+<link rel="stylesheet" href="weekly-supervision.css?v=v40-profile-settings-help-1">
+<link rel="stylesheet" href="school-operations.css?v=v40-profile-settings-help-1">
+<link rel="stylesheet" href="ui-polish.css?v=v40-profile-settings-help-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
 <script>
@@ -177,6 +177,8 @@
         <div id="profileAccountLine" class="profile-account-line">—</div>
         <button type="button" id="profileMyDetailsBtn" class="profile-link hidden">My Details</button>
         <button type="button" id="profileAccountSecurityBtn" class="profile-link hidden">Account Security</button>
+        <button type="button" id="profileSettingsBtn" class="profile-link">Settings</button>
+        <button type="button" id="profileHelpBtn" class="profile-link">Help</button>
         <button type="button" id="profileLoginBtn" class="profile-link hidden">Log In</button>
         <button type="button" id="logoutBtn" class="profile-link profile-link-danger hidden">Log Out</button>
       </div>
@@ -951,7 +953,7 @@
         <details><summary>Does SchoolHub use Background Sync?</summary><div class="inline-doc-answer"><p>Yes, where the browser supports the native Background Sync API. It works with SchoolHub's existing pending queues rather than replacing them. If native Background Sync is unavailable, reconnect/reopen recovery still remains available.</p></div></details>
         <details><summary>What happens if the PWA is completely closed?</summary><div class="inline-doc-answer"><p>Saved edits and drafts remain on the same device. Supported browsers may upload queued records through Background Sync after the window closes, but timing is not guaranteed. Reopen SchoolHub with internet and wait for confirmation if a save remains pending. <strong>My Details and stock request drafts are not submitted automatically</strong>. Signing out stops background uploads.</p></div></details>
         <details><summary>How are service-worker updates handled?</summary><div class="inline-doc-answer"><p>The current PWA manages service-worker registration, update checks and lifecycle events more robustly and reports registration problems through diagnostics instead of silently ignoring them.</p></div></details>
-        <details><summary>What should I do if Sync Pending does not clear?</summary><div class="inline-doc-answer"><p>Keep the app open with internet, then open <strong>Home → Settings → Sync Center</strong> and use Sync Now. Read any named record, permission or conflict error before retrying. For a pending fee or stock transaction, retry the retained save rather than entering a new copy. Do not clear browser/app data while edits or drafts need recovery.</p></div></details>
+        <details><summary>What should I do if Sync Pending does not clear?</summary><div class="inline-doc-answer"><p>Keep the app open with internet, then open <strong>Profile → Settings → Sync Center</strong> and use Sync Now. Read any named record, permission or conflict error before retrying. For a pending fee or stock transaction, retry the retained save rather than entering a new copy. Do not clear browser/app data while edits or drafts need recovery.</p></div></details>
       </section>
 
       <section class="inline-doc-section">
@@ -1043,7 +1045,7 @@
         <h2>Notifications &amp; communication</h2>
         <details><summary>When does the Head Teacher receive notifications?</summary><div class="inline-doc-answer"><p>SchoolHub notifies the Head Teacher when a Teacher submits a school join request and when an existing school Teacher explicitly signs in. Refreshing the page or restoring an already signed-in session does not create a new sign-in notification.</p></div></details>
         <details><summary>What notifications can a Teacher receive?</summary><div class="inline-doc-answer"><p>Teachers receive account and assignment notices, school announcements and stock request decisions. The Head Teacher receives stock request notices as well as school join and explicit teacher sign-in notices. Use the bell icon to review the saved notification history.</p></div></details>
-        <details><summary>Where do I see notifications?</summary><div class="inline-doc-answer"><p>Use the bell icon or <strong>Home → Settings → Notifications</strong>. Unread notifications show a badge. Pending Teachers can also open Notifications from the Waiting for Approval screen.</p></div></details>
+        <details><summary>Where do I see notifications?</summary><div class="inline-doc-answer"><p>Use the bell icon or <strong>Profile → Settings → Notifications</strong>. Unread notifications show a badge. Pending Teachers can also open Notifications from the Waiting for Approval screen.</p></div></details>
         <details><summary>Can SchoolHub show browser or PWA notifications?</summary><div class="inline-doc-answer"><p>Yes, while SchoolHub is running or backgrounded on a supported device. Enable the option inside Notifications. In-app notifications remain available even if browser notification permission is not granted.</p></div></details>
         <details><summary>Can the Head Teacher send an announcement?</summary><div class="inline-doc-answer"><p>Yes. Open Notifications and use <strong>Send school announcement</strong>. The announcement is delivered to all active Teacher accounts and remains in each Teacher's notification history.</p></div></details>
         <details><summary>Do browser notifications work when SchoolHub is completely closed?</summary><div class="inline-doc-answer"><p>Not in Notifications v1. The persisted in-app notification will still be waiting the next time the user opens SchoolHub. Fully closed-app push delivery can be added later with Firebase Cloud Messaging web-push configuration.</p></div></details>
@@ -1051,10 +1053,10 @@
 
       <section class="inline-doc-section">
         <h2>Install, security &amp; troubleshooting</h2>
-        <details><summary>Can I install SchoolHub like an app?</summary><div class="inline-doc-answer"><p>Yes. Use <strong>Home → Help &amp; About → Install SchoolHub</strong> when installation is supported by your browser/device. The PWA caches the application shell for reliable reopening.</p></div></details>
+        <details><summary>Can I install SchoolHub like an app?</summary><div class="inline-doc-answer"><p>Yes. Use <strong>Profile → Help → Install SchoolHub</strong> when installation is supported by your browser/device. The PWA caches the application shell for reliable reopening.</p></div></details>
         <details><summary>What is the PIN Lock?</summary><div class="inline-doc-answer"><p>The optional PIN Lock is a local privacy screen for a shared device. It does not replace your Firebase account password or the Head Teacher/Teacher permission system.</p></div></details>
-        <details><summary>Where can I check the app status?</summary><div class="inline-doc-answer"><p>Use <strong>Home → Settings → System Health</strong> for service, storage, service-worker and data checks, and <strong>Home → Settings → Sync Center</strong> for cloud synchronization.</p></div></details>
-        <details><summary>The app looks outdated. What should I do?</summary><div class="inline-doc-answer"><p>Reopen SchoolHub while online and use <strong>Home → Help &amp; About → About SchoolHub</strong> or <strong>System Health</strong> to check the installed build. Refresh once if necessary after an update. Firebase Hosting and GitHub Pages can show different versions until both deployments are updated. Keep pending edits and drafts safe; clearing app data removes local copies.</p></div></details>
+        <details><summary>Where can I check the app status?</summary><div class="inline-doc-answer"><p>Use <strong>Profile → Settings → System Health</strong> for service, storage, service-worker and data checks, and <strong>Profile → Settings → Sync Center</strong> for cloud synchronization.</p></div></details>
+        <details><summary>The app looks outdated. What should I do?</summary><div class="inline-doc-answer"><p>Reopen SchoolHub while online and use <strong>Profile → Help → About SchoolHub</strong> or <strong>System Health</strong> to check the installed build. Refresh once if necessary after an update. Firebase Hosting and GitHub Pages can show different versions until both deployments are updated. Keep pending edits and drafts safe; clearing app data removes local copies.</p></div></details>
       </section>
 
       <section class="inline-doc-section">
@@ -1216,20 +1218,20 @@
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
-<script src="staff-qualifications.js?v=v40-account-menu-verification-1"></script>
-<script src="account-security.js?v=v40-account-menu-verification-1"></script>
-<script src="sync-queue.js?v=v40-account-menu-verification-1"></script>
-<script src="sync-client.js?v=v40-account-menu-verification-1"></script>
-<script src="offline-drafts.js?v=v40-account-menu-verification-1"></script>
-<script src="app-4.js?v=v40-account-menu-verification-1"></script>
-<script src="fees.js?v=v40-account-menu-verification-1"></script>
-<script src="school-operations.js?v=v40-account-menu-verification-1"></script>
-<script src="live-class-sync.js?v=v40-account-menu-verification-1"></script>
+<script src="staff-qualifications.js?v=v40-profile-settings-help-1"></script>
+<script src="account-security.js?v=v40-profile-settings-help-1"></script>
+<script src="sync-queue.js?v=v40-profile-settings-help-1"></script>
+<script src="sync-client.js?v=v40-profile-settings-help-1"></script>
+<script src="offline-drafts.js?v=v40-profile-settings-help-1"></script>
+<script src="app-4.js?v=v40-profile-settings-help-1"></script>
+<script src="fees.js?v=v40-profile-settings-help-1"></script>
+<script src="school-operations.js?v=v40-profile-settings-help-1"></script>
+<script src="live-class-sync.js?v=v40-profile-settings-help-1"></script>
 <script src="install.js"></script>
-<script src="record-edit-dialogs.js?v=v40-account-menu-verification-1"></script>
-<script src="staff-add-draft.js?v=v40-account-menu-verification-1"></script>
-<script src="weekly-supervision.js?v=v40-account-menu-verification-1"></script>
+<script src="record-edit-dialogs.js?v=v40-profile-settings-help-1"></script>
+<script src="staff-add-draft.js?v=v40-profile-settings-help-1"></script>
+<script src="weekly-supervision.js?v=v40-profile-settings-help-1"></script>
 <section id="emailVerificationGate" class="hidden"><div class="verification-box"><h1>Verify your email</h1><p>A verification email is required before you create or join a school.</p><strong id="verificationEmail"></strong><p id="verificationStatus" role="status"></p><button id="verificationCheckBtn" type="button" class="btn-primary">I have verified my email</button><button id="verificationResendBtn" type="button" class="btn-secondary">Resend verification email</button><button id="verificationLogoutBtn" type="button" class="btn-secondary">Sign out</button></div></section>
-<script src="email-verification.js?v=v40-account-menu-verification-1"></script>
+<script src="email-verification.js?v=v40-profile-settings-help-1"></script>
 </body>
 </html>

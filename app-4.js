@@ -1038,8 +1038,6 @@ const QUICK_ACCESS_CARDS = [
     icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 14h4"/><circle cx="17" cy="14" r="1"/>' },
   { view: 'activity', title: 'Activity Log', description: 'See who changed school data and when',
     icon: '<path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h6M8 17h4"/>' },
-  {view:'app-settings',title:'Settings',description:'School setup, notifications, sync and app health',icon:'<path d="M4 7h16M4 12h16M4 17h16M8 4v6M16 9v6M10 14v6"/>'},
-  {view:'help-about',title:'Help & About',description:'Guided tour, FAQ, installation and policies',icon:'<circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4M12 17h.01"/>'},
   { view: 'history', title: 'Term History', description: 'Browse and export past terms',
     icon: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/>' }
 ];
@@ -1050,7 +1048,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','supervision','activity','history','app-settings','help-about'];
+  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','supervision','activity','history'];
   const cards = QUICK_ACCESS_CARDS.slice().sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view)).filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
@@ -1085,7 +1083,7 @@ function tourSlidesForHeadTeacher() {
     { title: '8. Backups & recovery', body: 'Use Setup → Backup & Restore to export a JSON backup. Recovery tools can compare saved copies for missing student or staff records. Keep downloaded backups somewhere safe.' },
     { title: '9. Term & year rollover', body: 'Use Term History for a new term. At the end of the academic year, Academic Year Rollover lets you Promote, Repeat, Graduate/Complete, or Transfer/Leave students and creates a year-end backup before applying changes.' },
     { title: '10. Emergency restore', body: 'If a year rollover needs to be reversed, Setup → Academic Year Rollover → Restore Year-End Backup validates the rollover JSON and restores the backed-up roster/settings without wiping later records unnecessarily.' },
-    { title: "You're set", body: 'Use Home → Settings for app controls and Home → Help & About for guidance and policies. Profile contains account actions. Head Teachers also see Billing & Credits when available.' }
+    { title: "You're set", body: 'Use Profile → Settings for app controls and Profile → Help for guidance and policies. Head Teachers also see Billing & Credits when available.' }
   ];
 }
 
@@ -1266,6 +1264,9 @@ document.getElementById('profileBtn').addEventListener('click', e => {
   document.getElementById('profileDropdown').classList.toggle('hidden');
   document.getElementById('profileBtn').setAttribute('aria-expanded',String(!document.getElementById('profileDropdown').classList.contains('hidden')));
 });
+document.getElementById('profileSettingsBtn').addEventListener('click',()=>{document.getElementById('profileDropdown').classList.add('hidden');showView('app-settings');});
+document.getElementById('profileHelpBtn').addEventListener('click',()=>{document.getElementById('profileDropdown').classList.add('hidden');showView('help-about');});
+
 document.getElementById('profileSetupLink').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
   showView(isTeacher() ? 'home' : 'setup');
