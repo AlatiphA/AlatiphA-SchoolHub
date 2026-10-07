@@ -397,6 +397,8 @@ function startCachedAuthenticatedSession(user, cached) {
 function resetWorkspaceState() {
   if (typeof stopLiveClassSync === 'function') stopLiveClassSync();
   if (typeof stopLiveStudentSync === 'function') stopLiveStudentSync();
+  if (typeof stopLiveGradeSync === 'function') stopLiveGradeSync();
+  if (typeof stopLiveAttendanceSync === 'function') stopLiveAttendanceSync();
   syncErrors.clear();
   document.getElementById('preparedReportDialog')?.remove();
   if (preparedReportUrl) { URL.revokeObjectURL(preparedReportUrl); preparedReportUrl = null; }
@@ -5391,7 +5393,23 @@ function renderAttendanceForm() {
   document.getElementById('attendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('attendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'A'));
   document.getElementById('attendanceUnmarkAll').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = ''));
+  if (typeof captureLiveAttendanceBaseline === 'function') captureLiveAttendanceBaseline();
 }
+
+function refreshLiveAttendanceTotals() {
+  const classId = document.getElementById('attendanceClassSelect').value, settings = DB.get(KEYS.settings, {});
+  const summary = attendanceSummary(classId, settings.currentTerm, settings.currentYear).summary;
+  const timesOpen = calculateTimesOpen(settings.currentTerm, settings.currentYear);
+  document.querySelectorAll('#attendanceFormWrap .attendance-status').forEach(select => {
+    const cells = select.closest('tr')?.cells, sm = summary[select.dataset.student] || {present:0,late:0,total:0,absent:0};
+    if (!cells || cells.length < 7) return;
+    [sm.present, sm.late, sm.total, sm.absent, formatAttendanceRatio(attendanceRatio(sm,timesOpen))].forEach((value,index) => {
+      const cell=cells[index+2], target=cell.querySelector('strong') || cell;
+      if (target.textContent !== String(value)) target.textContent=String(value);
+    });
+  });
+}
+
 
 function renderTeacherAttendanceForm() {
   const wrap = document.getElementById('teacherAttendanceFormWrap');
@@ -6349,6 +6367,7 @@ document.getElementById('teacherAttendanceDate').addEventListener('change', rend
 document.querySelectorAll('#attendanceModeBar .attendance-mode').forEach(btn => btn.addEventListener('click', () => setAttendanceMode(btn.dataset.mode)));
 
 document.getElementById('saveAttendanceBtn').addEventListener('click', () => {
+  if (typeof canSaveLiveAttendance === 'function' && !canSaveLiveAttendance()) return;
   const classId = document.getElementById('attendanceClassSelect').value;
   if (!classId || !requireClassAccess(classId)) return;
   const settings = DB.get(KEYS.settings, {});
@@ -6460,11 +6479,13 @@ function renderGradesTable() {
       input.value = clampScore(input.value, max);
     });
   });
+  if (typeof captureLiveGradeBaseline === 'function') captureLiveGradeBaseline();
 }
 
 document.getElementById('gradesClassSelect').addEventListener('change', renderGradesTable);
 
 document.getElementById('saveGradesBtn').addEventListener('click', () => {
+  if (typeof canSaveLiveGrades === 'function' && !canSaveLiveGrades()) return;
   const classId = document.getElementById('gradesClassSelect').value;
   if (!classId) return;
   if (!requireClassAccess(classId)) return;
@@ -6494,6 +6515,7 @@ document.getElementById('saveGradesBtn').addEventListener('click', () => {
   });
   allGrades[key] = classGrades;
   DB.set(KEYS.grades, allGrades);
+  if (typeof captureLiveGradeBaseline === 'function') captureLiveGradeBaseline();
   auditAction('update', 'grades', key, `Saved grades for ${settings.currentTerm}, ${settings.currentYear}`);
   alert('Grades saved.');
 });

@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-startup-alerts-1';
+const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-grade-live-1';
 // Install a complete cold-start shell before retiring the previous cache.
 // Runtime-only library caching loses Firebase when an update activates after
 // the current page already loaded those libraries through the old worker.
@@ -13,7 +13,7 @@ const VENDOR_SHELL = [
  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
 ];
-const APP_SHELL = ['./','./index.html','./faq.html','./privacy.html','./terms.html','./complete-user-guide.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./private-images.js','./offline-drafts.js','./staff-transfer.js','./staff-qualifications.js','./account-security.js','./fees.js','./school-operations.js','./live-class-sync.js','./live-student-sync.js','./record-edit-dialogs.js','./email-verification.js','./staff-add-draft.js','./weekly-supervision.js','./weekly-supervision.css','./school-operations.css','./sync-queue.js','./sync-client.js','./sync-worker.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
+const APP_SHELL = ['./','./index.html','./faq.html','./privacy.html','./terms.html','./complete-user-guide.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./private-images.js','./offline-drafts.js','./staff-transfer.js','./staff-qualifications.js','./account-security.js','./fees.js','./school-operations.js','./live-class-sync.js','./live-student-sync.js','./live-grade-sync.js','./live-attendance-sync.js','./record-edit-dialogs.js','./email-verification.js','./staff-add-draft.js','./weekly-supervision.js','./weekly-supervision.css','./school-operations.css','./sync-queue.js','./sync-client.js','./sync-worker.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
 const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
 const BACKGROUND_SYNC_TAG = 'schoolhub-pending-sync-v1';
 if (typeof importScripts === 'function') importScripts('./sync-queue.js','./sync-worker.js');

@@ -589,6 +589,7 @@
         </label>
       </div>
       <div id="attendanceFormWrap"></div>
+      <p id="liveAttendanceUpdateStatus" class="hint hidden" role="status" aria-live="polite"></p>
       <button id="saveAttendanceBtn" class="btn-primary">Save Student Attendance</button>
       <p class="hint">Record daily student attendance as Present, Absent, or Late. Late is counted as present in the term total. Holidays, Midterm and Strike days are excluded from attendance and Times Open. The attendance total is automatically reflected on report cards.</p>
     </div>
@@ -627,6 +628,7 @@
       <select id="gradesClassSelect"></select>
     </label>
     <div id="gradesTableWrap"></div>
+    <p id="liveGradeUpdateStatus" class="hint hidden" role="status" aria-live="polite"></p>
     <button id="saveGradesBtn" class="btn-primary">Save Grades</button>
     <p class="hint">Standard layout: Class Score is out of 60, scaled to 50; Exam Score is out of 100, scaled to 50; Total is out of 100. Simple layout: only Exam Score (out of 100) is entered and used as the Total — Class Score is hidden.</p>
 
@@ -1240,11 +1242,13 @@
 <script src="sync-client.js?v=v40-private-images-1"></script>
 <script src="offline-drafts.js?v=v40-private-images-1"></script>
 <script src="private-images.js?v=v40-private-images-1"></script>
-<script src="app-4.js?v=v40-private-images-1-startup-alerts-1"></script>
+<script src="app-4.js?v=v40-private-images-1-grade-live-1"></script>
 <script src="fees.js?v=v40-private-images-1"></script>
 <script src="school-operations.js?v=v40-private-images-1"></script>
 <script src="live-class-sync.js?v=v40-private-images-1"></script>
 <script src="live-student-sync.js?v=v40-private-images-1-student-live-3"></script>
+<script src="live-grade-sync.js?v=v40-grade-live-1"></script>
+<script src="live-attendance-sync.js?v=v40-attendance-live-1"></script>
 <script src="install.js"></script>
 <script src="record-edit-dialogs.js?v=v40-private-images-1"></script>
 <script src="staff-add-draft.js?v=v40-private-images-1"></script>
