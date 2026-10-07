@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-grade-live-1';
+const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-notification-tap-1';
 // Install a complete cold-start shell before retiring the previous cache.
 // Runtime-only library caching loses Firebase when an update activates after
 // the current page already loaded those libraries through the old worker.
@@ -17,6 +17,35 @@ const APP_SHELL = ['./','./index.html','./faq.html','./privacy.html','./terms.ht
 const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
 const BACKGROUND_SYNC_TAG = 'schoolhub-pending-sync-v1';
 if (typeof importScripts === 'function') importScripts('./sync-queue.js','./sync-worker.js');
+const NOTIFICATION_TAP_CACHE = 'schoolhub-notification-taps-v1';
+function notificationTapKey(){return new URL('./__notification_tap__', self.location.href).href;}
+async function readNotificationTap() {
+  const cache=await caches.open(NOTIFICATION_TAP_CACHE),response=await cache.match(notificationTapKey());
+  if(!response)return null;
+  const tap=await response.json();
+  if(Date.now()-tap.at>5*60*1000){await cache.delete(notificationTapKey());return null;}
+  return tap;
+}
+async function retainNotificationTap(notification) {
+  const tap={uid:notification.data?.recipientUid || '',tapId:`${Date.now()}-${Math.random().toString(36).slice(2)}`,at:Date.now()};
+  const cache=await caches.open(NOTIFICATION_TAP_CACHE);
+  await cache.put(notificationTapKey(),new Response(JSON.stringify(tap),{headers:{'Content-Type':'application/json'}}));
+  return tap;
+}
+self.addEventListener('message',event=>{
+  if(!['CHECK_NOTIFICATION_TAP','ACK_NOTIFICATION_TAP'].includes(event.data?.type))return;
+  const source=event.source;
+  try{const url=new URL(source?.url),scope=new URL('./',self.location.href);if(url.origin!==scope.origin||!url.pathname.startsWith(scope.pathname))return;}catch(_){return;}
+  event.waitUntil((async()=>{
+    const tap=await readNotificationTap();if(!tap)return;
+    if(event.data.type==='ACK_NOTIFICATION_TAP'){
+      if(tap.tapId===event.data.tapId){const cache=await caches.open(NOTIFICATION_TAP_CACHE);await cache.delete(notificationTapKey());}return;
+    }
+    if(!event.data.uid)return;
+    if(tap.uid&&tap.uid!==event.data.uid){const cache=await caches.open(NOTIFICATION_TAP_CACHE);await cache.delete(notificationTapKey());return;}
+    source.postMessage({type:'OPEN_NOTIFICATIONS',...tap});
+  })());
+});
 const backgroundSyncWaiters = new Map();
 self.addEventListener('message',e=>{
   if(e.data?.type==='SKIP_WAITING')self.skipWaiting();
@@ -42,16 +71,17 @@ self.addEventListener('sync',event=>{if(event.tag===BACKGROUND_SYNC_TAG)event.wa
 })());});self.addEventListener('notificationclick',event=>{
   event.notification.close();
   event.waitUntil((async()=>{
+    const tap=await retainNotificationTap(event.notification);
     const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
     const scope=new URL('./',self.location.href);
     const appWindows=windows.filter(client=>{try{const url=new URL(client.url);return url.origin===scope.origin&&url.pathname.startsWith(scope.pathname);}catch(_){return false;}});
     if(appWindows.length){
       const client=appWindows.find(client=>client.visibilityState==='visible')||appWindows[0];
       if(typeof client.focus==='function')await client.focus();
-      client.postMessage({type:'OPEN_NOTIFICATIONS'});
+      client.postMessage({type:'OPEN_NOTIFICATIONS',...tap});
       return;
     }
-    if(self.clients.openWindow)await self.clients.openWindow('./?notifications=1');
+    if(self.clients.openWindow)await self.clients.openWindow(tap.uid ? `./?notifications=1&notificationUid=${encodeURIComponent(tap.uid)}&notificationTap=${encodeURIComponent(tap.tapId)}` : './?notifications=1');
   })());
 });
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(async cache=>{

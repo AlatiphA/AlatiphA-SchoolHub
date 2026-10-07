@@ -988,6 +988,8 @@ function showView(name) {
   renderFloatingPill();
   showFloatingPill();
   window.scrollTo(0, 0);
+  if (typeof flushNotificationTap === 'function') flushNotificationTap();
+  if (typeof requestPendingNotificationTap === 'function') requestPendingNotificationTap();
 }
 
 function refreshHeadTeacherSelect() {
@@ -11224,6 +11226,35 @@ function notificationTimeText(value) {
   return date.toLocaleString();
 }
 
+const notificationTapQuery = new URLSearchParams(window.location.search);
+let pendingNotificationTap = notificationTapQuery.get('notificationUid') ? {uid:notificationTapQuery.get('notificationUid'),tapId:notificationTapQuery.get('notificationTap') || ''} : null, lastNotificationTapId = null;
+function requestPendingNotificationTap() {
+  if (!currentUid || !sessionReady || !sessionDataReady || currentStatus !== 'active') return;
+  const worker = navigator.serviceWorker?.controller || schoolHubServiceWorkerRegistration?.active;
+  worker?.postMessage({type:'CHECK_NOTIFICATION_TAP', uid:currentUid});
+}
+function queueNotificationTap(data) {
+  if (data?.tapId && data.tapId === lastNotificationTapId) return;
+  pendingNotificationTap = {uid:data?.uid || '', tapId:data?.tapId || ''};
+  notificationOpenFromLink = true;
+  flushNotificationTap();
+}
+function flushNotificationTap() {
+  if (!notificationOpenFromLink || !currentUid || !sessionReady || !sessionDataReady || currentStatus !== 'active') return;
+  const tap = pendingNotificationTap;
+  notificationOpenFromLink = false; pendingNotificationTap = null;
+  const worker = navigator.serviceWorker?.controller || schoolHubServiceWorkerRegistration?.active;
+  if (tap?.tapId) lastNotificationTapId = tap.tapId;
+  if (tap?.tapId) worker?.postMessage({type:'ACK_NOTIFICATION_TAP',tapId:tap.tapId,uid:currentUid});
+  if (tap?.uid && tap.uid !== currentUid) return;
+  showNotificationCenter();
+  const url = new URL(window.location.href);
+  url.searchParams.delete('notifications');
+  url.searchParams.delete('notificationUid');
+  url.searchParams.delete('notificationTap');
+  window.history.replaceState(window.history.state, '', url);
+}
+
 function browserNotificationsEnabled() {
   try {
     return typeof Notification !== 'undefined'
@@ -11244,7 +11275,7 @@ async function showSchoolHubBrowserNotification(item) {
       badge: 'icon-192.png',
       tag: `schoolhub-${item.id}`,
       renotify: false,
-      data: { notificationId: item.id, action: item.action || '', url: './?notifications=1' }
+      data: { notificationId: item.id, recipientUid:currentUid, action: item.action || '', url: './?notifications=1' }
     });
     return true;
   } catch (error) {
@@ -11451,13 +11482,6 @@ function startNotificationListener(user) {
   const generation = notificationListenerGeneration;
   const active = () => generation === notificationListenerGeneration && currentUid === user.uid;
   updateNotificationBadge();
-  if (notificationOpenFromLink) {
-    notificationOpenFromLink = false;
-    showNotificationCenter();
-    const url = new URL(window.location.href);
-    url.searchParams.delete('notifications');
-    window.history.replaceState(window.history.state, '', url);
-  }
   const ref = notificationCollection(user.uid);
   if (!ref) { notificationListenerStarted = false; return; }
 
@@ -12148,6 +12172,7 @@ async function registerSchoolHubServiceWorker() {
     setServiceWorkerDiagnostic('');
     observeSchoolHubServiceWorker(registration);
     scheduleSchoolHubServiceWorkerUpdates(registration);
+    requestPendingNotificationTap();
     setTimeout(() => checkSchoolHubServiceWorkerUpdate('startup'), 3000);
     return registration;
   } catch (error) {
@@ -12164,7 +12189,7 @@ if ('serviceWorker' in navigator) {
   });
   navigator.serviceWorker.addEventListener('message', event => {
     if (event.data && event.data.type === 'OPEN_NOTIFICATIONS') {
-      showNotificationCenter();
+      queueNotificationTap(event.data);
       return;
     }
     if (event.data?.type === 'SCHOOLHUB_WORKER_SYNC_COMPLETE') {

@@ -24,11 +24,11 @@ test('old notification listener cannot populate another account after switching 
  f.listeners[1].next({docs:[{id:'new',data:()=>({body:'new account'})}],docChanges:()=>[]});
  assert.equal(f.run('notificationItems[0].id'),'new');
 });
-test('listener errors permit a retry and opening a notification link consumes the link once',()=>{
+test('listener errors permit retry without consuming a notification tap before session restoration',()=>{
  const f=notificationFixture('?notifications=1');let opened=0;f.ctx.showNotificationCenter=()=>opened++;
- f.ctx.startNotificationListener({uid:'one'});assert.equal(opened,1);
+ f.ctx.startNotificationListener({uid:'one'});assert.equal(opened,0);assert.equal(f.run('notificationOpenFromLink'),true);
  f.listeners[0].error(Error('temporarily unavailable'));assert.equal(f.run('notificationListenerStarted'),false);
- f.ctx.startNotificationListener({uid:'one'});assert.equal(f.listeners.length,2);assert.equal(opened,1);
+ f.ctx.startNotificationListener({uid:'one'});assert.equal(f.listeners.length,2);assert.equal(opened,0);
 });
 
 test('cache-to-server startup populates old notices without replaying phone alerts',()=>{const f=notificationFixture(),shown=[];f.ctx.showSchoolHubBrowserNotification=x=>shown.push(x.id);f.ctx.startNotificationListener({uid:'one'});const emit=(records,fromCache)=>f.listeners[0].next({metadata:{fromCache},docs:records.map(x=>({id:x.id,data:()=>x})),docChanges:()=>records.map(x=>({type:'added',doc:{id:x.id,data:()=>x}}))});emit([],true);emit([{id:'old'}],false);assert.equal(shown.length,0);emit([{id:'fresh'}],false);assert.deepEqual(shown,['fresh']);});
