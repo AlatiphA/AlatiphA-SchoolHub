@@ -383,7 +383,7 @@ function startCachedAuthenticatedSession(user, cached) {
   cloudHydrationInProgress = false;
   offlineAuthenticatedMode = true;
   localStorage.removeItem(GUEST_MODE_KEY);
-  hideSyncingMessage(); hideSessionRestoring(); hideAuthGate(); hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
+  hideSyncingMessage(); hideAuthGate(); hideSchoolChoiceGate(); hidePendingGate(); hideDisabledGate();
   initLockScreen();
   ensureDefaults();
   loadSettingsForm();
@@ -11283,6 +11283,37 @@ function flushNotificationTap() {
     window.history.replaceState(window.history.state,'',url);
   }));
 }
+async function readStartupNotificationTap(uid) {
+  const worker=navigator.serviceWorker?.controller || schoolHubServiceWorkerRegistration?.active;
+  if(!worker || typeof MessageChannel==='undefined')return null;
+  return new Promise(resolve=>{
+    const channel=new MessageChannel();let timer;
+    const finish=tap=>{clearTimeout(timer);channel.port1.close();channel.port2.close();resolve(tap);};
+    channel.port1.onmessage=event=>{if(event.data?.type==='SCHOOLHUB_NOTIFICATION_TAP')finish(event.data.tap || null);};
+    timer=setTimeout(()=>finish(null),400);
+    try{worker.postMessage({type:'CHECK_NOTIFICATION_TAP',uid},[channel.port2]);}catch(_){finish(null);}
+  });
+}
+let schoolStartupReveal = null;
+function revealSchoolStartup() {
+  if(!document.documentElement.classList.contains('sessionRestoring'))return Promise.resolve(false);
+  if(!currentUid || currentStatus!=='active' || !sessionReady || !sessionDataReady)return Promise.resolve(false);
+  const token=sessionGeneration,uidAtStart=currentUid,schoolAtStart=currentSchoolId;
+  const key=JSON.stringify([token,uidAtStart,schoolAtStart]);
+  if(schoolStartupReveal?.key===key)return schoolStartupReveal.promise;
+  const promise=(async()=>{
+    const tap=notificationOpenFromLink ? null : await readStartupNotificationTap(uidAtStart);
+    if(!isCurrentSession(token,uidAtStart,schoolAtStart) || !sessionReady || !sessionDataReady || currentStatus!=='active')return false;
+    if(tap)queueNotificationTap(tap);
+    // The restored page was rendered behind the gate. Reveal it and the
+    // notification destination in the same task, without a Home flash.
+    hideSessionRestoring();
+    flushNotificationTap();
+    return true;
+  })().finally(()=>{if(schoolStartupReveal?.key===key)schoolStartupReveal=null;});
+  schoolStartupReveal={key,promise};return promise;
+}
+
 async function readControllingWorkerCacheVersion(registration) {
   const worker=navigator.serviceWorker?.controller || registration?.active;
   if(!worker || typeof MessageChannel==='undefined')return 'unavailable';
@@ -11890,7 +11921,7 @@ function initAuth() {
           // The local cache is namespaced by currentSchoolId, so this does not
           // expose another school's records. On a new device/school the page
           // simply renders its empty/loading state until cloud data arrives.
-          hideSyncingMessage(); hideSessionRestoring(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
+          hideSyncingMessage(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
           initLockScreen();
           if (!appStarted) appStarted = true;
           proceedToApp();
@@ -11921,12 +11952,19 @@ function initAuth() {
             } else {
               showView(restored.view);
             }
+            revealSchoolStartup();
             startBackgroundImageSync(token, user.uid, data.schoolId);
           }).catch(err => {
             if (!isCurrentSession(token, user.uid, data.schoolId)) return;
             console.warn('Background cloud synchronization failed:', err);
             const sub = document.getElementById('welcomeSubtext');
             if (sub) sub.textContent = 'Cloud sync is taking longer than expected. You can retry from the profile menu.';
+            // Hydration has a bounded terminal state; a failed remote read
+            // must not trap a verified session behind the startup gate.
+            const saved=getSavedNavigation();
+            showView(saved.view);
+            if(saved.view==='attendance')setAttendanceMode(saved.attendanceTab);
+            revealSchoolStartup();
           });
         });
       }).catch(err => {
@@ -12118,6 +12156,7 @@ function proceedToApp() {
     } else {
       showView(restored.view);
     }
+    if (typeof revealSchoolStartup === 'function') revealSchoolStartup();
   } else {
     // Firebase session is authenticated, but school data is still loading.
     // Keep the session-restoration gate on screen instead of showing Home.

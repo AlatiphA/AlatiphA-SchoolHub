@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-notification-tap-2';
+const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-notification-tap-3';
 // Install a complete cold-start shell before retiring the previous cache.
 // Runtime-only library caching loses Firebase when an update activates after
 // the current page already loaded those libraries through the old worker.
@@ -38,7 +38,9 @@ self.addEventListener('message',event=>{
   try{const url=new URL(source?.url),scope=new URL('./',self.location.href);if(url.origin!==scope.origin||!url.pathname.startsWith(scope.pathname))return;}catch(_){return;}
   if(event.data.type==='GET_WORKER_VERSION'){const reply={type:'SCHOOLHUB_WORKER_VERSION',cacheName:CACHE_NAME};if(event.ports?.[0])event.ports[0].postMessage(reply);else source.postMessage(reply);return;}
   event.waitUntil((async()=>{
-    const tap=await readNotificationTap();if(!tap)return;
+    const tap=await readNotificationTap();
+    if(event.data.type==='CHECK_NOTIFICATION_TAP' && event.ports?.[0]){event.ports[0].postMessage({type:'SCHOOLHUB_NOTIFICATION_TAP',tap:tap && (!tap.uid || tap.uid===event.data.uid) ? tap : null});return;}
+    if(!tap)return;
     if(event.data.type==='ACK_NOTIFICATION_TAP'){
       if(tap.tapId===event.data.tapId){const cache=await caches.open(NOTIFICATION_TAP_CACHE);await cache.delete(notificationTapKey());}return;
     }
