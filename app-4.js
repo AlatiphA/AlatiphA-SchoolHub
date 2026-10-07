@@ -418,7 +418,7 @@ function resetWorkspaceState() {
   currentUid = null;
   if (typeof SchoolHubSyncQueue !== 'undefined') SchoolHubSyncQueue.disable().catch(() => {});
   stopNotificationListener();
-  hideNotificationCenter();
+  hideNotificationCenter(true);
   currentSchoolId = null;
   currentRole = null;
   currentStatus = null;
@@ -451,6 +451,7 @@ function beginSessionTransition() {
 }
 
 async function signOutAndReset() {
+  if (typeof clearNotificationRoute === 'function') clearNotificationRoute();
   const signingOutUid = currentUid || (firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser.uid : '');
   clearVerifiedLocalSession(signingOutUid);
   offlineAuthenticatedMode = false;
@@ -1839,7 +1840,8 @@ document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async (
     const checked = await checkSchoolHubServiceWorkerUpdate('manual');
     if (!checked) throw new Error('The service worker could not complete its update check.');
     const active = registration.waiting ? 'waiting to activate' : registration.installing ? 'installing' : registration.active ? 'active' : 'registered';
-    status.textContent = `Update check completed. Service worker is ${active}. Reload only when an update is reported ready.`;
+    const cacheVersion = await readControllingWorkerCacheVersion(registration);
+    status.textContent = `Update check completed. Service worker is ${active}. Cache version: ${cacheVersion}. Reload only when an update is reported ready.`;
   } catch (err) {
     const detail = err && err.message ? err.message : String(err || 'Unknown error');
     status.textContent = 'Update check failed: ' + detail;
@@ -11226,8 +11228,17 @@ function notificationTimeText(value) {
   return date.toLocaleString();
 }
 
+const NOTIFICATION_TAP_SESSION_KEY = 'schoolhub_notification_route_v2';
 const notificationTapQuery = new URLSearchParams(window.location.search);
-let pendingNotificationTap = notificationTapQuery.get('notificationUid') ? {uid:notificationTapQuery.get('notificationUid'),tapId:notificationTapQuery.get('notificationTap') || ''} : null, lastNotificationTapId = null;
+function loadPendingNotificationRoute() {
+  if (notificationTapQuery.get('notificationUid')) return {uid:notificationTapQuery.get('notificationUid'),tapId:notificationTapQuery.get('notificationTap') || '',at:Date.now()};
+  try { const tap=JSON.parse(sessionStorage.getItem(NOTIFICATION_TAP_SESSION_KEY));return tap && Date.now()-tap.at<5*60*1000 ? tap : null; } catch (_) { return null; }
+}
+let pendingNotificationTap = loadPendingNotificationRoute(), lastNotificationTapId = null, notificationTapFramePending = false;
+if (pendingNotificationTap) notificationOpenFromLink = true;
+function retainPendingNotificationRoute() {
+  try { if(pendingNotificationTap)sessionStorage.setItem(NOTIFICATION_TAP_SESSION_KEY,JSON.stringify(pendingNotificationTap));else sessionStorage.removeItem(NOTIFICATION_TAP_SESSION_KEY); } catch (_) {}
+}
 function requestPendingNotificationTap() {
   if (!currentUid || !sessionReady || !sessionDataReady || currentStatus !== 'active') return;
   const worker = navigator.serviceWorker?.controller || schoolHubServiceWorkerRegistration?.active;
@@ -11235,24 +11246,53 @@ function requestPendingNotificationTap() {
 }
 function queueNotificationTap(data) {
   if (data?.tapId && data.tapId === lastNotificationTapId) return;
-  pendingNotificationTap = {uid:data?.uid || '', tapId:data?.tapId || ''};
+  pendingNotificationTap = {uid:data?.uid || '', tapId:data?.tapId || '',at:data?.at || Date.now()};
+  retainPendingNotificationRoute();
   notificationOpenFromLink = true;
   flushNotificationTap();
 }
+function clearNotificationRoute() {
+  const tap=pendingNotificationTap,worker=navigator.serviceWorker?.controller || schoolHubServiceWorkerRegistration?.active;
+  if(tap?.tapId && currentUid && (!tap.uid || tap.uid===currentUid))worker?.postMessage({type:'ACK_NOTIFICATION_TAP',tapId:tap.tapId,uid:currentUid});
+  pendingNotificationTap=null;notificationOpenFromLink=false;retainPendingNotificationRoute();
+}
+function preserveNotificationRoute() {
+  if (pendingNotificationTap) {notificationOpenFromLink=true;lastNotificationTapId=null;retainPendingNotificationRoute();}
+}
 function flushNotificationTap() {
   if (!notificationOpenFromLink || !currentUid || !sessionReady || !sessionDataReady || currentStatus !== 'active') return;
-  const tap = pendingNotificationTap;
-  notificationOpenFromLink = false; pendingNotificationTap = null;
-  const worker = navigator.serviceWorker?.controller || schoolHubServiceWorkerRegistration?.active;
-  if (tap?.tapId) lastNotificationTapId = tap.tapId;
-  if (tap?.tapId) worker?.postMessage({type:'ACK_NOTIFICATION_TAP',tapId:tap.tapId,uid:currentUid});
-  if (tap?.uid && tap.uid !== currentUid) return;
+  if (['authing','sessionRestoring','locked'].some(name=>document.documentElement.classList.contains(name))) return;
+  if (!pendingNotificationTap) {pendingNotificationTap={uid:currentUid,tapId:'',at:Date.now()};retainPendingNotificationRoute();}
+  const tap=pendingNotificationTap;
+  if(tap && (Date.now()-tap.at>5*60*1000 || tap.uid && tap.uid!==currentUid)){clearNotificationRoute();return;}
   showNotificationCenter();
-  const url = new URL(window.location.href);
-  url.searchParams.delete('notifications');
-  url.searchParams.delete('notificationUid');
-  url.searchParams.delete('notificationTap');
-  window.history.replaceState(window.history.state, '', url);
+  if(notificationTapFramePending)return;
+  notificationTapFramePending=true;
+  const token=sessionGeneration,uidAtOpen=currentUid;
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    notificationTapFramePending=false;
+    if(token!==sessionGeneration || uidAtOpen!==currentUid || !sessionReady || !sessionDataReady || currentStatus!=='active')return;
+    if(pendingNotificationTap!==tap){flushNotificationTap();return;}
+    const dialog=document.getElementById('notificationCenterDialog');
+    if(!dialog || dialog.classList.contains('hidden') || ['authing','sessionRestoring','locked'].some(name=>document.documentElement.classList.contains(name)))return;
+    notificationOpenFromLink=false;
+    // Retain this window's route until an explicit close: startup may rebuild
+    // the page after the first paint. Only acknowledge an actually shown dialog.
+    if(tap?.tapId){lastNotificationTapId=tap.tapId;const worker=navigator.serviceWorker?.controller || schoolHubServiceWorkerRegistration?.active;worker?.postMessage({type:'ACK_NOTIFICATION_TAP',tapId:tap.tapId,uid:currentUid});}
+    const url=new URL(window.location.href);['notifications','notificationUid','notificationTap'].forEach(key=>url.searchParams.delete(key));
+    window.history.replaceState(window.history.state,'',url);
+  }));
+}
+async function readControllingWorkerCacheVersion(registration) {
+  const worker=navigator.serviceWorker?.controller || registration?.active;
+  if(!worker || typeof MessageChannel==='undefined')return 'unavailable';
+  return new Promise(resolve=>{
+    const channel=new MessageChannel();let timer;
+    const finish=value=>{clearTimeout(timer);channel.port1.close();channel.port2.close();resolve(value);};
+    channel.port1.onmessage=event=>{if(event.data?.type==='SCHOOLHUB_WORKER_VERSION')finish(String(event.data.cacheName || 'unavailable'));};
+    timer=setTimeout(()=>finish('unavailable'),2000);
+    try{worker.postMessage({type:'GET_WORKER_VERSION'},[channel.port2]);}catch(_){finish('unavailable');}
+  });
 }
 
 function browserNotificationsEnabled() {
@@ -11432,7 +11472,8 @@ function showNotificationCenter() {
   renderNotificationCenter();
 }
 
-function hideNotificationCenter() {
+function hideNotificationCenter(preserveRoute = false) {
+  if (preserveRoute === true) preserveNotificationRoute(); else clearNotificationRoute();
   document.getElementById('notificationCenterDialog')?.classList.add('hidden');
 }
 
@@ -12046,6 +12087,7 @@ function initLockScreen() {
       document.documentElement.classList.remove('locked');
       input.value = '';
       error.classList.add('hidden');
+      if (typeof flushNotificationTap === 'function') flushNotificationTap();
     } else {
       error.classList.remove('hidden');
       input.value = '';
