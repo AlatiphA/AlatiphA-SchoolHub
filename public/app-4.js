@@ -295,6 +295,17 @@ function isLikelyOfflineError(error) {
     message.includes('offline');
 }
 
+async function schoolAccountForStartup(user) {
+  const cached = loadVerifiedLocalSession(user);
+  // A restored Firebase identity may open its existing, unexpired school cache
+  // immediately offline. Uploads remain blocked until online verification.
+  if (navigator.onLine === false && cached) return { cached };
+  const snapshot = await withSessionVerificationDeadline(
+    firebase.firestore().collection('users').doc(user.uid).get({source:'server'})
+  );
+  return { snapshot };
+}
+
 function pendingSyncCountForCurrentSchool() {
   if (!currentSchoolId) return 0;
   let count = 0;
@@ -385,6 +396,7 @@ function startCachedAuthenticatedSession(user, cached) {
 
 function resetWorkspaceState() {
   if (typeof stopLiveClassSync === 'function') stopLiveClassSync();
+  if (typeof stopLiveStudentSync === 'function') stopLiveStudentSync();
   syncErrors.clear();
   document.getElementById('preparedReportDialog')?.remove();
   if (preparedReportUrl) { URL.revokeObjectURL(preparedReportUrl); preparedReportUrl = null; }
@@ -10276,6 +10288,7 @@ function pullCloudData(sessionToken) {
       }
       updateOfflineModeBanner();
       if (typeof startLiveClassSync === 'function') startLiveClassSync();
+      if (typeof startLiveStudentSync === 'function') startLiveStudentSync();
     }
   });
 }
@@ -11198,7 +11211,7 @@ function browserNotificationsEnabled() {
 }
 
 async function showSchoolHubBrowserNotification(item) {
-  if (!item || !browserNotificationsEnabled() || document.visibilityState === 'visible') return false;
+  if (!item || item.read === true || !browserNotificationsEnabled() || document.visibilityState === 'visible') return false;
   try {
     if (!('serviceWorker' in navigator)) return false;
     const registration = schoolHubServiceWorkerRegistration || await navigator.serviceWorker.ready;
@@ -11427,13 +11440,16 @@ function startNotificationListener(user) {
   if (!ref) { notificationListenerStarted = false; return; }
 
   let initialSnapshot = true;
-  notificationUnsubscribe = ref.orderBy('createdAt', 'desc').limit(100).onSnapshot(snapshot => {
+  notificationUnsubscribe = ref.orderBy('createdAt', 'desc').limit(100).onSnapshot({includeMetadataChanges:true}, snapshot => {
     if (!active()) return;
     notificationLoadError = '';
     notificationItems = snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }));
     updateNotificationBadge();
     renderNotificationCenter();
 
+    // A cached first snapshot is not a server baseline. Server catch-up must
+    // populate the in-app history without replaying old phone alerts.
+    if (snapshot.metadata?.fromCache || snapshot.metadata?.hasPendingWrites) return;
     if (!initialSnapshot) {
       snapshot.docChanges().forEach(change => {
         if (change.type !== 'added') return;
@@ -11714,8 +11730,14 @@ function initAuth() {
       // short restoration window.
       showSessionRestoring();
 
-      firebase.firestore().collection('users').doc(currentUid).get({source:'server'}).then(async userDoc => {
+      schoolAccountForStartup(user).then(async startup => {
         if (!isCurrentSession(token, user.uid, null)) return;
+        if (startup.cached) {
+          startCachedAuthenticatedSession(user, startup.cached);
+          appStarted = true;
+          return;
+        }
+        const userDoc = startup.snapshot;
         let data = userDoc.exists ? userDoc.data() : null;
         if(data?.schoolId&&data.status==='active'&&String(data.email||'').trim().toLowerCase()!==String(user.email||'').trim().toLowerCase()){
           await user.getIdToken(true);

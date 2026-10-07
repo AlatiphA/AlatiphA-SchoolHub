@@ -5,7 +5,7 @@ function notificationFixture(search=''){
  const ctx={currentUid:'one',FIREBASE_ENABLED:true,Notification:{permission:'denied'},localStorage:{getItem(){throw Error('Storage unavailable');}},URL,URLSearchParams,
   window:{location:{search,href:'https://example.test/'+search},history:{state:null,replaceState(){}}},
   navigator:{},console:{warn(){}},document:{getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id);}},
-  firebase:{auth:()=>({currentUser:{uid:ctx.currentUid}}),firestore:()=>({collection:()=>({doc:()=>({collection:()=>({orderBy:()=>({limit:()=>({onSnapshot(next,error){listeners.push({next,error});return ()=>{};}})})})})})})}
+  firebase:{auth:()=>({currentUser:{uid:ctx.currentUid}}),firestore:()=>({collection:()=>({doc:()=>({collection:()=>({orderBy:()=>({limit:()=>({onSnapshot(options,next,error){listeners.push({next,error});return ()=>{};}})})})})})})}
  };
  vm.createContext(ctx);
  const start=app.indexOf('const SCHOOLHUB_BROWSER_NOTIFICATIONS_KEY'),end=app.indexOf('/* ---------- end Notifications / Communication v1 ---------- */',start);
@@ -30,6 +30,10 @@ test('listener errors permit a retry and opening a notification link consumes th
  f.listeners[0].error(Error('temporarily unavailable'));assert.equal(f.run('notificationListenerStarted'),false);
  f.ctx.startNotificationListener({uid:'one'});assert.equal(f.listeners.length,2);assert.equal(opened,1);
 });
+
+test('cache-to-server startup populates old notices without replaying phone alerts',()=>{const f=notificationFixture(),shown=[];f.ctx.showSchoolHubBrowserNotification=x=>shown.push(x.id);f.ctx.startNotificationListener({uid:'one'});const emit=(records,fromCache)=>f.listeners[0].next({metadata:{fromCache},docs:records.map(x=>({id:x.id,data:()=>x})),docChanges:()=>records.map(x=>({type:'added',doc:{id:x.id,data:()=>x}}))});emit([],true);emit([{id:'old'}],false);assert.equal(shown.length,0);emit([{id:'fresh'}],false);assert.deepEqual(shown,['fresh']);});
+
+test('already-read notification cannot create a phone alert',async()=>{const f=notificationFixture();f.ctx.Notification.permission='granted';f.ctx.localStorage.getItem=()=> '1';f.ctx.document.visibilityState='hidden';let alerts=0;f.ctx.navigator.serviceWorker={ready:Promise.resolve({showNotification:()=>alerts++})};assert.equal(await f.ctx.showSchoolHubBrowserNotification({id:'old',read:true}),false);assert.equal(alerts,0);});
 function feeHelpers(){const ctx={navigator:{},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},Map,Set,Promise};vm.createContext(ctx);vm.runInContext(fs.readFileSync('fees.js','utf8').split('window.addEventListener')[0],ctx);return ctx;}
 test('client allocation lists keep test and production ledgers separate and reject excessive amounts',()=>{
  const c=feeHelpers(),charges=[{id:'real',baseAmount:100,paid:0},{id:'test',baseAmount:100,paid:0,isTestData:true}];
