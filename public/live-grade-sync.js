@@ -5,13 +5,13 @@
   const inputs=()=>Array.from(document.querySelectorAll('#gradesTableWrap input[data-student]'));
   const cellKey=e=>JSON.stringify([e.dataset.student,e.dataset.subject,e.dataset.part]);
   const value=(entries,e)=>String(entries?.[e.dataset.student]?.[e.dataset.subject]?.[e.dataset.part] ?? '');
-  let baseline=new Map(), conflicts=new Set();
-  function capture(){baseline=new Map(inputs().map(e=>[cellKey(e),String(e.value)]));conflicts.clear();start();}
+  let baseline=new Map(), conflicts=new Set(), renderedContext=null;
+  function capture(){baseline=new Map(inputs().map(e=>[cellKey(e),String(e.value)]));conflicts.clear();renderedContext=context().key;start();}
   const context=()=>{
     const classId=document.getElementById('gradesClassSelect')?.value,settings=DB.get(KEYS.settings,{});
     const recordKey=gradeKey(classId,settings.currentTerm,settings.currentYear);
     return {generation:sessionGeneration,uid:currentUid,school:currentSchoolId,classId,recordKey,
-      key:JSON.stringify([sessionGeneration,currentUid,currentSchoolId,classId,settings.currentTerm,settings.currentYear,isHeadTeacher(),[...classIdsForCloudSync()].sort()])};
+      key:JSON.stringify([sessionGeneration,currentUid,currentSchoolId,classId,settings.currentTerm,settings.currentYear,isHeadTeacher(),[...classIdsForCloudSync()].sort(),typeof currentAssignedSubjectIds!=='undefined'?[...currentAssignedSubjectIds].sort():[]])};
   };
   const ready=()=>FIREBASE_ENABLED&&currentUid&&currentSchoolId&&currentStatus==='active'&&sessionReady&&sessionDataReady
     &&!cloudHydrationInProgress&&!offlineAuthenticatedMode&&navigator.onLine!==false&&document.visibilityState==='visible'&&visible()
@@ -52,6 +52,12 @@
     try{const unsubscribe=gradeRef(s.recordKey).onSnapshot({includeMetadataChanges:true},snapshot=>{try{receive(s,snapshot);}catch(error){fail(error);}},fail);if(active===s)s.unsubscribe=unsubscribe;else unsubscribe();}catch(error){fail(error);}
   }
   window.captureLiveGradeBaseline=capture;window.startLiveGradeSync=start;window.stopLiveGradeSync=stop;
+  window.preserveLiveGradeSheetAfterRecovery=()=>{
+    // A routine server/account check must not rebuild this same grade sheet.
+    // Changed login, school, term or permissions still uses the normal renderer.
+    if(!ready()||!inputs().length||renderedContext!==context().key)return false;
+    start();return true;
+  };
   window.canSaveLiveGrades=()=>{
     const current=inputs();
     conflicts=new Set([...conflicts].filter(key=>{const e=current.find(e=>cellKey(e)===key);return e&&String(e.value)!==baseline.get(key);}));

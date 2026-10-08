@@ -85,3 +85,6 @@ test('repeated fast retries share in-flight verification and never upload early'
  assert.equal(f.writes.length,0);assert.equal(f.reads(),0);release();await Promise.all(retries);
  assert.equal(f.reads(),1);assert.equal(f.writes.filter(x=>x==='primary').length,1);assert.equal(f.c.offlineAuthenticatedMode,false);
 });
+
+test('verified recovery retains the current editable grade sheet instead of rebuilding it',async()=>{const f=fixture();f.c.getSavedNavigation=()=>({view:'grades'});let retained=0;f.c.preserveLiveGradeSheetAfterRecovery=()=>{retained++;return true;};await f.c.performReconnectRecovery();assert.equal(retained,1);assert.equal(f.reads(),1);assert(f.events.includes('pull'));assert(!f.events.includes('grades'));});
+test('changed grade context still takes the normal page rendering path after recovery',async()=>{const f=fixture();f.c.getSavedNavigation=()=>({view:'grades'});f.c.preserveLiveGradeSheetAfterRecovery=()=>false;await f.c.performReconnectRecovery();assert(f.events.includes('grades'));assert.equal(f.reads(),1);});

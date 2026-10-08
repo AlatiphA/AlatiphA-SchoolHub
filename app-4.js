@@ -10746,7 +10746,7 @@ async function performReconnectRecovery() {
     renderHome(); renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
     const restored = getSavedNavigation();
     if (restored.view === 'attendance') { showView('attendance'); setAttendanceMode(restored.attendanceTab); }
-    else showView(restored.view);
+    else if (restored.view !== 'grades' || typeof preserveLiveGradeSheetAfterRecovery !== 'function' || !preserveLiveGradeSheetAfterRecovery()) showView(restored.view);
     startBackgroundImageSync(token, uidBefore, schoolBefore);
   } catch (error) {
     console.warn('Reconnect synchronization failed:', error);
