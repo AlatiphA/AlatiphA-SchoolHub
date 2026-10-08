@@ -302,3 +302,6 @@ if (weeklySupervisionModule) Object.assign(exports,weeklySupervisionModule.regis
 
 const privateImagesModule=require('./private-images');
 if(privateImagesModule){const {onObjectFinalized,onObjectMetadataUpdated}=require('firebase-functions/v2/storage');Object.assign(exports,privateImagesModule.register({db,admin,HttpsError,onCall,onObjectFinalized,onObjectMetadataUpdated}));}
+
+const schoolRegistrationModule=require('./school-registration');
+if(schoolRegistrationModule)Object.assign(exports,schoolRegistrationModule.register({onCall,HttpsError,db,admin}));

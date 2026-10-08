@@ -10902,60 +10902,25 @@ function generateUniqueJoinCode(triesLeft) {
   });
 }
 
-function registerSchool(schoolName, address, email) {
-  if (!firebase.auth().currentUser || !currentUid) {
-    return Promise.reject(new Error('You must be signed in before creating a school.'));
-  }
-
-  const schoolRef = firebase.firestore().collection('schools').doc();
-  const schoolId = schoolRef.id;
-  const userRef = firebase.firestore().collection('users').doc(currentUid);
-  const authUser = firebase.auth().currentUser;
-
-  // IMPORTANT: the signed-in account may legitimately have no users/{uid}
-  // document (for example, if that document was deleted from Firestore).
-  // Create/restore the Head Teacher user profile before creating the public
-  // join-code document. This also prevents the old joinCodes security rule
-  // from rejecting school creation because isHeadTeacher() could not find
-  // users/{uid} yet.
-  return generateUniqueJoinCode().then(joinCode => {
-    const schoolData = {
-      profile: { schoolName, address, email },
-      ownerUid: currentUid,
-      subscription: { plan: 'free', status: 'inactive' },
-      joinCode,
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    const userData = {
-      schoolId,
-      role: 'headteacher',
-      status: 'active',
-      email: authUser.email || email || '',
-      displayName: authUser.displayName || schoolName || '',
-      createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    return schoolRef.set(schoolData)
-      .then(() => userRef.set(userData, { merge: true }))
-      .then(() => firebase.firestore().collection('joinCodes').doc(joinCode).set({
-        schoolId,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      }))
-      .then(() => {
-        migrateDataIntoSchool(schoolId);
-        currentSchoolId = schoolId;
-        currentRole = 'headteacher';
-        currentStatus = 'active';
-        currentUserData = Object.assign({}, userData);
-        saveVerifiedLocalSession(authUser, userData);
-        offlineAuthenticatedMode = false;
-        sessionReady = true;
-        sessionDataReady = true;
-        updateOfflineModeBanner();
-        return joinCode;
-      });
-  });
+async function registerSchool(schoolName, address, email) {
+  const authUser=firebase.auth().currentUser;
+  if(!authUser||!currentUid||authUser.uid!==currentUid)throw new Error('Sign in before creating a school.');
+  const token=sessionGeneration,uidAtStart=currentUid;
+  const requestKey='arc_school_registration_v1_'+JSON.stringify([uidAtStart,schoolName,address,email]);
+  let requestId=localStorage.getItem(requestKey);
+  if(!requestId){requestId=uid();localStorage.setItem(requestKey,requestId);}
+  await authUser.getIdToken(true);
+  if(token!==sessionGeneration||currentUid!==uidAtStart)throw new Error('Account changed during registration.');
+  const result=await safetyCall('registerSchoolSafe',{schoolName,address,email,requestId});
+  if(token!==sessionGeneration||currentUid!==uidAtStart)throw new Error('Account changed during registration. Sign in again to review the school.');
+  migrateDataIntoSchool(result.schoolId);
+  currentSchoolId=result.schoolId;currentRole='headteacher';currentStatus='active';
+  currentAssignedClassIds=[];currentAssignedSubjectIds=[];
+  currentUserData=result.userData;
+  saveVerifiedLocalSession(authUser,result.userData);
+  offlineAuthenticatedMode=false;sessionReady=true;sessionDataReady=true;
+  updateOfflineModeBanner();
+  return result.joinCode;
 }
 
 function joinSchoolWithCode(code) {
