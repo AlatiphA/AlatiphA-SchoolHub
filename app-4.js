@@ -266,16 +266,68 @@ function saveVerifiedLocalSession(user, data) {
   catch (e) { console.warn('Could not cache verified session:', e); }
 }
 
-function loadVerifiedLocalSession(user) {
-  if (!user || !user.uid) return null;
-  try {
-    const parsed = JSON.parse(localStorage.getItem(verifiedSessionKey(user.uid)) || 'null');
-    if (!parsed || !Number.isFinite(parsed.verifiedAt) || Date.now() - parsed.verifiedAt > 24 * 60 * 60 * 1000 || parsed.verifiedAt > Date.now() || parsed.uid !== String(user.uid) || parsed.status !== 'active' ||
-        !parsed.schoolId || !['headteacher','teacher'].includes(parsed.role)) return null;
-    return parsed;
-  } catch (e) {
-    return null;
-  }
+function inspectVerifiedLocalSession(user) {
+  const checkedAt = Date.now();
+  const result = (reason, parsed) => ({ reason, checkedAt,
+    verifiedAt: Number.isFinite(parsed?.verifiedAt) ? parsed.verifiedAt : null,
+    cached: reason === 'ready' ? parsed : null });
+  if (!user || !user.uid) return result('no-login');
+  let raw;
+  try { raw = localStorage.getItem(verifiedSessionKey(user.uid)); }
+  catch (_) { return result('storage-unreadable'); }
+  if (!raw) return result('missing');
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch (_) { return result('invalid-data'); }
+  if (!parsed) return result('missing');
+  if (!Number.isFinite(parsed.verifiedAt)) return result('invalid-time');
+  if (checkedAt - parsed.verifiedAt > 24 * 60 * 60 * 1000) return result('expired', parsed);
+  if (parsed.verifiedAt > checkedAt) return result('clock-mismatch', parsed);
+  if (parsed.uid !== String(user.uid)) return result('identity-mismatch', parsed);
+  if (parsed.status !== 'active') return result('inactive', parsed);
+  if (!parsed.schoolId) return result('missing-school', parsed);
+  if (!['headteacher','teacher'].includes(parsed.role)) return result('invalid-role', parsed);
+  return result('ready', parsed);
+}
+function loadVerifiedLocalSession(user) { return inspectVerifiedLocalSession(user).cached; }
+
+const STARTUP_FAILURE_DIAGNOSTIC_KEY = 'arc_startup_failure_diagnostic_v1';
+let lastStartupFailureDiagnostic = null;
+const STARTUP_CACHE_REASONS = {
+  'no-login':'No saved login was available',
+  'storage-unreadable':'Browser storage could not be read',
+  'missing':'The saved offline school-access check was missing',
+  'invalid-data':'The saved offline school-access check could not be decoded',
+  'invalid-time':'The saved check had no valid verification time',
+  'expired':'The saved school-access check was older than 24 hours',
+  'clock-mismatch':'The device clock was earlier than the saved verification time',
+  'identity-mismatch':'The saved check did not match the signed-in account',
+  'inactive':'The saved school access was not active',
+  'missing-school':'The saved check had no school',
+  'invalid-role':'The saved check had no supported school role',
+  'ready':'The saved school-access check was eligible'
+};
+function captureStartupFailure(user) {
+  const check = inspectVerifiedLocalSession(user);
+  // Capture only reason and timing: never identity, school, credentials or records.
+  const diagnostic = { version:1, reason:check.reason, at:check.checkedAt,
+    verifiedAt:check.verifiedAt, browserReportedOnline:navigator.onLine !== false };
+  lastStartupFailureDiagnostic = diagnostic;
+  try { localStorage.setItem(STARTUP_FAILURE_DIAGNOSTIC_KEY, JSON.stringify(diagnostic)); }
+  catch (_) {} // The in-memory result and visible error still work when storage fails.
+  return startupFailureDiagnosticText(diagnostic);
+}
+function startupFailureDiagnosticText(diagnostic) {
+  if (!diagnostic || diagnostic.version !== 1 || !Object.hasOwn(STARTUP_CACHE_REASONS, diagnostic.reason) || !Number.isFinite(diagnostic.at)) return '';
+  const age = Number.isFinite(diagnostic.verifiedAt)
+    ? ` Saved check age at failure: ${Math.round((diagnostic.at-diagnostic.verifiedAt)/60000)} minutes.` : '';
+  return `Offline startup diagnostic: ${STARTUP_CACHE_REASONS[diagnostic.reason]}. Captured ${new Date(diagnostic.at).toLocaleString()}.${age}`;
+}
+function readStartupFailureDiagnostic() {
+  let saved = lastStartupFailureDiagnostic;
+  try { saved = JSON.parse(localStorage.getItem(STARTUP_FAILURE_DIAGNOSTIC_KEY) || 'null') || saved; }
+  catch (_) {}
+  return startupFailureDiagnosticText(saved);
 }
 
 function clearVerifiedLocalSession(uidValue) {
@@ -1733,7 +1785,10 @@ async function checkHealth() {
     const quotaEl = document.getElementById('healthQuota');
     if (quotaEl) quotaEl.textContent = `Browser storage estimate: ${bytesToText(quota.usage)} / ${bytesToText(quota.quota)} (${pct.toFixed(1)}%)`;
   }
-  if (summary) summary.textContent = 'Diagnostics complete. Green items are healthy; yellow items need attention.';
+  if (summary) {
+    const captured = readStartupFailureDiagnostic();
+    summary.textContent = 'Diagnostics complete. Green items are healthy; yellow items need attention.' + (captured ? ' Last failed opening — ' + captured : ' No offline startup failure has been captured by this diagnostic.');
+  }
 }
 
 function showSystemHealth() {
@@ -11982,7 +12037,10 @@ function initAuth() {
         hideSyncingMessage();
         renderAuthForm();
         showAuthGate();
-        setAuthError('Could not load your account: ' + err.message);
+        if (isLikelyOfflineError(err)) {
+          const diagnostic = captureStartupFailure(user);
+          setAuthError('SchoolHub could not open your saved school access offline. ' + diagnostic + ' Connect to retry; do not clear browser storage.');
+        } else setAuthError('Could not load your account: ' + err.message);
       });
     } else {
       stopNotificationListener();
