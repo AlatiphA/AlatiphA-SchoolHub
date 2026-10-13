@@ -1854,3 +1854,9 @@ html.disabledAccess #schoolHubFloatingPill{
 .school-startup-progress{width:22px;height:22px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:school-startup-spin 1s linear infinite;}
 @keyframes school-startup-spin{to{transform:rotate(360deg);}}
 @media(prefers-reduced-motion:reduce){.school-startup-progress{animation:none;}}
+
+/* Sign-in footer: support contacts follow the help and policy links. */
+#authGate .auth-footer-support{display:flex;flex-direction:column;align-items:center;gap:18px;margin:8px 0;max-width:100%;}
+#authGate .auth-footer-support strong{color:var(--paper);font-size:15px;}
+#authGate .auth-footer-support a{color:var(--muted);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;line-height:1.5;}
+#authGate .auth-footer-support a:hover{color:var(--gold);}
