@@ -5345,7 +5345,7 @@ async function renderAttendanceView() {
     if (school !== currentSchoolId || uid !== currentUid) return;
     const allowed = hasSchoolAttendanceAccess();
     Array.from(host.children).forEach(child => { if (child !== notice) child.inert = !allowed; });
-    notice.innerHTML = allowed ? '<span>School attendance access active for this term.</span>' : '<span>Pay as you go attendance costs GH₵50 per school term. A Lifetime School Licence includes attendance. Test mode: no real money is charged.</span>';
+    notice.innerHTML = allowed ? '<span>School attendance access active for this term.</span>' : '<span>Pay as you go attendance costs GH₵50 per school term. An active School Licence includes attendance. Test mode: no real money is charged.</span>';
     if (!allowed && isHeadTeacher()) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'btn-primary'; button.textContent = 'View school plans'; button.onclick = () => showView('billing'); notice.append(button);
     }
@@ -7133,7 +7133,7 @@ function renderReportCreditStatus() {
     host.innerHTML = `<span><strong>${bwFreeRemaining()} of 10 free guest Black &amp; White reports remaining.</strong> Register your school for its term allowance and credits.</span>` +
       (canManageBilling ? `<div class="credit-actions"><button type="button" class="btn-secondary" id="reportBillingLink">Billing &amp; Credits</button></div>` : '');
   } else if (hasSchoolLifetimeLicence()) {
-    host.innerHTML = `<span><strong>${isBillingTestMode() ? 'Test ' : ''}Lifetime School Licence active.</strong> Unlimited reports for all authorized school staff. No credits required.</span>`;
+    host.innerHTML = `<span><strong>${isBillingTestMode() ? 'Test ' : ''}${escapeHtml(schoolLicenceLabel())} active.</strong> Unlimited reports for all authorized school staff. No credits required.</span>`;
   } else if (!canManageBilling) {
     host.innerHTML = `<span><strong>${bwFreeRemaining()} of 10 free Black &amp; White reports left this term.</strong> ${reportBillingMessage()}</span>`;
   } else {
@@ -7592,11 +7592,19 @@ function hasSchoolAttendanceAccess() {
 function hasSchoolLifetimeLicence() {
   if (!hasSchoolBillingAccount()) return false;
   const account = DB.get(KEYS.billing, {});
-  const licence = account[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'];
-  return licence?.active === true && licence.schoolId === currentSchoolId;
+  const legacy = account[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'];
+  if (legacy?.active === true && legacy.schoolId === currentSchoolId) return true;
+  const licence = account[isBillingTestMode() ? 'testSchoolLicence' : 'schoolLicence'];
+  return licence?.active === true && licence.schoolId === currentSchoolId && typeof licence.expiresAt === 'string' && Date.parse(licence.expiresAt) > Date.now();
+}
+function schoolLicenceLabel() {
+  const account = DB.get(KEYS.billing, {}), legacy = account[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'];
+  if (legacy?.active === true && legacy.schoolId === currentSchoolId) return 'Existing Lifetime School Licence';
+  const licence = account[isBillingTestMode() ? 'testSchoolLicence' : 'schoolLicence'];
+  return '3-year School Licence' + (licence?.schoolId === currentSchoolId && typeof licence.expiresAt === 'string' && Number.isFinite(Date.parse(licence.expiresAt)) ? ' · expires ' + new Date(licence.expiresAt).toLocaleDateString('en-GB') : '');
 }
 function reportBillingMessage() {
-  if (hasSchoolLifetimeLicence()) return 'Lifetime School Licence: unlimited reports and attendance for the whole school, including teachers and updates. No further report credits needed.';
+  if (hasSchoolLifetimeLicence()) return schoolLicenceLabel() + ': unlimited reports and attendance while the licence is active, including teachers and updates.';
   if (testCreditDeductionsEnabled()) return 'Test deductions enabled. Premium single reports use 1 test credit; class batches use 1 per report. Each school gets 10 free single Black & White reports per term, then 1 test credit per report. Live billing is disabled; no real money is charged.';
   return 'Live billing disabled. All report generation, including class batch PDFs, is free. No credits are deducted.';
 }
@@ -7656,6 +7664,8 @@ async function refreshBillingAccount(silent = true) {
     const cachedAccount = DB.get(KEYS.billing, {});
     cachedAccount.testBalance = Math.max(0, Number(data.testBalance || 0));
     cachedAccount.testBwUsageByTerm = data.testBwUsageByTerm || {};
+    cachedAccount.testSchoolLicence = data.testSchoolLicence || null;
+    cachedAccount.schoolLicence = data.schoolLicence || null;
     cachedAccount.testLifetimeLicence = data.testLifetimeLicence || null;
     cachedAccount.lifetimeLicence = data.lifetimeLicence || null;
     cachedAccount.testAttendanceTerms = data.testAttendanceTerms || {};
@@ -7721,7 +7731,7 @@ async function consumeReportCredits(count, requestId = crypto.randomUUID(), repo
 async function buyReportCredits(packageId) {
   if (checkoutBusy) return;
   if (!isHeadTeacher()) { alert('Only the Head Teacher can purchase a plan or report credits for the school.'); return; }
-  const pack = packageId === 'attendance' ? { id: 'attendance', amount: 50.00 } : packageId === 'lifetime' ? { id: 'lifetime', amount: 549.00 } : REPORT_CREDIT_PACKAGES.find(p => p.id === String(packageId));
+  const pack = packageId === 'attendance' ? { id: 'attendance', amount: 50.00 } : packageId === 'three-year' ? { id: 'three-year', amount: 349.99 } : REPORT_CREDIT_PACKAGES.find(p => p.id === String(packageId));
   if (!pack) return;
   if (!window.PAYSTACK_PUBLIC_KEY) {
     alert('Payment is not configured yet. Add your Paystack public key to firebase-config.js, then reload SchoolHub.');
@@ -7760,7 +7770,7 @@ async function buyReportCredits(packageId) {
     alert(e.message || 'Unable to start payment.');
   } finally {
     if (!popupStarted) checkoutBusy = false;
-    if (btn) { btn.disabled = false; btn.textContent = pack.id === 'attendance' ? 'Unlock Attendance' : pack.id === 'lifetime' ? 'Buy Lifetime Licence' : `Buy ${pack.credits}`; }
+    if (btn) { btn.disabled = false; btn.textContent = pack.id === 'attendance' ? 'Unlock Attendance' : pack.id === 'three-year' ? 'Buy 3-year Licence' : `Buy ${pack.credits}`; }
   }
 }
 async function verifyPendingCreditPayment(reference) {
@@ -7781,6 +7791,7 @@ async function verifyPendingCreditPayment(reference) {
     auditAction('purchase', 'report-credit', reference, `Purchased report credits. Payment reference: ${reference}.`);
     await renderBilling();
     if (result.data.attendance) { alert('Attendance activated for the school term recorded at checkout. This is a test purchase; no real money was charged.'); return; }
+    if (result.data.schoolLicence) { alert('3-year School Licence activated. Unlimited reports, attendance and updates are included until ' + new Date(result.data.expiresAt).toLocaleDateString('en-GB') + '. This is a test purchase; no real money was charged.'); return; }
     if (result.data.lifetime) { alert('Lifetime School Licence activated for your school. Unlimited reports, attendance and updates are included. This is a test purchase; no real money was charged.'); return; }
     alert(`Payment verified successfully. Your school now has ${Number(result.data?.balance || 0)} ${result.data.mode === 'test' ? 'test credits. No real money was charged' : 'report credits'}.`);
   } catch (e) {
@@ -7820,7 +7831,7 @@ async function renderBilling() {
   wrap.innerHTML = `
     ${isBillingTestMode() ? `<div class="billing-note"><strong>Paystack test checkout</strong><span>No real money is charged. Test credits are separate from live credits. ${reportBillingMessage()}</span></div>` : ''}
     <div class="billing-summary-card">
-      <div><span class="billing-kicker">${escapeHtml(school)}</span><h3>${lifetime ? 'Lifetime School Licence' : 'Pay as you go'}</h3><p class="hint">${lifetime ? 'Unlimited reports for the whole school. Attendance and updates included.' : 'School-owned credits shared by authorized teachers.'}</p></div>
+      <div><span class="billing-kicker">${escapeHtml(school)}</span><h3>${lifetime ? escapeHtml(schoolLicenceLabel()) : 'Pay as you go'}</h3><p class="hint">${lifetime ? 'Unlimited reports for the whole school. Attendance and updates included.' : 'School-owned credits shared by authorized teachers.'}</p></div>
       <div class="billing-balance"><strong>${lifetime ? 'Unlimited' : balance}</strong><span>${lifetime ? 'school reports' : isBillingTestMode() ? 'test credits' : 'credits'}</span><small>${lifetime ? 'Attendance and updates included' : 'GH₵' + (balance * REPORT_CREDIT_PRICE_GHS).toFixed(2) + (isBillingTestMode() ? ' test value (no real money)' : ' remaining value')}</small></div>
     </div>
     <div class="billing-info-grid">
@@ -7830,11 +7841,12 @@ async function renderBilling() {
     </div>
     <div class="billing-info-grid">
       <article class="billing-info-card"><h3>Pay as you go</h3><strong>GH₵0.20 per report</strong><p>Purchase report credits as needed. Attendance: GH₵50 per school term, shared by all teachers.</p>${hasSchoolAttendanceAccess() ? '<strong>Attendance included for this term</strong>' : head ? '<button type="button" class="btn-primary" data-buy-credits="attendance">Unlock Attendance · GH₵50 per term</button>' : '<p>Your Head Teacher manages attendance purchases.</p>'}</article>
-      <article class="billing-info-card"><h3>Lifetime School Licence</h3><strong>GH₵549.00 once</strong><p>Unlimited reports and attendance for the whole school, including its teachers and updates. No further credit purchases.</p><p>The licence belongs to the school and stays with it when phones or Head Teachers change.</p>${lifetime ? '<strong>Active for this school</strong>' : head ? '<button type="button" class="btn-primary" data-buy-credits="lifetime">Buy Lifetime Licence</button>' : '<p>Your Head Teacher can purchase this licence.</p>'}</article>
+      <article class="billing-info-card"><h3>Lifetime School Licence</h3><strong>GH₵549.00 once</strong><p>New Lifetime purchases are disabled. Existing lifetime licences remain valid.</p><button type="button" class="btn-secondary" disabled aria-disabled="true">Lifetime purchases disabled</button></article>
+      <article class="billing-info-card"><h3>3-year School Licence</h3><strong>GH₵349.99 for 3 years</strong><p>Unlimited reports and attendance for the whole school, including its teachers and updates, for three years from activation. Renew after expiry or use pay as you go.</p><p>The licence belongs to the school and stays with it when phones or Head Teachers change.</p>${lifetime ? '<strong>' + escapeHtml(schoolLicenceLabel()) + ' active for this school</strong>' : head ? '<button type="button" class="btn-primary" data-buy-credits="three-year">Buy 3-year Licence</button>' : '<p>Your Head Teacher can purchase this licence.</p>'}</article>
     </div>
     ${head && !lifetime ? `<div class="billing-section"><div class="billing-section-head"><div><h3>Buy Report Credits</h3><p class="hint">The Head Teacher purchases credits for the whole school. Teachers never pay individually.</p></div></div><div class="billing-packages">${REPORT_CREDIT_PACKAGES.map(p => `<article class="billing-package"><strong>${p.credits}</strong><span>report credits</span><b>GH₵${p.amount.toFixed(2)}</b><small>GH₵0.20 each</small><button type="button" class="btn-primary" data-buy-credits="${p.id}">Buy ${p.credits}</button></article>`).join('')}</div></div>` : `<div class="billing-section"><h3>School Credits</h3><p class="hint">Your Head Teacher manages purchases for the school. ${BILLING_SUSPENDED ? reportBillingMessage() : "Your report generation uses the school's shared credit balance."}</p></div>`}
     ${head && pending ? `<div class="billing-pending"><strong>Payment pending</strong><span>Reference: ${escapeHtml(pending)}</span><button type="button" id="verifyBillingPaymentBtn" class="btn-primary">Verify Payment</button></div>` : ''}
-    ${head && recent.length ? `<div class="billing-section"><h3>Recent payments</h3>${recent.map(p => `<div class="billing-pending"><span>${escapeHtml(p.reference)} · ${p.type === 'attendance_term' ? 'Attendance term · GH₵50.00 · ' : p.type === 'lifetime_licence' ? 'Lifetime School Licence · GH₵549.00 · ' : Number(p.credits) + ' credits · '}${p.mode === 'test' ? 'test payment · ' : ''} ${escapeHtml(p.status)}</span><button type="button" class="btn-primary" data-verify-payment="${escapeHtml(p.reference)}">${p.status === 'credited' ? 'Check receipt' : 'Verify Payment'}</button></div>`).join('')}</div>` : ''}
+    ${head && recent.length ? `<div class="billing-section"><h3>Recent payments</h3>${recent.map(p => `<div class="billing-pending"><span>${escapeHtml(p.reference)} · ${p.type === 'attendance_term' ? 'Attendance term · GH₵50.00 · ' : p.type === 'school_licence_3_year' ? '3-year School Licence · GH₵349.99 · ' : p.type === 'lifetime_licence' ? 'Existing Lifetime School Licence · GH₵549.00 · ' : Number(p.credits) + ' credits · '}${p.mode === 'test' ? 'test payment · ' : ''} ${escapeHtml(p.status)}</span><button type="button" class="btn-primary" data-verify-payment="${escapeHtml(p.reference)}">${p.status === 'credited' ? 'Check receipt' : 'Verify Payment'}</button></div>`).join('')}</div>` : ''}
     <div class="billing-note"><strong>How it works</strong><span>${BILLING_SUSPENDED ? reportBillingMessage() : 'One generated report card uses one credit. Printing or downloading that generated report does not charge another credit. Credits belong to the school and can be used by authorized teachers.'}</span></div>
   `;
   wrap.querySelectorAll('[data-buy-credits]').forEach(b => b.addEventListener('click', () => buyReportCredits(b.dataset.buyCredits)));

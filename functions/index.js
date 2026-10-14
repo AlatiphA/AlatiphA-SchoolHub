@@ -19,7 +19,8 @@ function paymentMode() {
 
 const PACKAGES = {
   attendance: { credits: 0, amountPesewas: 5000, type: 'attendance_term' },
-  lifetime: { credits: 0, amountPesewas: 54900, type: 'lifetime_licence' },
+  lifetime: { credits: 0, amountPesewas: 54900, type: 'lifetime_licence' }, // Retained for existing receipts; disabled for new purchases.
+  'three-year': { credits: 0, amountPesewas: 34999, type: 'school_licence_3_year' },
   '10': { credits: 10, amountPesewas: 200 },
   '50': { credits: 50, amountPesewas: 1000 },
   '100': { credits: 100, amountPesewas: 2000 },
@@ -27,6 +28,20 @@ const PACKAGES = {
   '500': { credits: 500, amountPesewas: 10000 },
   '1000': { credits: 1000, amountPesewas: 20000 }
 };
+
+function activeSchoolLicence(account, schoolId, mode, now = Date.now()) {
+  const legacy = account[mode === 'test' ? 'testLifetimeLicence' : 'lifetimeLicence'];
+  if (legacy?.active === true && legacy.schoolId === schoolId) return true;
+  const licence = account[mode === 'test' ? 'testSchoolLicence' : 'schoolLicence'];
+  return licence?.active === true && licence.schoolId === schoolId
+    && typeof licence.expiresAt === 'string' && Number.isFinite(Date.parse(licence.expiresAt)) && Date.parse(licence.expiresAt) > now;
+}
+function schoolLicenceEnd(start) {
+  const date = new Date(start), month = date.getUTCMonth();
+  date.setUTCFullYear(date.getUTCFullYear() + 3);
+  if (date.getUTCMonth() !== month) date.setUTCDate(0); // 29 February renews through 28 February.
+  return date.toISOString();
+}
 
 async function getHeadSchool(uid) {
   const snap = await db.collection('users').doc(uid).get();
@@ -63,11 +78,12 @@ exports.initializeReportCreditPurchase = onCall({ invoker: 'public', secrets: [P
   const packageId = String(request.data?.packageId || '');
   const pack = Object.hasOwn(PACKAGES, packageId) ? PACKAGES[packageId] : null;
   if (!pack) throw new HttpsError('invalid-argument', 'Invalid credit package.');
+  if (packageId === 'lifetime') throw new HttpsError('failed-precondition', 'New Lifetime purchases are disabled. Choose the 3-year School Licence.');
 
-  if (pack.type === 'lifetime_licence') {
+  if (pack.type === 'school_licence_3_year') {
     const account = (await db.collection('schools').doc(schoolId).collection('billing').doc('account').get()).data() || {};
-    if (account[mode === 'test' ? 'testLifetimeLicence' : 'lifetimeLicence']?.active === true) {
-      throw new HttpsError('already-exists', 'This school already has a lifetime licence.');
+    if (activeSchoolLicence(account, schoolId, mode)) {
+      throw new HttpsError('already-exists', 'This school already has an active school licence.');
     }
   }
 
@@ -79,7 +95,7 @@ exports.initializeReportCreditPurchase = onCall({ invoker: 'public', secrets: [P
     if (!['Term 1', 'Term 2', 'Term 3'].includes(term) || !year) throw new HttpsError('failed-precondition', 'Save and sync the school term and academic year in Setup first.');
     attendanceTermKey = encodeURIComponent(JSON.stringify([year, term]));
     const account = (await db.collection('schools').doc(schoolId).collection('billing').doc('account').get()).data() || {};
-    if (account[mode === 'test' ? 'testLifetimeLicence' : 'lifetimeLicence']?.active || account[mode === 'test' ? 'testAttendanceTerms' : 'attendanceTerms']?.[attendanceTermKey]?.active) {
+    if (activeSchoolLicence(account, schoolId, mode) || account[mode === 'test' ? 'testAttendanceTerms' : 'attendanceTerms']?.[attendanceTermKey]?.active) {
       throw new HttpsError('already-exists', 'Attendance is already included for this school term.');
     }
   }
@@ -153,6 +169,8 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
   const balanceField = mode === 'test' ? 'testBalance' : 'balance';
   const licenceField = mode === 'test' ? 'testLifetimeLicence' : 'lifetimeLicence';
   const lifetime = tx.type === 'lifetime_licence';
+  const schoolLicence = tx.type === 'school_licence_3_year';
+  const termLicenceField = mode === 'test' ? 'testSchoolLicence' : 'schoolLicence';
   const attendance = tx.type === 'attendance_term';
   const attendanceField = mode === 'test' ? 'testAttendanceTerms' : 'attendanceTerms';
   if (attendance && (tx.packageId !== 'attendance' || Number(tx.expectedAmountPesewas) !== PACKAGES.attendance.amountPesewas || !tx.attendanceTermKey)) throw new HttpsError('failed-precondition', 'Invalid attendance purchase.');
@@ -160,9 +178,11 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
     throw new HttpsError('failed-precondition', 'Invalid lifetime licence purchase.');
   }
 
+  if (schoolLicence && (tx.packageId !== 'three-year' || Number(tx.expectedAmountPesewas) !== PACKAGES['three-year'].amountPesewas)) throw new HttpsError('failed-precondition', 'Invalid 3-year school licence purchase.');
+
   if (tx.status === 'credited') {
     const billSnap = await db.collection('schools').doc(schoolId).collection('billing').doc('account').get();
-    return { credited: true, mode, lifetime, attendance, balance: Number((billSnap.data() || {})[balanceField] || 0), reference };
+    return { credited: true, mode, lifetime, schoolLicence, attendance, expiresAt: schoolLicence ? billSnap.data()?.[termLicenceField]?.expiresAt : null, balance: Number((billSnap.data() || {})[balanceField] || 0), reference };
   }
 
   const verified = await paystackRequest(`/transaction/verify/${encodeURIComponent(reference)}`);
@@ -179,18 +199,24 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
 
   const billRef = db.collection('schools').doc(schoolId).collection('billing').doc('account');
   let newBalance = 0;
+  let licenceExpiry = null;
   await db.runTransaction(async t => {
     const [billSnap, latestTx] = await Promise.all([t.get(billRef), t.get(txRef)]);
     const latest = latestTx.data() || {};
     if (latest.status === 'credited') {
       newBalance = Number((billSnap.data() || {})[balanceField] || 0);
+      licenceExpiry = (billSnap.data() || {})[termLicenceField]?.expiresAt || null;
       return;
     }
     const current = Number((billSnap.data() || {})[balanceField] || 0);
-    newBalance = current + (lifetime || attendance ? 0 : Number(tx.credits || 0));
+    newBalance = current + (lifetime || schoolLicence || attendance ? 0 : Number(tx.credits || 0));
+    const previousLicence = (billSnap.data() || {})[termLicenceField];
+    const licenceStart = schoolLicence ? Math.max(Date.now(), previousLicence?.active === true && previousLicence.schoolId === schoolId ? Date.parse(previousLicence.expiresAt) || 0 : 0) : 0;
+    if (schoolLicence) licenceExpiry = schoolLicenceEnd(licenceStart);
     t.set(billRef, {
       [balanceField]: newBalance,
       ...(lifetime ? { [licenceField]: { active: true, schoolId, includesUpdates: true, reference, purchasedAt: admin.firestore.FieldValue.serverTimestamp() } } : {}),
+      ...(schoolLicence ? { [termLicenceField]: { active: true, schoolId, durationYears: 3, includesUpdates: true, reference, startsAt: new Date(licenceStart).toISOString(), expiresAt: licenceExpiry, purchasedAt: admin.firestore.FieldValue.serverTimestamp() } } : {}),
       ...(attendance ? { [attendanceField]: { ...((billSnap.data() || {})[attendanceField] || {}), [tx.attendanceTermKey]: { active: true, reference } } } : {}),
       currency: 'GHS',
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -203,7 +229,7 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
     }, { merge: true });
   });
 
-  return { credited: true, mode, lifetime, attendance, balance: newBalance, reference };
+  return { credited: true, mode, lifetime, schoolLicence, expiresAt: licenceExpiry, attendance, balance: newBalance, reference };
 });
 
 exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1' }, async (request) => {
@@ -236,7 +262,7 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
     const usageSnap = await t.get(usageRef);
     const account = billSnap.data() || {};
     const current = Number(account.testBalance || 0);
-    lifetime = account.testLifetimeLicence?.active === true && account.testLifetimeLicence.schoolId === schoolId;
+    lifetime = activeSchoolLicence(account, schoolId, 'test');
     const allowances = account.testBwUsageByTerm || {};
     if (reportType === 'bw-single' && !lifetime) {
       const schoolSnap = await t.get(db.collection('schools').doc(schoolId));

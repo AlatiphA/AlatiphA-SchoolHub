@@ -170,3 +170,51 @@ test('attendance initialization requires a saved term and rejects duplicate unlo
   f.records.get('schools/school/billing/account').testLifetimeLicence={active:true,schoolId:'school'};
   await assert.rejects(f.exports.initializeReportCreditPurchase(f.request),{code:'already-exists'});
 });
+
+
+test('new 3-year offer uses 34999 pesewas and hidden lifetime offer cannot start checkout', async () => {
+  const f = fixture();
+  const result = await f.exports.initializeReportCreditPurchase({...f.request,data:{packageId:'three-year'}});
+  assert.equal(result.amountPesewas,34999);
+  assert.equal([...f.records.values()].find(x=>x.type==='school_licence_3_year').expectedAmountPesewas,34999);
+  await assert.rejects(f.exports.initializeReportCreditPurchase({...f.request,data:{packageId:'lifetime'}}),{code:'failed-precondition'});
+});
+test('verified 3-year purchase creates dated test entitlement, preserves legacy and does not extend on retry', async () => {
+  const f=fixture({amount:34999});
+  Object.assign(f.records.get('schools/school/billingTransactions/ref'),{type:'school_licence_3_year',packageId:'three-year',expectedAmountPesewas:34999});
+  const account=f.records.get('schools/school/billing/account');account.lifetimeLicence={active:true,schoolId:'school',reference:'legacy'};
+  const result=await f.exports.verifyReportCreditPurchase(f.request),saved=f.records.get('schools/school/billing/account');
+  assert.equal(result.schoolLicence,true);assert.equal(saved.testSchoolLicence.schoolId,'school');
+  assert.equal(saved.testSchoolLicence.durationYears,3);
+  assert.equal(new Date(saved.testSchoolLicence.expiresAt).getUTCFullYear()-new Date(saved.testSchoolLicence.startsAt).getUTCFullYear(),3);
+  assert.equal(saved.testBalance,0);assert.equal(saved.balance,7);assert.equal(saved.schoolLicence,undefined);
+  assert.equal(saved.lifetimeLicence.reference,'legacy');
+  const repeated=await f.exports.verifyReportCreditPurchase(f.request);
+  assert.equal(repeated.expiresAt,result.expiresAt);assert.equal(f.fetches(),1);
+});
+test('3-year purchase rejects the wrong amount without activating licence',async()=>{
+ const f=fixture({amount:34998});Object.assign(f.records.get('schools/school/billingTransactions/ref'),{type:'school_licence_3_year',packageId:'three-year',expectedAmountPesewas:34999});
+ await assert.rejects(f.exports.verifyReportCreditPurchase(f.request),{code:'failed-precondition'});
+ assert.equal(f.records.get('schools/school/billing/account').testSchoolLicence,undefined);
+});
+for(const [label,expiresAt,schoolId,consumed] of [['active','2150-01-01T00:00:00.000Z','school',0],['expired','2000-01-01T00:00:00.000Z','school',1],['wrong-school','2150-01-01T00:00:00.000Z','other',1],['invalid-expiry','invalid','school',1]]){
+ test('report licence entitlement: '+label,async()=>{
+  const f=fixture();Object.assign(f.records.get('schools/school/billing/account'),{testBalance:10,testSchoolLicence:{active:true,schoolId,expiresAt}});
+  const result=await f.exports.consumeReportCredits({...f.request,data:{mode:'test',count:1,requestId:'three_year_report_0001'}});
+  assert.equal(result.consumed,consumed);assert.equal(result.balance,10-consumed);
+ });
+}
+test('expired licence permits a fresh purchase; active licence blocks duplicate checkout',async()=>{
+ const f=fixture();f.records.get('schools/school/billing/account').testSchoolLicence={active:true,schoolId:'school',expiresAt:'2150-01-01T00:00:00.000Z'};
+ await assert.rejects(f.exports.initializeReportCreditPurchase({...f.request,data:{packageId:'three-year'}}),{code:'already-exists'});
+ f.records.get('schools/school/billing/account').testSchoolLicence.expiresAt='2000-01-01T00:00:00.000Z';
+ assert.equal((await f.exports.initializeReportCreditPurchase({...f.request,data:{packageId:'three-year'}})).amountPesewas,34999);
+});
+test('calendar expiry handles leap day and exact boundary',()=>{
+ const source=fs.readFileSync(`${__dirname}/index.js`,'utf8'),context={};
+ vm.runInNewContext(source.slice(source.indexOf('function activeSchoolLicence'),source.indexOf('async function getHeadSchool')),context);
+ assert.equal(context.schoolLicenceEnd(Date.parse('2024-02-29T12:00:00.000Z')),'2027-02-28T12:00:00.000Z');
+ const a={testSchoolLicence:{active:true,schoolId:'s',expiresAt:'2029-10-14T12:00:00.000Z'}};
+ const end=Date.parse(a.testSchoolLicence.expiresAt);
+ assert.equal(context.activeSchoolLicence(a,'s','test',end-1),true);assert.equal(context.activeSchoolLicence(a,'s','test',end),false);
+});
