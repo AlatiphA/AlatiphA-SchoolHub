@@ -286,3 +286,39 @@ test('queued record and profile writes reject a changed school inside the transa
 
 test('teacher qualifications accept only shared choices and reject arbitrary new text',async()=>{const f=personalFixture();for(const key of ['academicQualification','professionalQualification']){for(const value of require('./staff-qualifications').choices[key]){const old=f.records.get('schools/s/staff/t')[key]||'';await f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{[key]:old},changes:{[key]:value}},'teacher'));assert.equal(f.records.get('schools/s/staff/t')[key],value);}const old=f.records.get('schools/s/staff/t')[key];await assert.rejects(f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{[key]:old},changes:{[key]:'Unlisted qualification'}},'teacher')),e=>e.code==='invalid-argument');assert.equal(f.records.get('schools/s/staff/t')[key],old);}});
 test('legacy qualification stays intact when editing other details and can be corrected',async()=>{const f=personalFixture(),record=f.records.get('schools/s/staff/t');record.academicQualification='B.Ed (legacy)';await f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{phone:'0123'},changes:{phone:'0456'}},'teacher'));assert.equal(f.records.get('schools/s/staff/t').academicQualification,'B.Ed (legacy)');await f.handlers.updateMyStaffProfile(f.req({staffRecordId:'t',base:{academicQualification:'B.Ed (legacy)'},changes:{academicQualification:"Bachelor's Degree"}},'teacher'));assert.equal(f.records.get('schools/s/staff/t').academicQualification,"Bachelor's Degree");});
+
+
+for(const [label,date,type] of [['Saturday','2026-10-17',null],['Sunday','2026-10-18',null],['holiday','2026-10-19','holiday'],['midterm','2026-10-19','midterm'],['strike','2026-10-19','strike']]){
+ test('closed '+label+' accepts only confirmed pupil cleanup and remains idempotent',async()=>{
+  const f=fixture(),key='c1__Term 1__2026/2027__'+date,path='schools/s/attendance/'+encodeURIComponent(key);
+  const base={classId:'c1',entries:{p1:'present',p2:'absent'}};
+  f.records.set(path,{classId:'c1',entries:{p1:'absent',p2:'present'},note:'keep'});
+  if(type)f.records.set('schools/s/schoolCalendar/'+encodeURIComponent('Term 1__2026/2027__'+date),{type});
+  f.records.delete('schools/s/students/p1');f.records.set('schools/s/deletedRecords/students__p1',{id:'p1'});
+  const input={field:'attendance',key,base,value:{classId:'c1',entries:{p2:'absent'}}};
+  await f.handlers.saveSchoolRecord(f.req(input,'teacher'));
+  assert.deepEqual(f.records.get(path).entries,{p2:'present'});assert.equal(f.records.get(path).note,'keep');
+  await f.handlers.saveSchoolRecord(f.req(input,'teacher'));assert.deepEqual(f.records.get(path).entries,{p2:'present'});
+ });
+}
+test('closed-day cleanup cannot change surviving marks or metadata, nor add a mark',async()=>{
+ for(const value of [{classId:'c1',entries:{p2:'present'}},{classId:'c1',entries:{p2:'absent',p3:'present'}},{classId:'c1',entries:{p2:'absent'},note:'changed'}]){
+  const f=fixture(),key='c1__Term 1__2026/2027__2026-10-17',path='schools/s/attendance/'+encodeURIComponent(key),base={classId:'c1',entries:{p1:'present',p2:'absent'}};
+  f.records.set(path,structuredClone(base));f.records.delete('schools/s/students/p1');f.records.set('schools/s/deletedRecords/students__p1',{id:'p1'});
+  await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'attendance',key,base,value})),e=>e.code==='failed-precondition');assert.deepEqual(f.records.get(path),base);
+ }
+});
+test('closed-day cleanup requires tombstone and absent pupil and cannot change staff attendance',async()=>{
+ for(const scenario of ['no-marker','restored','staff']){
+  const f=fixture(),key=(scenario==='staff'?'':'c1__')+'Term 1__2026/2027__2026-10-17',field=scenario==='staff'?'teacherAttendance':'attendance',path='schools/s/'+field+'/'+encodeURIComponent(key),base={entries:{p1:'present'}};
+  f.records.set(path,structuredClone(base));if(scenario!=='no-marker')f.records.set('schools/s/deletedRecords/students__p1',{id:'p1'});if(scenario!=='restored')f.records.delete('schools/s/students/p1');
+  await assert.rejects(f.handlers.saveSchoolRecord(f.req({field,key,base,value:{entries:{}}})),e=>e.code==='failed-precondition');assert.deepEqual(f.records.get(path),base);
+ }
+});
+test('closed cleanup keeps class permissions and atomic failure behavior',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027__2026-10-17',path='schools/s/attendance/'+encodeURIComponent(key),base={entries:{p1:'present',p2:'absent'}};
+ f.records.set(path,structuredClone(base));f.records.delete('schools/s/students/p1');f.records.set('schools/s/deletedRecords/students__p1',{id:'p1'});
+ const input={field:'attendance',key,base,value:{entries:{p2:'absent'}}};f.records.get('users/teacher').assignedClassIds=[];
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req(input,'teacher')),e=>e.code==='permission-denied');
+ f.setFail();await assert.rejects(f.handlers.saveSchoolRecord(f.req(input)),/injected/);assert.deepEqual(f.records.get(path),base);
+});
