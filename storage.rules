@@ -3,9 +3,13 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     function noDownloadTokenWrite() {
-      return request.resource == null || (!('firebaseStorageDownloadTokens' in request.resource.metadata)
-        && (!('schoolhubPrivateTokenHash' in request.resource.metadata)
-          || (resource != null && request.resource.metadata.schoolhubPrivateTokenHash == resource.metadata.get('schoolhubPrivateTokenHash', ''))));
+      // New uploads may omit custom metadata. Treat absence as an empty map.
+      let incoming = request.resource == null ? {} : request.resource.get('metadata', {});
+      let previous = resource == null ? {} : resource.get('metadata', {});
+      return request.resource == null || (incoming is map
+        && !('firebaseStorageDownloadTokens' in incoming)
+        && (!('schoolhubPrivateTokenHash' in incoming)
+          || (resource != null && incoming.schoolhubPrivateTokenHash == previous.get('schoolhubPrivateTokenHash', ''))));
     }
 
     function signedIn() {

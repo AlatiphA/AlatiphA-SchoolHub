@@ -9616,7 +9616,7 @@ async function publishLocalImagesToCloud() {
 
     try {
       const ref = storageRef(storagePath);
-      await ref.put(blob, { contentType: blob.type || 'image/png' });
+      await ref.put(blob, { contentType: blob.type || 'image/png', customMetadata: { schoolhubPrivateImage: 'true' } });
       const url = '';
       const meta = await ref.getMetadata();
       const updatedAt = meta && meta.updated ? String(meta.updated) : new Date().toISOString();
@@ -9739,7 +9739,7 @@ async function uploadSchoolAsset(file, kind, id) {
   // Retry the upload; private images are subsequently read by storagePath.
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await ref.put(file, { contentType: file.type || 'application/octet-stream' });
+      await ref.put(file, { contentType: file.type || 'application/octet-stream', customMetadata: { schoolhubPrivateImage: 'true' } });
       lastError = null;
       break;
     } catch (e) {
