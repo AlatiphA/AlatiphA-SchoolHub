@@ -1481,64 +1481,14 @@ document.getElementById('profileMyDetailsBtn')?.addEventListener('click',openMyS
 // About dialog / version information. Keeping the version visible in-app
 // makes PWA/service-worker troubleshooting possible without relying on
 // browser developer tools.
-async function refreshAboutImageStatus(cacheStatus, cloudImageStatus, imageSyncStatus) {
-  const cacheEl = cacheStatus || document.getElementById('aboutImageCacheStatus');
-  const cloudEl = cloudImageStatus || document.getElementById('aboutCloudImageStatus');
-  const syncEl = imageSyncStatus || document.getElementById('aboutImageSyncStatus');
-
-  if (cacheEl) cacheEl.textContent = 'Checking this school’s image cache…';
-  if (cloudEl) cloudEl.textContent = 'Checking cloud images…';
-  if (syncEl) syncEl.textContent = `Last image sync: ${getLastImageSyncText()}`;
-
-  let totalCount = null;
-  try { totalCount = await getImageCacheCount(); } catch (e) { totalCount = null; }
-
-  if (!FIREBASE_ENABLED || !currentSchoolId) {
-    if (cacheEl) cacheEl.textContent = totalCount === null
-      ? 'Unavailable in this browser'
-      : `${totalCount} total cached image${totalCount === 1 ? '' : 's'} on this device`;
-    if (cloudEl) cloudEl.textContent = 'Cloud sync unavailable';
-    if (syncEl) syncEl.textContent = 'Not signed in';
-    return;
-  }
-
-  try {
-    // Use the exact same inventory and cache coverage calculation as Sync Center.
-    const inventory = await getCloudImageInventory({ probeLegacy: false });
-    const localCount = await countCachedInventoryItems(inventory);
-    const scopeText = isHeadTeacher() ? 'school' : 'accessible';
-    if (cacheEl) cacheEl.textContent = `${localCount}/${inventory.length} ${scopeText} cloud image${inventory.length === 1 ? '' : 's'} cached locally${totalCount === null ? '' : ` · ${totalCount} total cached on this device`}`;
-    if (cloudEl) cloudEl.textContent = `${inventory.length} ${scopeText} cloud image${inventory.length === 1 ? '' : 's'} (Storage + Firestore)`;
-    if (syncEl) syncEl.textContent = `Last image sync: ${getLastImageSyncText()}`;
-  } catch (e) {
-    if (cacheEl) cacheEl.textContent = totalCount === null
-      ? 'Unable to read image cache'
-      : `${totalCount} total cached image${totalCount === 1 ? '' : 's'} on this device`;
-    if (cloudEl) cloudEl.textContent = 'Unable to read cloud images';
-    if (syncEl) syncEl.textContent = `Last image sync: ${getLastImageSyncText()}`;
-  }
-}
-
 function showAboutDialog() {
   const dialog = document.getElementById('aboutDialog');
   if (!dialog) return;
   document.getElementById('aboutVersion').textContent = APP_VERSION;
   document.getElementById('aboutDeveloper').textContent = 'AlatiphA Multimedia';
-  const cacheStatus = document.getElementById('aboutImageCacheStatus');
   const browserStatus = document.getElementById('aboutBrowserStatus');
-  const localStorageStatus = document.getElementById('aboutLocalStorageStatus');
   const swStatus = document.getElementById('aboutSwStatus');
-  const cloudImageStatus = document.getElementById('aboutCloudImageStatus');
-  const imageSyncStatus = document.getElementById('aboutImageSyncStatus');
-  refreshAboutImageStatus(cacheStatus, cloudImageStatus, imageSyncStatus);
   if (browserStatus) browserStatus.textContent = /SamsungBrowser/i.test(navigator.userAgent) ? 'Samsung Internet' : /Chrome/i.test(navigator.userAgent) ? 'Chrome' : 'Other';
-  if (localStorageStatus) {
-    try {
-      let chars = 0;
-      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ''; chars += k.length + String(localStorage.getItem(k) || '').length; }
-      localStorageStatus.textContent = `${Math.round(chars / 1024)} KB structured data`;
-    } catch (e) { localStorageStatus.textContent = 'Unavailable'; }
-  }
   if (swStatus) {
     if (!('serviceWorker' in navigator)) swStatus.textContent = 'Unavailable';
     else navigator.serviceWorker.getRegistration('./').then(r => { swStatus.textContent = r ? (r.active ? 'Active' : r.installing ? 'Installing' : r.waiting ? 'Waiting' : 'Registered') : 'Not registered'; }).catch(() => { swStatus.textContent = 'Unavailable'; });
@@ -1622,14 +1572,22 @@ async function updateSyncCenter() {
 
   cloudEl.textContent = 'Checking…';
   localEl.textContent = 'Checking…';
-  lastEl.textContent = 'Checking…';
+  lastEl.textContent = getLastImageSyncText();
   dataEl.textContent = formatSyncTime(localStorage.getItem(LAST_SYNCED_KEY));
   stateEl.textContent = 'Checking cloud synchronization…';
   detailEl.textContent = '';
 
+  const [deviceCount, storageBytes] = await Promise.all([
+    getImageCacheCount().catch(() => null), getLocalStorageUsageBytes()
+  ]);
+  const deviceEl = document.getElementById('syncDeviceImages');
+  const storageEl = document.getElementById('syncLocalStorage');
+  if (deviceEl) deviceEl.textContent = deviceCount == null ? 'Unavailable' : String(deviceCount);
+  if (storageEl) storageEl.textContent = bytesToText(storageBytes);
+
   if (!FIREBASE_ENABLED || !currentSchoolId) {
     cloudEl.textContent = '—';
-    localEl.textContent = `${(await getImageCacheCount()) ?? 0}`;
+    localEl.textContent = deviceCount == null ? '—' : String(deviceCount);
     stateEl.textContent = 'Offline / Guest mode';
     detailEl.textContent = 'Sign in to a school account to compare cloud and browser data.';
     return;
@@ -1644,7 +1602,7 @@ async function updateSyncCenter() {
     const missing = Math.max(0, inventory.length - localCount);
     if (missing > 0) {
       stateEl.textContent = `⚠ ${missing} image${missing === 1 ? '' : 's'} may need synchronization`;
-      detailEl.textContent = 'Use Sync Images to reconcile this browser with the current cloud image inventory.';
+      detailEl.textContent = 'Use Sync Images to download missing photos and signatures to this browser.';
     } else {
       stateEl.textContent = '✓ Image cache appears synchronized';
       detailEl.textContent = 'Cloud and local image counts match. This does not remove unrelated legacy cloud files.';
@@ -1689,14 +1647,22 @@ function renderImageSyncDiagnostics(result) {
   el.classList.remove('hidden');
 }
 
+function setSyncCenterActionsBusy(busy) {
+  for (const id of ['syncCenterSyncBtn', 'syncCenterImagesBtn', 'syncCenterRecoverBtn', 'syncCenterRefreshBtn']) {
+    const button = document.getElementById(id);
+    if (button) button.disabled = busy;
+  }
+}
+
 async function runSyncCenterSync() {
   const btn = document.getElementById('syncCenterSyncBtn');
   const status = document.getElementById('syncCenterActionStatus');
+  if (btn && btn.disabled) return;
   if (!FIREBASE_ENABLED || !currentSchoolId) {
     if (status) status.textContent = 'Sign in to a school account first.';
     return;
   }
-  if (btn) btn.disabled = true;
+  setSyncCenterActionsBusy(true);
   if (status) status.textContent = 'Synchronizing school data and images…';
   try {
     await pullCloudData();
@@ -1709,7 +1675,7 @@ async function runSyncCenterSync() {
   } catch (e) {
     if (status) status.textContent = 'Sync failed: ' + (e && e.message ? e.message : String(e || 'Unknown error'));
   } finally {
-    if (btn) btn.disabled = false;
+    setSyncCenterActionsBusy(false);
   }
 }
 
@@ -1846,7 +1812,7 @@ if (syncCenterRecoverBtn) {
       if (status) status.textContent = 'Only the Head Teacher can recover local images to the cloud.';
       return;
     }
-    syncCenterRecoverBtn.disabled = true;
+    setSyncCenterActionsBusy(true);
     if (status) status.textContent = 'Registering this browser’s local images in the cloud…';
     try {
       const result = await publishLocalImagesToCloud();
@@ -1855,7 +1821,7 @@ if (syncCenterRecoverBtn) {
     } catch (e) {
       if (status) status.textContent = 'Image recovery failed: ' + (e.message || e);
     } finally {
-      syncCenterRecoverBtn.disabled = false;
+      setSyncCenterActionsBusy(false);
     }
   });
 }
@@ -1903,22 +1869,23 @@ document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async (
     console.warn('SchoolHub update check failed:', err);
   }
 });
-const aboutSyncImagesBtn = document.getElementById('aboutSyncImagesBtn');
-if (aboutSyncImagesBtn) {
-  aboutSyncImagesBtn.addEventListener('click', async () => {
-    const status = document.getElementById('aboutImageSyncStatus');
-    aboutSyncImagesBtn.disabled = true;
+const syncCenterImagesBtn = document.getElementById('syncCenterImagesBtn');
+if (syncCenterImagesBtn) {
+  syncCenterImagesBtn.addEventListener('click', async () => {
+    const status = document.getElementById('syncCenterActionStatus');
+    if (syncCenterImagesBtn.disabled) return;
+    setSyncCenterActionsBusy(true);
     if (status) status.textContent = 'Synchronizing images…';
     try {
       let recovery = { published: 0, skipped: 0, failed: 0 };
       if (isHeadTeacher()) recovery = await publishLocalImagesToCloud();
       const result = await syncImagesFromCloud({ force: false });
       if (status) status.textContent = `Sync complete: ${result.local}/${result.total} cloud images local, ${result.downloaded} downloaded, ${recovery.published || 0} local image${recovery.published === 1 ? '' : 's'} published, ${result.failed + (recovery.failed || 0)} failed`;
-      await refreshAboutImageStatus();
+      await updateSyncCenter();
     } catch (err) {
       if (status) status.textContent = 'Image sync failed: ' + (err && err.message ? err.message : String(err));
     } finally {
-      aboutSyncImagesBtn.disabled = false;
+      setSyncCenterActionsBusy(false);
     }
   });
 }
@@ -9705,20 +9672,12 @@ function startBackgroundImageSync(token, uid, schoolId) {
       if (!isCurrentSession(token, uid, schoolId)) return;
       // Refresh lightweight status indicators without repainting the whole
       // dashboard or changing the active view.
-      const countEl = document.getElementById('aboutImageCount');
-      if (countEl) {
-        const count = await getImageCacheCount();
-        countEl.textContent = count == null ? 'Unavailable' : `${count} local images cached (IndexedDB)`;
-      }
-      const status = document.getElementById('aboutImageSyncStatus');
-      if (status) {
-        status.textContent = result.failed ? `Image sync: ${result.downloaded || 0} downloaded, ${result.failed} failed` : `Image sync complete: ${result.downloaded || 0} downloaded`;
-      }
+      const lastEl = document.getElementById('syncLastImage');
+      if (lastEl) lastEl.textContent = getLastImageSyncText();
     } catch (e) {
       if (!isCurrentSession(token, uid, schoolId)) return;
       console.warn('Background image sync failed:', e);
-      const status = document.getElementById('aboutImageSyncStatus');
-      if (status) status.textContent = 'Image sync is pending; reports can retry when needed.';
+
     }
   });
 }

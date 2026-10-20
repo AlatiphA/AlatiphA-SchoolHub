@@ -760,3 +760,43 @@
 .tour-complete-guide span{display:block;font-size:.75rem;font-weight:400;color:var(--muted)}
 .account-tools-grid .complete-guide-link{display:flex;flex-direction:column;justify-content:center;text-decoration:none;box-sizing:border-box}
 .complete-guide-link small{font-size:.75rem;color:var(--muted)}
+
+/* Mobile dialogs: keep dismissal visible and give the content its own scroll area. */
+@media screen {
+  .about-overlay:has(>.dialog-fixed-shell),#notificationCenterDialog {padding:12px;box-sizing:border-box;}
+  .about-box.dialog-fixed-shell {width:min(620px,100%);max-width:620px;padding:0;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;text-align:left;}
+  dialog.dialog-fixed-shell[open] {display:flex;flex-direction:column;padding:0;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:hidden;}
+  .dialog-fixed-header {display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 auto;padding:16px 18px;border-bottom:1px solid var(--rule);background:var(--surface);}
+  .dialog-fixed-header h2 {margin:0;line-height:1.2;font-size:clamp(20px,5vw,24px);overflow-wrap:anywhere;}
+  .dialog-fixed-header .about-version {margin:4px 0 0;}
+  .dialog-scroll-content {min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:18px;scroll-padding-block:12px;}
+  :is(#notificationCenterDialog,#systemHealthDialog,#accountSecurityDialog,#syncCenterDialog,#aboutDialog) button.dialog-close-icon[data-dismiss-ui="header"] {display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:44px!important;min-width:44px!important;height:44px!important;min-height:44px!important;max-width:44px!important;flex:0 0 44px!important;margin:0!important;padding:0!important;border-radius:50%!important;font:400 30px/1 sans-serif!important;}
+  .dialog-close-icon:disabled {opacity:.5;cursor:wait;}
+  #accountSecurityDialog .dialog-scroll-content {flex:1 1 auto;}
+  #accountSecurityStatus:empty {display:none;}
+  #notificationCenterDialog .notification-center-box {width:min(720px,100%);max-width:720px;height:min(88vh,800px);height:min(92dvh,800px);max-height:calc(100dvh - 24px);padding:0;overflow:hidden;}
+  #notificationCenterDialog .notification-center-head {align-items:center;padding:14px 16px;border-bottom:1px solid var(--rule);}
+  #notificationCenterDialog .notification-center-head .about-version {font-size:12px;line-height:1.4;margin:4px 0 0;}
+  #notificationCenterDialog .notification-controls {flex:0 1 auto;min-height:0;max-height:44%;overflow-y:auto;overscroll-behavior:contain;padding:0 16px;border-bottom:1px solid var(--rule);}
+  #notificationCenterDialog .notification-toolbar {display:flex;align-items:flex-start;gap:10px;justify-content:space-between;flex-wrap:wrap;margin:8px 0;}
+  #notificationCenterDialog .notification-toolbar>* {flex:0 1 auto;min-width:0;}
+  #notificationCenterDialog .notification-toolbar>.btn-text {width:auto;margin:0;min-height:40px;padding:8px 0;}
+  #notificationCenterDialog details>summary {cursor:pointer;min-height:40px;box-sizing:border-box;padding:9px 0;color:var(--paper);font-size:14px;font-weight:600;}
+  #notificationCenterDialog .notification-preferences {flex:1 1 140px;max-width:100%;text-align:right;}
+  #notificationCenterDialog .notification-preferences .btn-text {width:auto;margin:4px 0;padding:8px;min-height:40px;}
+  #notificationCenterDialog .notification-browser-status {font-size:12px;line-height:1.5;margin:4px 0 8px;}
+  #notificationCenterDialog .notification-compose {margin:0 0 8px;padding:0 10px;background:var(--surface-alt);text-align:left;}
+  #notificationCenterDialog .notification-compose textarea {min-height:80px;max-height:150px;margin:4px 0 0;font-size:16px;resize:vertical;}
+  #notificationCenterDialog .notification-compose-actions {margin:8px 0;}
+  #notificationCenterDialog .notification-compose-actions .btn-primary {min-height:44px;width:100%;font-size:14px;}
+  #notificationCenterDialog .notification-compose .hint:empty {display:none;}
+  #notificationCenterDialog .notification-list {flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:12px 16px;scroll-padding-block:12px;text-align:left;}
+  #notificationCenterDialog .notification-item {flex:0 0 auto;overflow-wrap:anywhere;}
+  #notificationCenterDialog .notification-item p {white-space:pre-wrap;line-height:1.5;}
+  #notificationCenterDialog summary:focus-visible {outline:2px solid var(--gold);outline-offset:2px;border-radius:4px;}
+  @media(max-width:480px) {.dialog-fixed-header{padding:12px 14px;}.dialog-scroll-content{padding:14px;}#notificationCenterDialog .notification-center-head h2{font-size:21px;}}
+}
+
+#notificationCenterDialog .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0;}
+
+@media screen{#syncCenterDialog .about-details strong{overflow-wrap:anywhere;max-width:62%;}#syncCenterDialog .about-actions .btn-primary,#aboutDialog .about-actions .btn-primary{flex:1 1 100%;}#syncCenterDialog .dialog-scroll-content,#aboutDialog .dialog-scroll-content{flex:1 1 auto;}#syncCenterActionStatus:empty{display:none;}}

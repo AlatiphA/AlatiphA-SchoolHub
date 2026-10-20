@@ -12,10 +12,10 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SchoolHub">
-<link rel="stylesheet" href="style-3.css?v=v40-private-images-1-notification-tap-13">
+<link rel="stylesheet" href="style-3.css?v=v40-private-images-1-sync-center-1">
 <link rel="stylesheet" href="weekly-supervision.css?v=v40-private-images-1">
 <link rel="stylesheet" href="school-operations.css?v=v40-private-images-1">
-<link rel="stylesheet" href="ui-polish.css?v=v40-private-images-1">
+<link rel="stylesheet" href="ui-polish.css?v=v40-private-images-1-sync-center-1">
 <script src="firebase-config.js"></script>
 <script src="https://js.paystack.co/v2/inline.js"></script>
 <script>
@@ -795,13 +795,17 @@
 
 <!-- SYNC CENTER -->
 <div id="syncCenterDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="syncCenterTitle">
-  <div class="about-box diagnostic-box">
-    <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
-    <h2 id="syncCenterTitle">Sync Center</h2>
-    <p class="about-version">Cloud ↔ browser synchronization via Firestore image manifest + diagnostic recovery</p>
+  <div class="about-box diagnostic-box dialog-fixed-shell">
+    <div class="dialog-fixed-header">
+      <div><h2 id="syncCenterTitle">Sync Center</h2><p class="about-version">School data, photos and signatures</p></div>
+      <button type="button" id="syncCenterCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close Sync Center" title="Close">&times;</button>
+    </div>
+    <div class="dialog-scroll-content">
     <div class="about-details diagnostic-details">
       <div><span>Accessible cloud images</span><strong id="syncCloudImages">Checking…</strong></div>
       <div><span>Cached accessible images</span><strong id="syncLocalImages">Checking…</strong></div>
+      <div><span>Total images on this device</span><strong id="syncDeviceImages">Checking…</strong></div>
+      <div><span>Local data storage</span><strong id="syncLocalStorage">Checking…</strong></div>
       <div><span>Last image sync</span><strong id="syncLastImage">Checking…</strong></div>
       <div><span>Last data sync</span><strong id="syncLastData">Checking…</strong></div>
     </div>
@@ -811,9 +815,11 @@
     <p id="syncCenterActionStatus" class="hint about-status"></p>
     <div class="about-actions">
       <button type="button" id="syncCenterSyncBtn" class="btn-primary">Sync Everything</button>
+      <button type="button" id="syncCenterImagesBtn" class="btn-primary">Sync Images</button>
       <button type="button" id="syncCenterRecoverBtn" class="btn-primary">Recover Local Images</button>
       <button type="button" id="syncCenterRefreshBtn" class="btn-primary">Refresh</button>
-      <button type="button" id="syncCenterCloseBtn" class="btn-text" data-dismiss-ui>Close</button>
+
+    </div>
     </div>
   </div>
 </div>
@@ -824,22 +830,28 @@
     <div class="notification-center-head">
       <div>
         <h2 id="notificationCenterTitle">Notifications</h2>
-        <p class="about-version">SchoolHub communication center</p>
+        <p class="about-version">School messages and updates</p>
       </div>
-      <button type="button" id="notificationCenterCloseBtn" class="btn-text" data-dismiss-ui="header">Close</button>
+      <button type="button" id="notificationCenterCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close notifications" title="Close">&times;</button>
     </div>
-    <div class="notification-toolbar">
-      <button type="button" id="notificationMarkAllReadBtn" class="btn-text">Mark all read</button>
-      <button type="button" id="notificationBrowserToggleBtn" class="btn-text">Enable browser notifications</button>
-    </div>
-    <p id="notificationBrowserStatus" class="hint notification-browser-status">Checking browser notification support…</p>
-    <div id="notificationComposeWrap" class="notification-compose hidden">
-      <h3>Send school announcement</h3>
-      <textarea id="notificationAnnouncementBody" maxlength="1000" rows="4" placeholder="Write an announcement for all active teachers…"></textarea>
-      <div class="notification-compose-actions">
-        <button type="button" id="notificationSendAnnouncementBtn" class="btn-primary">Send to active teachers</button>
+    <div class="notification-controls">
+      <div class="notification-toolbar">
+        <button type="button" id="notificationMarkAllReadBtn" class="btn-text">Mark all read</button>
+        <details class="notification-preferences">
+          <summary>Browser alerts</summary>
+          <button type="button" id="notificationBrowserToggleBtn" class="btn-text">Enable browser notifications</button>
+          <p id="notificationBrowserStatus" class="hint notification-browser-status">Checking browser notification support…</p>
+        </details>
       </div>
-      <p id="notificationAnnouncementStatus" class="hint"></p>
+      <details id="notificationComposeWrap" class="notification-compose hidden">
+        <summary>Send school announcement</summary>
+        <label class="sr-only" for="notificationAnnouncementBody">Announcement for active teachers</label>
+        <textarea id="notificationAnnouncementBody" maxlength="1000" rows="3" placeholder="Write an announcement for all active teachers…"></textarea>
+        <div class="notification-compose-actions">
+          <button type="button" id="notificationSendAnnouncementBtn" class="btn-primary">Send to active teachers</button>
+        </div>
+        <p id="notificationAnnouncementStatus" class="hint" role="status"></p>
+      </details>
     </div>
     <div id="notificationList" class="notification-list" aria-live="polite">
       <div class="empty notification-empty">No notifications yet.</div>
@@ -849,10 +861,12 @@
 
 <!-- SYSTEM HEALTH -->
 <div id="systemHealthDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="systemHealthTitle">
-  <div class="about-box diagnostic-box health-box">
-    <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
-    <h2 id="systemHealthTitle">System Health</h2>
-    <p class="about-version">Read-only diagnostics</p>
+  <div class="about-box diagnostic-box health-box dialog-fixed-shell">
+    <div class="dialog-fixed-header">
+      <div><h2 id="systemHealthTitle">System Health</h2><p class="about-version">Read-only diagnostics</p></div>
+      <button type="button" id="systemHealthCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close System Health" title="Close">&times;</button>
+    </div>
+    <div class="dialog-scroll-content">
     <div class="health-list">
       <div><span>Authentication</span><strong id="healthAuth">Checking…</strong></div>
       <div><span>Firestore</span><strong id="healthFirestore">Checking…</strong></div>
@@ -870,7 +884,8 @@
     <div id="secureImageLinksWrap" class="hidden"><h3>Private school images</h3><p class="hint">Secure previously issued photo and signature links. Updated SchoolHub uses signed-in downloads; saved offline copies remain available.</p><button type="button" id="secureImageLinksBtn" class="btn-secondary">Secure old image links</button><p id="secureImageLinksStatus" class="hint" role="status"></p></div>
     <div class="about-actions">
       <button type="button" id="systemHealthRefreshBtn" class="btn-primary">Run Diagnostics</button>
-      <button type="button" id="systemHealthCloseBtn" class="btn-text" data-dismiss-ui>Close</button>
+
+    </div>
     </div>
   </div>
 </div>
@@ -1206,26 +1221,24 @@
 
 <!-- ABOUT -->
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
-  <div class="about-box">
+  <div class="about-box dialog-fixed-shell">
+    <div class="dialog-fixed-header">
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">v40</strong></p></div>
+      <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
+    </div>
+    <div class="dialog-scroll-content">
     <div class="about-seal-wrap"><img src="icon.svg" alt="AlatiphA SchoolHub" class="about-seal"></div>
-    <h2 id="aboutTitle">AlatiphA SchoolHub</h2>
-    <p class="about-version">Version <strong id="aboutVersion">v40</strong></p>
     <div class="about-details">
       <div><span>Developer</span><strong id="aboutDeveloper">AlatiphA Multimedia</strong></div>
       <div><span>Browser</span><strong id="aboutBrowserStatus">Checking…</strong></div>
-      <div><span>Image storage</span><strong id="aboutImageCacheStatus">Checking…</strong></div>
-      <div><span>Accessible cloud images</span><strong id="aboutCloudImageStatus">Checking…</strong></div>
-      <div><span>Image sync</span><strong id="aboutImageSyncStatus">Checking…</strong></div>
-      <div><span>Local storage</span><strong id="aboutLocalStorageStatus">Checking…</strong></div>
       <div><span>Service worker</span><strong id="aboutSwStatus">Checking…</strong></div>
     </div>
     <p id="aboutUpdateStatus" class="hint about-status">Use “Check for Updates” after deploying a new version.</p>
     <div class="about-actions">
-      <button type="button" id="aboutSyncImagesBtn" class="btn-primary">Sync Images</button>
       <button type="button" id="aboutCheckUpdateBtn" class="btn-primary">Check for Updates</button>
-      <button type="button" id="aboutCloseBtn" class="btn-text" data-dismiss-ui>Close</button>
     </div>
     <p class="about-copyright">© All Rights Reserved · AlatiphA Multimedia</p>
+    </div>
   </div>
 </div>
 
@@ -1239,12 +1252,12 @@
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-functions-compat.js"></script>
 <script src="staff-transfer.js"></script>
 <script src="staff-qualifications.js?v=v40-private-images-1"></script>
-<script src="account-security.js?v=v40-private-images-1"></script>
+<script src="account-security.js?v=v40-private-images-1-sync-center-1"></script>
 <script src="sync-queue.js?v=v40-private-images-1"></script>
 <script src="sync-client.js?v=v40-private-images-1"></script>
 <script src="offline-drafts.js?v=v40-private-images-1"></script>
 <script src="private-images.js?v=v40-private-images-1"></script>
-<script src="app-4.js?v=v40-private-images-1-notification-tap-13"></script>
+<script src="app-4.js?v=v40-private-images-1-sync-center-1"></script>
 <script src="fees.js?v=v40-private-images-1"></script>
 <script src="school-operations.js?v=v40-private-images-1"></script>
 <script src="live-class-sync.js?v=v40-private-images-1"></script>
