@@ -3334,7 +3334,16 @@ function prepareBulkAdd(kind, text, classId, previous) {
     const line = raw.trim();
     if (!line) return;
     const [rawName, ...parts] = line.split(',');
-    const name = rawName.trim(), externalId = parts.join(',').trim(), key = externalId.toLowerCase();
+    const name = rawName.trim();
+    let gender = '', externalId;
+    if (kind === 'students') {
+      if (parts.length < 1 || parts.length > 2) { errors.push(`Line ${index + 1}: Use Full name, Sex, optional Student ID.`); return; }
+      const sex = parts[0].trim().toLowerCase();
+      gender = sex === 'female' || sex === 'f' ? 'F' : sex === 'male' || sex === 'm' ? 'M' : '';
+      if (!gender) { errors.push(`Line ${index + 1}: Sex is required. Use Female/Male or F/M.`); return; }
+      externalId = (parts[1] || '').trim();
+    } else externalId = parts.join(',').trim();
+    const key = externalId.toLowerCase();
     if (!name || (kind === 'staff' && !externalId)) { errors.push(`Line ${index + 1}: ${kind === 'staff' ? 'Name and Staff ID are required.' : 'Name is required.'}`); return; }
     const oldIndex = reusable.findIndex(item => item.line === line);
     const old = oldIndex < 0 ? null : reusable.splice(oldIndex, 1)[0];
@@ -3342,7 +3351,7 @@ function prepareBulkAdd(kind, text, classId, previous) {
     if (key) inputIds.add(key);
     const record = old?.record || (kind === 'staff'
       ? {id:uid(), name, staffId:externalId, role:'Teacher'}
-      : {id:uid(), classId, name, gender:'', admissionId:externalId, parentPhone:''});
+      : {id:uid(), classId, name, gender, admissionId:externalId, parentPhone:''});
     items.push({line, record});
   });
   return {items, errors};
@@ -3715,7 +3724,26 @@ const STUDENT_TRANSFER_FIELDS = [
 let pendingStudentImport = null;
 let studentTableVisible = true;
 
+function installStudentOnboardingControls() {
+  for (const [buttonId, panelId, title] of [['toggleBulkStudentsBtn','bulkStudentForm','Bulk add'],['toggleStudentExcelBtn','studentExcelForm','Excel template']]) {
+    const button = document.getElementById(buttonId), panel = document.getElementById(panelId);
+    if (!button || !panel || button.dataset.studentOnboardingBound) continue;
+    button.dataset.studentOnboardingBound = 'true';
+    button.addEventListener('click', () => {
+      const open = panel.classList.toggle('hidden') === false;
+      button.textContent = open ? 'Collapse' : 'Expand';
+      button.setAttribute('aria-expanded', String(open));
+      button.setAttribute('aria-label', (open ? 'Collapse ' : 'Expand ') + title);
+    });
+  }
+  for (const [id, event, handler] of [['studentTemplateBtn','click',()=>exportStudentsWorkbook(true)],['importStudentsBtn','click',()=>document.getElementById('studentImportInput').click()],['studentImportInput','change',handleStudentImportFile]]) {
+    const control = document.getElementById(id);
+    if (control && !control.dataset.studentOnboardingBound) { control.dataset.studentOnboardingBound='true'; control.addEventListener(event,handler); }
+  }
+}
+
 function installStudentTabUpgrade() {
+  installStudentOnboardingControls();
   const form = document.getElementById('addStudentForm');
   const addBtn = document.getElementById('addStudentBtn');
   if (form && addBtn && !document.getElementById('newStudentDisability')) {
@@ -3737,11 +3765,7 @@ function installStudentTabUpgrade() {
     toolbar.className = 'staff-data-actions student-data-actions';
     toolbar.innerHTML = `
       <button type="button" id="exportStudentsBtn">Export to Excel</button>
-      <button type="button" id="studentTemplateBtn">Download Template</button>
-      <button type="button" id="importStudentsBtn">Import Students</button>
       <button type="button" id="printStudentsBtn">Print / Save as PDF</button>
-      <input type="file" id="studentImportInput" accept=".xlsx,.xls,.csv" hidden>
-      <div id="studentImportPreview" class="hidden" style="width:100%"></div>
       <p class="hint" style="width:100%">Excel exports include all accessible students and their personal, guardian and class details. Print the current search or class results, then choose Save as PDF in the print dialog.</p>
       <p id="studentSearchCount" class="hint" style="width:100%" aria-live="polite"></p>
       <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
@@ -3750,9 +3774,6 @@ function installStudentTabUpgrade() {
     const toolbarAnchor = (classSelect && classSelect.parentNode) ? classSelect.parentNode : search.parentNode;
     toolbarAnchor.parentNode.insertBefore(toolbar, toolbarAnchor.nextSibling);
     document.getElementById('exportStudentsBtn').addEventListener('click', () => exportStudentsWorkbook(false));
-    document.getElementById('studentTemplateBtn').addEventListener('click', () => exportStudentsWorkbook(true));
-    document.getElementById('importStudentsBtn').addEventListener('click', () => document.getElementById('studentImportInput').click());
-    document.getElementById('studentImportInput').addEventListener('change', handleStudentImportFile);
     document.getElementById('printStudentsBtn').addEventListener('click', printStudentsDetailsTable);
     document.getElementById('checkStudentRecoveryBtn').addEventListener('click', checkStudentRecovery);
   }
@@ -12592,6 +12613,6 @@ document.getElementById('syncStatusBtn')?.addEventListener('click', () => docume
 function closeSchoolHubAddForm(formId,toggleId){
  const form=document.getElementById(formId),toggle=document.getElementById(toggleId);
  if(!form||!toggle)return;
- form.classList.add('hidden');toggle.textContent='Expand';toggle.setAttribute('aria-expanded','false');toggle.focus();
+ form.classList.add('hidden');toggle.textContent='Expand';toggle.setAttribute('aria-expanded','false');if(toggle.getAttribute?.('aria-label'))toggle.setAttribute('aria-label','Expand '+(formId==='bulkStudentForm'?'Bulk add':formId==='studentExcelForm'?'Excel template':'Add Student'));toggle.focus();
 }
 document.querySelectorAll('[data-close-form]').forEach(button=>button.addEventListener('click',()=>closeSchoolHubAddForm(button.dataset.closeForm,button.dataset.formToggle)));

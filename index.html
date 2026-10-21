@@ -516,7 +516,7 @@
         <strong>Add Student</strong>
         <p class="hint">Add a student and their personal and guardian details.</p>
       </div>
-      <button type="button" id="toggleAddStudentBtn" class="student-toggle-btn" aria-expanded="false">Expand</button>
+      <button type="button" id="toggleAddStudentBtn" class="student-toggle-btn" aria-controls="addStudentForm" aria-expanded="false">Expand</button>
     </div>
     <div id="addStudentForm" class="stack student-add-form hidden">
       <label>Full name <span class="required-mark">*</span>
@@ -546,11 +546,28 @@
       <button id="addStudentBtn" class="btn-primary">Add Student</button>
       <button type="button" id="closeAddStudentBtn" data-close-form="addStudentForm" data-form-toggle="toggleAddStudentBtn" data-dismiss-ui>Close</button>
     </div>
-    <div class="stack">
-      <label>Bulk Add — one name per line, optionally "Name, ID"
-        <textarea id="bulkStudentInput" rows="4" placeholder="Jane Doe, 101&#10;John Smith"></textarea>
+    <div class="student-add-toolbar student-onboarding-heading">
+      <div><strong id="studentBulkTitle">Bulk add</strong><p class="hint">Type or paste one student per line.</p></div>
+      <button type="button" id="toggleBulkStudentsBtn" class="student-toggle-btn" aria-expanded="false" aria-controls="bulkStudentForm" aria-label="Expand Bulk add">Expand</button>
+    </div>
+    <div id="bulkStudentForm" class="stack student-onboarding-panel hidden" role="region" aria-labelledby="studentBulkTitle">
+      <label>Full name, Sex, optional Student ID
+        <textarea id="bulkStudentInput" rows="5" placeholder="Jane Doe, Female, 001&#10;John Smith, Male" aria-describedby="bulkStudentFormatHint"></textarea>
       </label>
-      <button id="bulkAddStudentsBtn" class="btn-primary">Add All</button>
+      <p id="bulkStudentFormatHint" class="hint">Name and sex are required. Use Female/Male or F/M. Student ID is optional; enter one student per line.</p>
+      <div class="student-onboarding-actions"><button type="button" id="bulkAddStudentsBtn" class="btn-primary">Add All</button><button type="button" id="closeBulkStudentsBtn" data-close-form="bulkStudentForm" data-form-toggle="toggleBulkStudentsBtn" data-dismiss-ui>Close</button></div>
+    </div>
+    <div class="student-add-toolbar student-onboarding-heading">
+      <div><strong id="studentExcelTitle">Excel template</strong><p class="hint">Download, fill in and import a student spreadsheet.</p></div>
+      <button type="button" id="toggleStudentExcelBtn" class="student-toggle-btn" aria-expanded="false" aria-controls="studentExcelForm" aria-label="Expand Excel template">Expand</button>
+    </div>
+    <div id="studentExcelForm" class="stack student-onboarding-panel hidden" role="region" aria-labelledby="studentExcelTitle">
+      <ol class="student-excel-steps"><li>Download the blank Excel template.</li><li>Fill in the Students sheet, then import it below.</li><li>Review the preview before saving the imported students.</li></ol>
+      <p class="hint">Excel requires Full Name, Student ID, Sex, Date of Birth and Class. Class names must match an existing SchoolHub class.</p>
+      <div class="student-onboarding-actions"><button type="button" id="studentTemplateBtn">Download Template</button><button type="button" id="importStudentsBtn" class="btn-primary">Import Students</button></div>
+      <input type="file" id="studentImportInput" accept=".xlsx,.xls,.csv" hidden>
+      <div id="studentImportPreview" class="hidden" aria-live="polite"></div>
+      <button type="button" id="closeStudentExcelBtn" data-close-form="studentExcelForm" data-form-toggle="toggleStudentExcelBtn" data-dismiss-ui>Close</button>
     </div>
     <ul id="studentList" class="list"></ul>
   </section>

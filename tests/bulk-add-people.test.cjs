@@ -31,7 +31,7 @@ function fixture(kind = 'students') {
   return {ctx,data,input,button,alerts,writes,cloud,run:()=>ctx.bulkAddPeople(kind)};
 }
 test('one click adds 30 students, preserving IDs and clearing the input', async()=>{
-  const f=fixture(); f.input.value=Array.from({length:30},(_,i)=>`Student ${i}, 00${i}`).join('\n');
+  const f=fixture(); f.input.value=Array.from({length:30},(_,i)=>`Student ${i}, Female, 00${i}`).join('\n');
   await f.run(); assert.equal(f.data.students.length,30); assert.equal(f.writes.length,3);
   assert.equal(f.data.students[0].admissionId,'000'); assert.equal(f.input.value,''); assert.equal(f.button.disabled,false);
   assert.equal(f.ctx.document.getElementById('studentSearchInput').value,'');
@@ -49,24 +49,39 @@ test('validates the entire list before saving missing or repeated Staff IDs',asy
 test('partial failure retains only unsaved lines, and retry avoids duplicates',async()=>{
   for (const loseAck of [false,true]) {
     const f=fixture(); f.ctx.failAt=2; f.ctx.loseAck=loseAck;
-    f.input.value=Array.from({length:30},(_,i)=>`Student ${i}`).join('\n');
+    f.input.value=Array.from({length:30},(_,i)=>`Student ${i}, Male`).join('\n');
     await f.run(); assert.equal(f.data.students.length,10); assert.equal(f.input.value.split('\n').length,20);
     f.ctx.failAt=0; await f.run(); assert.equal(f.data.students.length,30); assert.equal(f.cloud.size,30); assert.equal(f.input.value,'');
   }
 });
 test('duplicate clicks cannot start another save, and session changes stop further writes',async()=>{
-  const f=fixture(); f.input.value=Array.from({length:30},(_,i)=>`Student ${i}`).join('\n'); f.ctx.changeSessionAt=1;
+  const f=fixture(); f.input.value=Array.from({length:30},(_,i)=>`Student ${i}, Male`).join('\n'); f.ctx.changeSessionAt=1;
   const first=f.run(); await f.run(); await first;
   assert.equal(f.writes.length,1); assert.equal(f.data.students.length,0); assert.equal(f.button.disabled,false);
 });
 test('existing Student IDs are rejected without saving any part of the list',async()=>{
-  const f=fixture(); f.data.students.push({id:'existing',admissionId:'ABC'}); f.input.value='Jane, abc\nJohn, new';
+  const f=fixture(); f.data.students.push({id:'existing',admissionId:'ABC'}); f.input.value='Jane, F, abc\nJohn, M, new';
   await f.run(); assert.equal(f.writes.length,0); assert.equal(f.data.students.length,1);
 });
 
 test('offline bulk pupils save locally without network confirmation and show the full class',async()=>{
- const f=fixture();f.ctx.navigator.onLine=false;f.data.students.push({id:'real',name:'Existing pupil'});f.input.value='Offline test, TEST-ID';await f.run();assert.equal(f.data.students.length,2);assert.equal(f.writes.length,0);assert.equal(f.input.value,'');assert.equal(f.ctx.document.getElementById('studentSearchInput').value,'');assert(f.alerts.some(x=>x.includes('Pending upload')));assert.equal(f.button.disabled,false);
+ const f=fixture();f.ctx.navigator.onLine=false;f.data.students.push({id:'real',name:'Existing pupil'});f.input.value='Offline test, F, TEST-ID';await f.run();assert.equal(f.data.students.length,2);assert.equal(f.writes.length,0);assert.equal(f.input.value,'');assert.equal(f.ctx.document.getElementById('studentSearchInput').value,'');assert(f.alerts.some(x=>x.includes('Pending upload')));assert.equal(f.button.disabled,false);
 });
 test('offline bulk pupil creation refuses incomplete or disabled school sessions',async()=>{
- for(const state of [{sessionReady:false},{currentStatus:'disabled'},{cloudHydrationInProgress:true}]){const f=fixture();f.ctx.navigator.onLine=false;Object.assign(f.ctx,state);f.input.value='Test';await f.run();assert.equal(f.data.students.length,0);assert.equal(f.input.value,'Test');assert.equal(f.button.disabled,false);}
+ for(const state of [{sessionReady:false},{currentStatus:'disabled'},{cloudHydrationInProgress:true}]){const f=fixture();f.ctx.navigator.onLine=false;Object.assign(f.ctx,state);f.input.value='Test, M';await f.run();assert.equal(f.data.students.length,0);assert.equal(f.input.value,'Test, M');assert.equal(f.button.disabled,false);}
+});
+
+test('student bulk entry saves sex from full words or letters and keeps optional IDs as text',async()=>{
+ const f=fixture();f.input.value='Jane Doe, Female, 001\nJohn Smith, Male\nAma, f\nKofi, m, 0002';await f.run();
+ assert.deepEqual(f.data.students.map(s=>[s.name,s.gender,s.admissionId]),[['Jane Doe','F','001'],['John Smith','M',''],['Ama','F',''],['Kofi','M','0002']]);assert(f.cloud.size===4);
+});
+test('student bulk entry validates sex and column count before saving any row',async()=>{
+ for(const bad of ['John','John, 101','John, Other','John, , 002','John, M, 002, extra',', F, 003']){const f=fixture();f.input.value='Valid pupil, F, 001\n'+bad;await f.run();assert.equal(f.data.students.length,0);assert.equal(f.writes.length,0);assert.equal(f.input.value,'Valid pupil, F, 001\n'+bad);assert.match(f.alerts[0],/Line 2:/);}
+});
+test('student bulk duplicate IDs are caught case-insensitively with the new format',async()=>{
+ const f=fixture();f.input.value='Ama, F, abc\nKofi, M, ABC';await f.run();assert.equal(f.writes.length,0);assert.match(f.alerts[0],/already in use/);
+});
+test('gender survives offline entry and a lost-acknowledgement retry',async()=>{
+ const offline=fixture();offline.ctx.navigator.onLine=false;offline.input.value='Offline pupil, Female';await offline.run();assert.equal(offline.data.students[0].gender,'F');
+ const f=fixture();f.input.value='Retry pupil, M, 001';f.ctx.failAt=1;f.ctx.loseAck=true;await f.run();assert.equal(f.data.students.length,0);f.ctx.failAt=0;await f.run();assert.equal(f.cloud.size,1);assert.equal(f.data.students[0].gender,'M');
 });
