@@ -515,6 +515,8 @@
       <select id="studentClassSelect"></select>
     </label>
     <p id="liveStudentUpdateStatus" class="hint" role="status" aria-live="polite">Checking the pupil-update connection…</p>
+    <section id="studentOnboarding" class="student-onboarding-group" aria-labelledby="studentOnboardingTitle">
+      <h3 id="studentOnboardingTitle">Onboarding</h3>
     <div class="student-add-toolbar">
       <div>
         <strong>Add Student</strong>
@@ -573,7 +575,12 @@
       <div id="studentImportPreview" class="hidden" aria-live="polite"></div>
       <button type="button" id="closeStudentExcelBtn" data-close-form="studentExcelForm" data-form-toggle="toggleStudentExcelBtn" data-dismiss-ui>Close</button>
     </div>
+    </section>
     <ul id="studentList" class="list"></ul>
+    <div id="studentRecoveryTools" class="student-recovery-tools">
+      <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
+      <div id="studentRecoveryPreview" class="staff-import-preview hidden" aria-live="polite"></div>
+    </div>
   </section>
 
   <!-- SUBJECTS -->

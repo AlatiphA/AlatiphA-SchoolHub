@@ -3780,7 +3780,16 @@ function installStudentOnboardingControls() {
   }
 }
 
+function installStudentRecoveryControls() {
+  const button = document.getElementById('checkStudentRecoveryBtn');
+  if (button && !button.dataset.studentRecoveryBound) {
+    button.addEventListener('click', checkStudentRecovery);
+    button.dataset.studentRecoveryBound = '1';
+  }
+}
+
 function installStudentTabUpgrade() {
+  installStudentRecoveryControls();
   installStudentOnboardingControls();
   const form = document.getElementById('addStudentForm');
   const addBtn = document.getElementById('addStudentBtn');
@@ -3805,15 +3814,12 @@ function installStudentTabUpgrade() {
       <button type="button" id="exportStudentsBtn">Export to Excel</button>
       <button type="button" id="printStudentsBtn">Print / Save as PDF</button>
       <p class="hint" style="width:100%">Search, Excel export and Print use the selected class and any search text. ${isTeacher() ? 'Teachers can select only their assigned classes.' : 'Choose All classes to include every class you can access.'} Clear Search to include every pupil in that selection.</p>
-      <p id="studentSearchCount" class="hint" style="width:100%" aria-live="polite"></p>
-      <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
-      <div id="studentRecoveryPreview" class="staff-import-preview hidden" style="width:100%" aria-live="polite"></div>`;
+      <p id="studentSearchCount" class="hint" style="width:100%" aria-live="polite"></p>`;
     const classSelect = document.getElementById('studentClassSelect');
     const toolbarAnchor = (classSelect && classSelect.parentNode) ? classSelect.parentNode : search.parentNode;
     toolbarAnchor.parentNode.insertBefore(toolbar, toolbarAnchor.nextSibling);
     document.getElementById('exportStudentsBtn').addEventListener('click', () => exportStudentsWorkbook(false));
     document.getElementById('printStudentsBtn').addEventListener('click', printStudentsDetailsTable);
-    document.getElementById('checkStudentRecoveryBtn').addEventListener('click', checkStudentRecovery);
   }
 }
 

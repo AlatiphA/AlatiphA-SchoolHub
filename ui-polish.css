@@ -802,9 +802,9 @@
 @media screen{#syncCenterDialog .about-details strong{overflow-wrap:anywhere;max-width:62%;}#syncCenterDialog .about-actions .btn-primary,#aboutDialog .about-actions .btn-primary{flex:1 1 100%;}#syncCenterDialog .dialog-scroll-content,#aboutDialog .dialog-scroll-content{flex:1 1 auto;}#syncCenterActionStatus:empty{display:none;}}
 
 /* Three independent student onboarding methods, using the current form style. */
-#app #view-students > .student-onboarding-heading{grid-column:1/-1;margin-top:20px;}
-#app #view-students > .student-onboarding-panel{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;padding:18px;border:1px solid var(--rule);border-radius:14px;background:var(--surface-alt);min-width:0;box-sizing:border-box;}
-#app #view-students > .student-onboarding-panel.hidden{display:none;}
+#app #view-students .student-onboarding-heading{grid-column:1/-1;margin-top:20px;}
+#app #view-students .student-onboarding-panel{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:14px;padding:18px;border:1px solid var(--rule);border-radius:14px;background:var(--surface-alt);min-width:0;box-sizing:border-box;}
+#app #view-students .student-onboarding-panel.hidden{display:none;}
 #app .student-onboarding-panel label,#app .student-onboarding-panel .hint{margin:0;}
 #app .student-onboarding-panel textarea{box-sizing:border-box;width:100%;max-width:100%;min-height:140px;resize:vertical;}
 #app .student-onboarding-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
@@ -814,7 +814,7 @@
 #app #studentImportPreview{min-width:0;max-width:100%;overflow-wrap:anywhere;}
 #app #studentImportPreview.hidden{display:none;}
 #app #view-students > #studentDataToolbar{grid-template-columns:repeat(2,minmax(0,1fr));}
-@media(max-width:600px){#app #view-students > .student-onboarding-panel{padding:14px;}#app .student-onboarding-actions{flex-direction:column;align-items:stretch;}#app .student-onboarding-actions>button{width:100%;}#app #view-students .student-add-toolbar .hint{max-width:none;}}
+@media(max-width:600px){#app #view-students .student-onboarding-panel{padding:14px;}#app .student-onboarding-actions{flex-direction:column;align-items:stretch;}#app .student-onboarding-actions>button{width:100%;}#app #view-students .student-add-toolbar .hint{max-width:none;}}
 
 /* Class enrolment summary keeps a full reading width on small screens. */
 #app #view-students > .student-class-summary{grid-column:1/-1;display:block;min-width:0;max-width:100%;box-sizing:border-box;padding:16px;border:1px solid var(--rule);border-radius:14px;background:var(--surface);text-align:left;}
@@ -860,3 +860,16 @@
 #app #view-students .student-search-heading{display:block;font-size:16px;font-weight:700;line-height:1.5;margin:0 0 8px;}
 
 #app .student-class-summary>summary{font-size:16px;}
+
+/* One onboarding group, with independent methods and recovery below the table. */
+#app #view-students > .student-onboarding-group{grid-column:1/-1;min-width:0;max-width:100%;box-sizing:border-box;margin:16px 0 24px;padding:18px;border:1px solid var(--rule);border-radius:14px;background:var(--surface);}
+#app #studentOnboardingTitle{margin:0 0 16px;padding:0;border:0;font-size:18px;font-weight:700;line-height:1.5;}
+#app #studentOnboarding>.student-add-toolbar{margin:12px 0 0;padding:14px 0;}
+#app #studentOnboarding>.student-add-toolbar:first-of-type{margin-top:0;}
+#app #studentOnboarding>.student-onboarding-panel{margin:12px 0;}
+#app #view-students > .student-recovery-tools{grid-column:1/-1;min-width:0;max-width:100%;box-sizing:border-box;padding-top:18px;margin-top:18px;border-top:1px solid var(--rule);}
+#app #studentRecoveryTools>button{width:auto;max-width:100%;min-height:44px;margin:0;}
+#app #studentRecoveryTools .staff-import-preview{max-width:100%;overflow-wrap:anywhere;}
+@media(max-width:600px){#app #view-students > .student-onboarding-group{padding:14px;}#app #studentRecoveryTools>button{width:100%;}}
+
+@media(max-width:600px){#app #studentOnboarding .student-onboarding-actions{flex-wrap:nowrap;min-width:0;}#app #studentOnboarding .student-onboarding-actions>button{height:auto;max-width:100%;box-sizing:border-box;}}
