@@ -855,3 +855,8 @@
 #app .student-summary-scroll{overscroll-behavior-x:contain;scroll-padding-left:110px;}
 #app .student-summary-scroll-hint{display:none;}
 @media(max-width:600px){#app .student-summary-table{font-size:13px;}#app .student-summary-table th,#app .student-summary-table td{padding:9px 8px;}#app .student-summary-table tbody th:first-child{min-width:88px;max-width:110px;}#app .student-summary-table tbody td:nth-child(2){min-width:130px;max-width:160px;}#app .student-summary-scroll-hint{display:block;margin:8px 0 0;}}
+
+/* Search heading follows the same type scale as the class summary heading. */
+#app #view-students .student-search-heading{display:block;font-size:16px;font-weight:700;line-height:1.5;margin:0 0 8px;}
+
+#app .student-class-summary>summary{font-size:16px;}

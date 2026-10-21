@@ -3001,13 +3001,15 @@ function studentClassSelectionKey() {
 
 function fillClassSelect(sel) {
   const classes = getAccessibleClasses();
+  const allowAll = sel.id === 'studentClassSelect' && !isTeacher();
   const prev = sel.value;
   let saved = '';
   try { saved = localStorage.getItem(studentClassSelectionKey()) || ''; } catch (e) {}
   sel.innerHTML = classes.length
-    ? classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
+    ? (allowAll ? '<option value="__all__">All classes</option>' : '') + classes.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')
     : '<option value="">No assigned classes</option>';
-  const wanted = classes.some(c => c.id === prev) ? prev : (classes.some(c => c.id === saved) ? saved : '');
+  const valid = value => allowAll && value === '__all__' && classes.length > 0 || classes.some(c => c.id === value);
+  const wanted = valid(prev) ? prev : (valid(saved) ? saved : (classes[0]?.id || ''));
   if (wanted) sel.value = wanted;
 }
 
@@ -3076,7 +3078,7 @@ function renderStudents() {
   installStudentTabUpgrade();
   renderStudentClassSummary();
   const count = document.getElementById('studentSearchCount');
-  const updateCount = visible => { if (count) count.textContent = 'Showing ' + visible + ' of ' + getAccessibleStudents().length + ' students'; };
+  const updateCount = visible => { if (count) count.textContent = 'Showing ' + visible + ' of ' + getAccessibleStudents().filter(st => document.getElementById('studentClassSelect')?.value === '__all__' || st.classId === document.getElementById('studentClassSelect')?.value).length + ' students in selected scope'; };
   updateCount(0);
   if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('studentList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
   const sel = document.getElementById('studentClassSelect');
@@ -3086,23 +3088,12 @@ function renderStudents() {
   const list = document.getElementById('studentList');
   list.innerHTML = '';
 
-  let students;
-  if (searchMode) {
-    students = getAccessibleStudents().filter(s => {
-      const haystack = [s.name, s.admissionId, s.guardianName, s.parentPhone, s.houseGps, s.disability]
-        .map(v => String(v || '').toLowerCase()).join(' ');
-      return haystack.includes(query);
-    });
-    updateCount(students.length);
-    if (!students.length) { list.innerHTML = '<li class="empty">No students match your search.</li>'; return; }
-  } else {
-    const classId = sel.value;
-    if (classId && !requireClassAccess(classId)) { list.innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
-    if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; return; }
-    students = getAccessibleStudents().filter(s => s.classId === classId);
-    updateCount(students.length);
-    if (!students.length) { list.innerHTML = '<li class="empty">No students yet — add one below.</li>'; return; }
-  }
+  const classId = sel.value;
+  if (classId && classId !== '__all__' && !requireClassAccess(classId)) { list.innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
+  if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; return; }
+  const students = currentStudentTableRows();
+  updateCount(students.length);
+  if (!students.length) { list.innerHTML = searchMode ? '<li class="empty">No students in the selected classes match your search.</li>' : '<li class="empty">No students yet — add one below.</li>'; return; }
 
   const classesById = {};
   DB.get(KEYS.classes, []).forEach(c => { classesById[c.id] = c.name; });
@@ -3356,7 +3347,7 @@ if (newStudentDob && newStudentAge) {
 
 const studentCreatePending = new Map();
 document.getElementById('addStudentBtn').addEventListener('click', async () => {
-  const classId=document.getElementById('studentClassSelect').value;if(!classId){alert('Add a class first.');return;}if(!requireClassAccess(classId))return;
+  const classId=document.getElementById('studentClassSelect').value;if(!classId){alert('Add a class first.');return;}if(classId==='__all__'){alert('Select one class before adding students.');return;}if(!requireClassAccess(classId))return;
   const nameInput=document.getElementById('newStudentName'),dobInput=document.getElementById('newStudentDob'),validation=document.getElementById('addStudentValidation'),name=nameInput.value.trim(),dob=dobInput.value.trim();
   if(!name||!dob){validation.textContent=!name&&!dob?'Full name and Date of Birth are required before the student can be added.':(!name?'Full name is required before the student can be added.':'Date of Birth is required before the student can be added.');validation.classList.add('show');return;}
   validation.classList.remove('show');const gender=document.getElementById('newStudentGender').value;if(!gender){validation.textContent='Sex is required before the student can be added.';validation.classList.add('show');return;}
@@ -3408,7 +3399,7 @@ async function bulkAddPeople(kind) {
   const staff = kind === 'staff';
   const classId = staff ? '' : document.getElementById('studentClassSelect').value;
   if (staff) { if (!requireHeadTeacher('manage staff')) return; }
-  else { if (!classId) { alert('Add a class first.'); return; } if (!requireClassAccess(classId)) return; }
+  else { if (!classId) { alert('Add a class first.'); return; } if (classId === '__all__') { alert('Select one class before adding students.'); return; } if (!requireClassAccess(classId)) return; }
   const textarea = document.getElementById(staff ? 'bulkStaffInput' : 'bulkStudentInput');
   const button = document.getElementById(staff ? 'bulkAddStaffBtn' : 'bulkAddStudentsBtn');
   if (button.disabled) return;
@@ -3813,7 +3804,7 @@ function installStudentTabUpgrade() {
     toolbar.innerHTML = `
       <button type="button" id="exportStudentsBtn">Export to Excel</button>
       <button type="button" id="printStudentsBtn">Print / Save as PDF</button>
-      <p class="hint" style="width:100%">Excel exports include all accessible students and their personal, guardian and class details. Print the current search or class results, then choose Save as PDF in the print dialog.</p>
+      <p class="hint" style="width:100%">Search, Excel export and Print use the selected class and any search text. ${isTeacher() ? 'Teachers can select only their assigned classes.' : 'Choose All classes to include every class you can access.'} Clear Search to include every pupil in that selection.</p>
       <p id="studentSearchCount" class="hint" style="width:100%" aria-live="polite"></p>
       <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
       <div id="studentRecoveryPreview" class="staff-import-preview hidden" style="width:100%" aria-live="polite"></div>`;
@@ -3976,7 +3967,9 @@ function exportStudentsWorkbook(templateOnly) {
   if (typeof XLSX === 'undefined') { alert('Spreadsheet tools are still loading. Please reconnect and try again.'); return; }
   const rows = [STUDENT_TRANSFER_FIELDS.map(f => f.label)];
   if (!templateOnly) {
-    getAccessibleStudents().forEach(st => rows.push(STUDENT_TRANSFER_FIELDS.map(f => String(studentTransferValue(st, f.key)))));
+    const students = currentStudentTableRows();
+    if (!students.length) { alert('No students match the selected class and search.'); return; }
+    students.forEach(st => rows.push(STUDENT_TRANSFER_FIELDS.map(f => String(studentTransferValue(st, f.key)))));
   }
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   Object.keys(sheet).filter(k => k[0] !== '!').forEach(k => { sheet[k].t = 's'; sheet[k].z = '@'; delete sheet[k].f; });
@@ -4152,8 +4145,9 @@ function handleStudentImportFile(e) {
 function currentStudentTableRows() {
   const query = String(document.getElementById('studentSearchInput')?.value || '').trim().toLowerCase();
   const selectedClass = document.getElementById('studentClassSelect')?.value || '';
+  if (isTeacher() && selectedClass === '__all__') return [];
   return getAccessibleStudents().filter(st => {
-    if (!query && selectedClass && st.classId !== selectedClass) return false;
+    if (!selectedClass || (selectedClass !== '__all__' && st.classId !== selectedClass)) return false;
     if (!query) return true;
     return [st.name,st.admissionId,st.guardianName,st.parentPhone,st.houseGps,st.disability,studentClassName(st)].join(' ').toLowerCase().includes(query);
   });
@@ -12382,10 +12376,7 @@ setTimeout(() => { try { renderFloatingPill(); } catch (e) { console.warn('Float
 const bulkSelectionsV40={students:new Set(),staff:new Set(),classes:new Set(),subjects:new Set()};
 function bulkVisibleRecordsV40(kind){
   if(kind==='students'){
-    const q=(document.getElementById('studentSearchInput')?.value||'').trim().toLowerCase();
-    let rows=getAccessibleStudents();
-    if(q) return rows.filter(s=>[s.name,s.admissionId,s.guardianName,s.parentPhone,s.houseGps,s.disability].join(' ').toLowerCase().includes(q));
-    const cid=document.getElementById('studentClassSelect')?.value||''; return rows.filter(s=>s.classId===cid);
+    return currentStudentTableRows();
   }
   if(kind==='classes') return isTeacher()?[]:getAccessibleClasses();
   if(kind==='subjects') return subjectArrangeMode?[]:sortSubjectsByOrder(DB.get(KEYS.subjects,[]));
