@@ -3026,8 +3026,44 @@ function calculateStudentAge(dob) {
   return age >= 0 ? String(age) : '';
 }
 
+function buildStudentClassSummary(classes, students, staff) {
+  const count = () => ({ male:0, female:0, unknown:0, total:0 });
+  const add = (counts, student) => {
+    const sex = String(student.gender || '').trim().toLowerCase();
+    counts[sex === 'm' || sex === 'male' ? 'male' : sex === 'f' || sex === 'female' ? 'female' : 'unknown']++;
+    counts.total++;
+  };
+  const teachers = new Map(staff.map(person => [person.id, person.name || 'Not assigned']));
+  const rows = classes.map(cls => ({ id:cls.id, name:cls.name, teacher:teachers.get(cls.classTeacherId) || 'Not assigned', ...count() }));
+  const byClass = new Map(rows.map(row => [row.id, row]));
+  const total = count(), graduates = count();
+  for (const student of students) {
+    const row = byClass.get(student.classId);
+    if (!row) continue;
+    if (student.enrollmentStatus === 'graduated') { add(graduates, student); continue; }
+    if (student.isActive === false || student.enrollmentStatus === 'left') continue;
+    add(row, student); add(total, student);
+  }
+  return { rows, total, graduates, showUnknown:total.unknown > 0 || graduates.unknown > 0 };
+}
+
+function renderStudentClassSummary() {
+  const panel = document.getElementById('studentClassSummaryContent');
+  if (!panel) return;
+  if (FIREBASE_ENABLED && !sessionDataReady) { panel.textContent = 'Loading your school workspace…'; return; }
+  const classes = getAccessibleClasses();
+  if (!classes.length) { panel.textContent = 'No accessible classes yet.'; return; }
+  const model = buildStudentClassSummary(classes, getAccessibleStudents({includeInactive:true}), DB.get(KEYS.staff, []));
+  const cells = row => '<td>' + row.male + '</td><td>' + row.female + '</td>' + (model.showUnknown ? '<td>' + row.unknown + '</td>' : '') + '<td class="student-summary-total">' + row.total + '</td>';
+  panel.innerHTML = '<p class="hint">Current pupils in your accessible classes. Counts are independent of the search and class selection. Graduates are shown separately across all recorded years.</p>' +
+    '<div class="student-summary-scroll" role="region" aria-label="Class enrolment summary table" tabindex="0"><table class="student-summary-table"><caption>Class enrolment summary</caption><thead><tr><th scope="col">Class</th><th scope="col">Class Teacher</th><th scope="col">Males</th><th scope="col">Females</th>' + (model.showUnknown ? '<th scope="col">Sex not set</th>' : '') + '<th scope="col">Total</th></tr></thead><tbody>' +
+    model.rows.map(row => '<tr><th scope="row">' + escapeHtml(row.name) + '</th><td>' + escapeHtml(row.teacher) + '</td>' + cells(row) + '</tr>').join('') +
+    '</tbody><tfoot><tr class="student-summary-current"><th scope="row" colspan="2">Total current pupils</th>' + cells(model.total) + '</tr><tr><th scope="row" colspan="2">Graduates · all recorded years</th>' + cells(model.graduates) + '</tr></tfoot></table></div>';
+}
+
 function renderStudents() {
   installStudentTabUpgrade();
+  renderStudentClassSummary();
   const count = document.getElementById('studentSearchCount');
   const updateCount = visible => { if (count) count.textContent = 'Showing ' + visible + ' of ' + getAccessibleStudents().length + ' students'; };
   updateCount(0);

@@ -815,3 +815,17 @@
 #app #studentImportPreview.hidden{display:none;}
 #app #view-students > #studentDataToolbar{grid-template-columns:repeat(2,minmax(0,1fr));}
 @media(max-width:600px){#app #view-students > .student-onboarding-panel{padding:14px;}#app .student-onboarding-actions{flex-direction:column;align-items:stretch;}#app .student-onboarding-actions>button{width:100%;}#app #view-students .student-add-toolbar .hint{max-width:none;}}
+
+/* Class enrolment summary keeps a full reading width on small screens. */
+#app #view-students > .student-class-summary{grid-column:1/-1;display:block;min-width:0;max-width:100%;box-sizing:border-box;padding:16px;border:1px solid var(--rule);border-radius:14px;background:var(--surface);text-align:left;}
+#app .student-class-summary>summary{cursor:pointer;font-weight:700;min-height:44px;line-height:1.5;padding:8px 0;box-sizing:border-box;}
+#app .student-class-summary>summary:focus-visible,#app .student-summary-scroll:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+#app .student-summary-scroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+#app .student-summary-table{width:100%;min-width:540px;border-collapse:collapse;font-size:14px;}
+#app .student-summary-table caption{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
+#app .student-summary-table th,#app .student-summary-table td{padding:10px;border:1px solid var(--rule);text-align:left;overflow-wrap:anywhere;}
+#app .student-summary-table thead,#app .student-summary-table .student-summary-current{background:var(--green,#1b3427);color:#fff;}
+#app .student-summary-table tbody tr:nth-child(even){background:var(--surface-alt);}
+#app .student-summary-table td:nth-child(n+3),#app .student-summary-table thead th:nth-child(n+3),#app .student-summary-table tfoot td{text-align:right;font-variant-numeric:tabular-nums;}
+#app .student-summary-total,#app .student-summary-table tfoot{font-weight:700;}
+@media(max-width:600px){#app #view-students > .student-class-summary{padding:12px;}#app .student-class-summary .hint{font-size:13px;}}
