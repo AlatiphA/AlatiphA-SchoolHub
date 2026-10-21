@@ -3044,21 +3044,32 @@ function buildStudentClassSummary(classes, students, staff) {
     if (student.isActive === false || student.enrollmentStatus === 'left') continue;
     add(row, student); add(total, student);
   }
-  return { rows, total, graduates, showUnknown:total.unknown > 0 || graduates.unknown > 0 };
+  return { rows, total, graduates, showUnknown:total.unknown > 0 };
 }
 
 function renderStudentClassSummary() {
   const panel = document.getElementById('studentClassSummaryContent');
   if (!panel) return;
+  const teacherView = isTeacher();
+  const heading = document.getElementById('studentSummaryHeading');
+  if (heading) heading.textContent = teacherView ? 'Student summary' : 'Class enrolment summary';
   if (FIREBASE_ENABLED && !sessionDataReady) { panel.textContent = 'Loading your school workspace…'; return; }
   const classes = getAccessibleClasses();
   if (!classes.length) { panel.textContent = 'No accessible classes yet.'; return; }
   const model = buildStudentClassSummary(classes, getAccessibleStudents({includeInactive:true}), DB.get(KEYS.staff, []));
+  if (teacherView) {
+    const counts = model.total;
+    const maleEnd = counts.total ? counts.male / counts.total * 100 : 0;
+    const femaleEnd = counts.total ? (counts.male + counts.female) / counts.total * 100 : 0;
+    const chart = counts.total ? 'conic-gradient(#287ca0 0% ' + maleEnd + '%, #a0497b ' + maleEnd + '% ' + femaleEnd + '%, #9a741d ' + femaleEnd + '% 100%)' : 'var(--rule)';
+    panel.innerHTML = '<p class="hint">Current pupils in your assigned classes. Counts are independent of the search and class selection.</p><div class="student-summary-chart-layout"><div class="student-summary-pie" role="img" aria-label="Pupil distribution: ' + counts.male + ' male, ' + counts.female + ' female, ' + counts.unknown + ' sex not set. Total ' + counts.total + '." style="background:' + chart + '"></div><dl class="student-summary-chart-key"><div><dt><span class="summary-swatch summary-male" aria-hidden="true"></span>Males</dt><dd>' + counts.male + '</dd></div><div><dt><span class="summary-swatch summary-female" aria-hidden="true"></span>Females</dt><dd>' + counts.female + '</dd></div><div><dt><span class="summary-swatch summary-unknown" aria-hidden="true"></span>Sex not set</dt><dd>' + counts.unknown + '</dd></div><div class="student-summary-chart-total"><dt>Total pupils</dt><dd>' + counts.total + '</dd></div></dl></div>' + (counts.total ? '' : '<p class="hint">No current pupils in your assigned classes yet.</p>');
+    return;
+  }
   const cells = row => '<td>' + row.male + '</td><td>' + row.female + '</td>' + (model.showUnknown ? '<td>' + row.unknown + '</td>' : '') + '<td class="student-summary-total">' + row.total + '</td>';
-  panel.innerHTML = '<p class="hint">Current pupils in your accessible classes. Counts are independent of the search and class selection. Graduates are shown separately across all recorded years.</p>' +
+  panel.innerHTML = '<p class="hint">Current pupils in your accessible classes. Counts are independent of the search and class selection.</p>' +
     '<div class="student-summary-scroll" role="region" aria-label="Class enrolment summary table" tabindex="0"><table class="student-summary-table"><caption>Class enrolment summary</caption><thead><tr><th scope="col">Class</th><th scope="col">Class Teacher</th><th scope="col">Males</th><th scope="col">Females</th>' + (model.showUnknown ? '<th scope="col">Sex not set</th>' : '') + '<th scope="col">Total</th></tr></thead><tbody>' +
     model.rows.map(row => '<tr><th scope="row">' + escapeHtml(row.name) + '</th><td>' + escapeHtml(row.teacher) + '</td>' + cells(row) + '</tr>').join('') +
-    '</tbody><tfoot><tr class="student-summary-current"><th scope="row" colspan="2">Total current pupils</th>' + cells(model.total) + '</tr><tr><th scope="row" colspan="2">Graduates · all recorded years</th>' + cells(model.graduates) + '</tr></tfoot></table></div>';
+    '</tbody><tfoot><tr class="student-summary-current"><th scope="row" colspan="2">Total current pupils</th>' + cells(model.total) + '</tr></tfoot></table></div><p class="hint student-summary-scroll-hint">Swipe sideways to see all columns. Class names stay visible.</p>';
 }
 
 function renderStudents() {

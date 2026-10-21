@@ -821,11 +821,37 @@
 #app .student-class-summary>summary{cursor:pointer;font-weight:700;min-height:44px;line-height:1.5;padding:8px 0;box-sizing:border-box;}
 #app .student-class-summary>summary:focus-visible,#app .student-summary-scroll:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 #app .student-summary-scroll{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-#app .student-summary-table{width:100%;min-width:540px;border-collapse:collapse;font-size:14px;}
+#app .student-summary-table{width:100%;min-width:540px;border-collapse:separate;border-spacing:0;font-size:14px;}
 #app .student-summary-table caption{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
 #app .student-summary-table th,#app .student-summary-table td{padding:10px;border:1px solid var(--rule);text-align:left;overflow-wrap:anywhere;}
 #app .student-summary-table thead,#app .student-summary-table .student-summary-current{background:var(--green,#1b3427);color:#fff;}
 #app .student-summary-table tbody tr:nth-child(even){background:var(--surface-alt);}
-#app .student-summary-table td:nth-child(n+3),#app .student-summary-table thead th:nth-child(n+3),#app .student-summary-table tfoot td{text-align:right;font-variant-numeric:tabular-nums;}
+#app .student-summary-table td:nth-child(n+3),#app .student-summary-table thead th:nth-child(n+3),#app .student-summary-table tfoot td{text-align:center;font-variant-numeric:tabular-nums;}
 #app .student-summary-total,#app .student-summary-table tfoot{font-weight:700;}
 @media(max-width:600px){#app #view-students > .student-class-summary{padding:12px;}#app .student-class-summary .hint{font-size:13px;}}
+
+/* Keep search separate and preserve class labels during sideways scrolling. */
+#app #view-students > .student-class-summary{margin-bottom:24px;}
+#app .student-summary-table thead th{text-align:center;}
+#app .student-summary-table thead th:first-child,#app .student-summary-table tbody th:first-child{position:sticky;left:0;z-index:1;box-shadow:2px 0 0 var(--rule);}
+#app .student-summary-table tbody th:first-child{background:var(--surface);}
+#app .student-summary-table tbody tr:nth-child(even) th:first-child{background:var(--surface-alt);}
+#app .student-summary-table thead th:first-child{z-index:2;background:var(--green,#1b3427);}
+
+/* Teachers see only a pie and totals for their accessible current pupils. */
+#app .student-summary-chart-layout{display:flex;align-items:center;justify-content:center;gap:32px;flex-wrap:wrap;padding:12px 0;}
+#app .student-summary-pie{width:180px;height:180px;flex:0 0 180px;border-radius:50%;border:1px solid var(--rule);}
+#app .student-summary-chart-key{min-width:210px;max-width:100%;margin:0;}
+#app .student-summary-chart-key>div{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:10px 0;}
+#app .student-summary-chart-key dt{display:flex;align-items:center;gap:10px;}
+#app .student-summary-chart-key dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums;}
+#app .summary-swatch{display:inline-block;width:14px;height:14px;border-radius:3px;}
+#app .summary-male{background:#287ca0;}#app .summary-female{background:#a0497b;}#app .summary-unknown{background:#9a741d;}
+#app .student-summary-chart-total{border-top:1px solid var(--rule);font-weight:700;}
+@media(max-width:600px){#app .student-summary-chart-layout{gap:14px;}#app .student-summary-chart-key{width:100%;min-width:0;}}
+
+#app .student-summary-table tbody th:first-child{min-width:96px;max-width:150px;}
+#app .student-summary-table tbody td:nth-child(2){min-width:140px;max-width:220px;white-space:normal;}
+#app .student-summary-scroll{overscroll-behavior-x:contain;scroll-padding-left:110px;}
+#app .student-summary-scroll-hint{display:none;}
+@media(max-width:600px){#app .student-summary-table{font-size:13px;}#app .student-summary-table th,#app .student-summary-table td{padding:9px 8px;}#app .student-summary-table tbody th:first-child{min-width:88px;max-width:110px;}#app .student-summary-table tbody td:nth-child(2){min-width:130px;max-width:160px;}#app .student-summary-scroll-hint{display:block;margin:8px 0 0;}}
