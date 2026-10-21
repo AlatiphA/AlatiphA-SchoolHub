@@ -6,13 +6,14 @@
  const date=v=>v&&Number.isFinite(Number(v))?new Date(Number(v)).toLocaleString():'Not recorded';
  const text=(id,value)=>{$(id).textContent=value;};
  const call=(name,data={})=>firebase.app().functions('africa-south1').httpsCallable(name)(data).then(r=>r.data);
- let epoch=0,uid='',allowed=false,messagesLoaded=false,modeChosen=false;
+ let epoch=0,uid='',allowed=false,messagesLoaded=false,modeChosen=false,schoolAction=null,actionBusy=false,lastDeletion='';
  const page=()=>({cursor:'',next:'',history:[],rows:[],loaded:false,busy:false,seq:0});let pages={schools:page(),licences:page(),activity:page()};
  const active=(e,u)=>epoch===e&&uid===u&&firebase.auth().currentUser?.uid===u&&allowed;
  function clear(){
-  allowed=false;messagesLoaded=false;modeChosen=false;pages={schools:page(),licences:page(),activity:page()};$('ownerDashboard').hidden=true;
+  allowed=false;messagesLoaded=false;modeChosen=false;schoolAction=null;actionBusy=false;lastDeletion='';$('ownerSchoolDialog')?.close();$('ownerSchoolConfirmId').value='';$('ownerSchoolConfirmPhrase').value='';$('ownerSchoolBackupConfirmed').checked=false;$('ownerSchoolArchiveFilter').value='active';$('ownerCheckDeletion').hidden=true;$('ownerRetryDeletion').hidden=true;pages={schools:page(),licences:page(),activity:page()};$('ownerDashboard').hidden=true;
   for(const id of ['ownerOverviewCards','ownerOverviewDetails','ownerSchoolsList','ownerLicencesList','ownerActivityList'])$(id).replaceChildren();
   for(const id of ['ownerOverviewStatus','ownerSchoolsStatus','ownerLicencesStatus','ownerActivityStatus','ownerSecurityAccount'])text(id,'');
+  for(const id of ['ownerSchoolActionIdentity','ownerSchoolActionExplanation','ownerSchoolActionStatus'])text(id,'');$('ownerSchoolDeletionSummary').replaceChildren();for(const id of ['ownerSchoolActionSubmit','ownerSchoolActionCancel','ownerSchoolDialogClose'])$(id).disabled=false;
   for(const id of ['ownerSchoolSearch','ownerLicenceSearch'])$(id).value='';
   for(const id of ['shMessageForm','shPushSetupForm'])$(id)?.reset();
   $('ownerSchoolFilter').value='all';$('ownerActivityKind').value='messages';
@@ -39,8 +40,8 @@
  function table(headers,body){return `<div class="owner-table-wrap"><table class="owner-table"><thead><tr>${headers.map(h=>'<th scope="col">'+esc(h)+'</th>').join('')}</tr></thead><tbody>${body}</tbody></table></div>`;}
  function matching(row,query){return [row.name,row.id,row.headEmail,row.contactEmail].some(v=>String(v||'').toLowerCase().includes(query));}
  function renderSchools(){
-  const s=pages.schools,q=$('ownerSchoolSearch').value.trim().toLowerCase(),filter=$('ownerSchoolFilter').value,rows=s.rows.filter(r=>matching(r,q)&&(filter==='all'||r.registration===filter));
-  $('ownerSchoolsList').innerHTML=rows.length?table(['School','Head Teacher','Registration','Added',''],rows.map(r=>`<tr><td><strong>${esc(r.name)}</strong><small>School ID: ${esc(r.id)}</small>${r.contactEmail?'<small>School contact: '+esc(r.contactEmail)+'</small>':''}</td><td>${esc(r.headName||'Not linked')}<small>${esc(r.headEmail)}</small></td><td><span class="owner-badge">${r.registration==='linked'?'Head Teacher linked':'Needs review'}</span><small>Owner ID: ${esc(r.ownerUid||'Not recorded')}</small></td><td>${esc(date(r.createdAtMs))}</td><td><button class="owner-button" type="button" data-owner-message-id="${esc(r.id)}">Message school</button></td></tr>`).join('')):'<div class="owner-empty">'+(s.rows.length?'No matches on this page. Check other pages if needed.':'No school records found.')+'</div>';
+  const s=pages.schools,q=$('ownerSchoolSearch').value.trim().toLowerCase(),filter=$('ownerSchoolFilter').value,status=$('ownerSchoolArchiveFilter').value,rows=s.rows.filter(r=>matching(r,q)&&(filter==='all'||r.registration===filter)&&(status==='all'||(status==='archived')===(r.archived===true)));
+  $('ownerSchoolsList').innerHTML=rows.length?table(['School','Head Teacher','Registration','Added',''],rows.map(r=>`<tr><td><strong>${esc(r.name)}</strong><span class="owner-badge">${r.administrationState==='deleting'?'Deletion in progress':r.archived?'Archived':'Active'}</span><small>School ID: ${esc(r.id)}</small>${r.contactEmail?'<small>School contact: '+esc(r.contactEmail)+'</small>':''}</td><td>${esc(r.headName||'Not linked')}<small>${esc(r.headEmail)}</small></td><td><span class="owner-badge">${r.registration==='linked'?'Head Teacher linked':'Needs review'}</span><small>Owner ID: ${esc(r.ownerUid||'Not recorded')}</small></td><td>${esc(date(r.createdAtMs))}</td><td><div class="owner-actions">${r.administrationState==='deleting'?`<button class="owner-button" type="button" data-owner-check-id="${esc(r.id)}">Check deletion</button>`:`${!r.archived?`<button class="owner-button" type="button" data-owner-message-id="${esc(r.id)}">Message school</button>`:''}<button class="owner-button" type="button" data-owner-manage-id="${esc(r.id)}" data-owner-action="${r.archived?'restore':'archive'}">${r.archived?'Restore':'Archive'}</button>${r.archived?`<button class="owner-button owner-button-danger" type="button" data-owner-manage-id="${esc(r.id)}" data-owner-action="delete">Delete permanently</button>`:''}`}</div></td></tr>`).join('')):'<div class="owner-empty">'+(s.rows.length?'No matches on this page. Check other pages if needed.':'No school records found.')+'</div>';
   pager('schools','Schools');
  }
  function renderLicences(){
@@ -61,7 +62,7 @@
  }
  function renderActivity(){
   const s=pages.activity,kind=$('ownerActivityKind').value;
-  $('ownerActivityList').innerHTML=s.rows.length?table(kind==='messages'?['When','Message','Audience','Status','Saved inboxes']:['When','Action','Push delivery','Actor'],s.rows.map(r=>kind==='messages'?`<tr><td>${esc(date(r.atMs))}</td><td><strong>${esc(r.title||'Message')}</strong><small>Actor: ${esc(r.actorUid)}</small></td><td>${esc({'all-schools':'All schools','one-school':'One school','one-recipient':'One recipient'}[r.scope]||'Unknown')}<small>${esc(r.schoolId)}</small></td><td>${esc(r.state)}</td><td>${integer(r.sent)}</td></tr>`:`<tr><td>${esc(date(r.atMs))}</td><td>${r.action==='push.configured'?'Push setup saved':esc(r.action)}</td><td>${r.enabled?'Enabled':'Disabled'}</td><td>${esc(r.actorUid)}</td></tr>`).join('')):'<div class="owner-empty">No recorded '+(kind==='messages'?'messages':'push setup changes')+' found.</div>';
+  $('ownerActivityList').innerHTML=s.rows.length?table(kind==='messages'?['When','Message','Audience','Status','Saved inboxes']:kind==='schools'?['When','Action','School','Actor']:['When','Action','Push delivery','Actor'],s.rows.map(r=>kind==='messages'?`<tr><td>${esc(date(r.atMs))}</td><td><strong>${esc(r.title||'Message')}</strong><small>Actor: ${esc(r.actorUid)}</small></td><td>${esc({'all-schools':'All schools','one-school':'One school','one-recipient':'One recipient'}[r.scope]||'Unknown')}<small>${esc(r.schoolId)}</small></td><td>${esc(r.state)}</td><td>${integer(r.sent)}</td></tr>`:kind==='schools'?`<tr><td>${esc(date(r.atMs))}</td><td>${esc({'school.archived':'School archived','school.restored':'School restored','school.deletion-started':'Permanent deletion started','school.deleted':'School permanently deleted'}[r.action]||r.action)}</td><td>${esc(r.schoolName)}<small>${esc(r.schoolId)}</small></td><td>${esc(r.actorUid)}</td></tr>`:`<tr><td>${esc(date(r.atMs))}</td><td>${r.action==='push.configured'?'Push setup saved':esc(r.action)}</td><td>${r.enabled?'Enabled':'Disabled'}</td><td>${esc(r.actorUid)}</td></tr>`).join('')):'<div class="owner-empty">No recorded '+(kind==='messages'?'messages':kind==='schools'?'school management events':'push setup changes')+' found.</div>';
   pager('activity','Activity');
  }
  async function loadActivity(direction='refresh'){
@@ -71,6 +72,45 @@
   s.busy=true;const seq=++s.seq;$('ownerRefreshActivity').disabled=true;pager('activity','Activity');text('ownerActivityStatus','Loading activity…');
   try{const result=await call('listSchoolHubOwnerActivity',{kind,cursor});if(!active(e,u)||seq!==s.seq||kind!==$('ownerActivityKind').value)return;Object.assign(s,{cursor,next:result.nextCursor,history,rows:result.items,loaded:true});renderActivity();text('ownerActivityStatus',result.items.length+' recorded event(s) on this page.');}
   catch(error){if(active(e,u)&&seq===s.seq)errorAt('ownerActivityStatus',error);}finally{if(active(e,u)&&seq===s.seq){s.busy=false;$('ownerRefreshActivity').disabled=false;pager('activity','Activity');}}
+ }
+
+ function closeSchoolReview(){if(actionBusy)return;$('ownerSchoolDialog').close();schoolAction=null;$('ownerSchoolConfirmId').value='';$('ownerSchoolConfirmPhrase').value='';$('ownerSchoolBackupConfirmed').checked=false;}
+ async function openSchoolReview(row,action){
+  if(!allowed||actionBusy||row.administrationState==='deleting')return;const e=epoch,u=uid;
+  schoolAction={row:{...row},action,requestId:crypto.randomUUID(),review:null};const current=schoolAction,dialog=$('ownerSchoolDialog');
+  $('ownerSchoolConfirmId').value='';$('ownerSchoolConfirmPhrase').value='';$('ownerSchoolBackupConfirmed').checked=false;
+  text('ownerSchoolDialogTitle',action==='delete'?'Delete school permanently?':action==='restore'?'Restore school?':'Archive school?');
+  text('ownerSchoolActionIdentity',row.name+' · School ID: '+row.id+' · Head Teacher: '+(row.headEmail||row.headName||'Not linked'));
+  text('ownerSchoolActionExplanation',action==='delete'?'Permanently remove this school’s pupils, grades, attendance, fees, licences, photos, signatures and other cloud records. Staff will be unlinked; their sign-in accounts will remain. This cannot be undone from SchoolHub.':action==='restore'?'Return this school to the active owner list and service-message recipients. Existing school records and access are retained.':'Move this school to Archived schools and exclude it from new service messages. School records, licences and existing access are retained.');
+  $('ownerSchoolDeletionSummary').replaceChildren();$('ownerSchoolDeleteConfirmation').hidden=action!=='delete';$('ownerSchoolConfirmPhrase').required=action==='delete';
+  text('ownerSchoolActionStatus',action==='delete'?'Reviewing cloud records…':'');text('ownerSchoolActionSubmit',action==='delete'?'Delete permanently':action==='restore'?'Restore school':'Archive school');
+  $('ownerSchoolActionSubmit').classList.toggle('owner-button-danger',action==='delete');$('ownerSchoolActionSubmit').disabled=action==='delete';dialog.showModal();
+  if(action!=='delete')return;
+  try{const review=await call('reviewSchoolHubOwnerSchoolDeletion',{schoolId:row.id,revision:row.revision||0});if(!active(e,u)||schoolAction!==current)return;current.review=review;
+   $('ownerSchoolDeletionSummary').innerHTML='<h3>Deletion review</h3><p>'+integer(review.members)+' staff membership(s) to unlink · '+integer(review.joinCodes)+' join code(s) · '+integer(review.imageVersions)+(review.moreImages?'+':'')+' stored image version(s).</p><ul>'+review.collections.map(r=>'<li>'+esc(r.collection)+': '+integer(r.count)+' record(s)</li>').join('')+'</ul><p class="owner-note">Counts cover current top-level collections; nested records and this school’s saved messages are also removed. Counts may change before deletion starts.</p>';
+   text('ownerSchoolActionStatus','Review expires in ten minutes. Permanent deletion requires a sign-in within the last ten minutes.');$('ownerSchoolActionSubmit').disabled=false;
+  }catch(error){if(active(e,u)&&schoolAction===current)text('ownerSchoolActionStatus',String(error?.message||'Could not review deletion. Close and retry.'));}
+ }
+ async function submitSchoolAction(event){
+  event.preventDefault();if(!allowed||actionBusy||!schoolAction)return;const e=epoch,u=uid,current=schoolAction,{row,action}=current;
+  if($('ownerSchoolConfirmId').value!==row.id){text('ownerSchoolActionStatus','Type the exact school ID shown above.');return;}
+  if(action==='delete'&&(!current.review||$('ownerSchoolConfirmPhrase').value!=='DELETE SCHOOL'||!$('ownerSchoolBackupConfirmed').checked)){text('ownerSchoolActionStatus','Type DELETE SCHOOL and confirm your backup or acceptance of permanent data loss.');return;}
+  actionBusy=true;for(const id of ['ownerSchoolActionSubmit','ownerSchoolActionCancel','ownerSchoolDialogClose'])$(id).disabled=true;
+  try{const result=await call(action==='delete'?'deleteSchoolHubOwnerSchool':'setSchoolHubOwnerSchoolArchive',{schoolId:row.id,revision:row.revision||0,confirmSchoolId:$('ownerSchoolConfirmId').value,...(action==='delete'?{token:current.review.token,confirmPhrase:$('ownerSchoolConfirmPhrase').value,backupConfirmed:$('ownerSchoolBackupConfirmed').checked}:{archived:action==='archive',requestId:current.requestId})});
+   if(!active(e,u)||schoolAction!==current)return;
+   if(action==='delete'){lastDeletion=row.id;$('ownerCheckDeletion').hidden=false;}
+   actionBusy=false;closeSchoolReview();pages.licences.loaded=false;pages.activity.loaded=false;
+   await loadSchools('schools');if(active(e,u))text('ownerSchoolsStatus',action==='delete'?'Permanent deletion started for '+row.name+'. Use Check last deletion for progress.':(action==='archive'?'Archived ':'Restored ')+row.name+'. Choose the matching school-status filter to view it.');
+  }catch(error){if(active(e,u)&&schoolAction===current){if(/permission-denied|unauthenticated/.test(String(error?.code)))errorAt('ownerSchoolActionStatus',error);else text('ownerSchoolActionStatus',String(error?.message||'Could not complete the action. Retry with the same review.'));}}
+  finally{if(epoch===e){actionBusy=false;for(const id of ['ownerSchoolActionSubmit','ownerSchoolActionCancel','ownerSchoolDialogClose'])$(id).disabled=false;}}
+ }
+ async function checkDeletion(schoolId=lastDeletion){
+  if(!allowed||!schoolId)return;lastDeletion=schoolId;$('ownerCheckDeletion').hidden=false;const e=epoch,u=uid;
+  try{const status=await call('getSchoolHubOwnerSchoolDeletionStatus',{schoolId});if(!active(e,u))return;await loadSchools('schools');if(!active(e,u))return;
+   const phases={members:'unlinking staff',joinCodes:'removing join codes',messageJobs:'removing school message jobs','user-data':'removing this school’s saved notices and registration receipts',images:'removing school images',records:'removing school records',verify:'verifying cleanup',complete:'complete'};
+   $('ownerRetryDeletion').hidden=!status?.canResume;text('ownerRetryDeletion','Retry cleanup · '+schoolId);
+   text('ownerSchoolsStatus',status?.state==='complete'?'School permanently deleted. Staff sign-in accounts were retained.':status?'Deletion in progress: '+(phases[status.phase]||'cleanup')+'. Check again shortly.':'No deletion job found for this school.');
+  }catch(error){if(active(e,u))errorAt('ownerSchoolsStatus',error);}
  }
  async function showTab(name,selection){
   if(!allowed||!tabs.includes(name))return;
@@ -102,10 +142,11 @@
   document.querySelectorAll('[data-owner-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.ownerTab));
   $('ownerOverviewDetails').onclick=e=>{const b=e.target.closest('[data-owner-go]');if(b)showTab(b.dataset.ownerGo);};
   $('ownerRefreshOverview').onclick=loadOverview;$('ownerRefreshSchools').onclick=()=>loadSchools('schools');$('ownerRefreshLicences').onclick=()=>loadSchools('licences');$('ownerRefreshActivity').onclick=()=>loadActivity();
-  $('ownerSchoolSearch').oninput=renderSchools;$('ownerSchoolFilter').onchange=renderSchools;$('ownerLicenceSearch').oninput=renderLicences;$('ownerLicenceMode').onchange=()=>{modeChosen=true;renderLicences();};
+  $('ownerSchoolSearch').oninput=renderSchools;$('ownerSchoolArchiveFilter').onchange=renderSchools;$('ownerSchoolFilter').onchange=renderSchools;$('ownerLicenceSearch').oninput=renderLicences;$('ownerLicenceMode').onchange=()=>{modeChosen=true;renderLicences();};
   $('ownerActivityKind').onchange=()=>{pages.activity.seq++;pages.activity=page();$('ownerActivityList').replaceChildren();loadActivity();};
   for(const [kind,label] of [['schools','Schools'],['licences','Licences'],['activity','Activity']])for(const direction of ['Previous','Next'])$('owner'+label+direction).onclick=()=>kind==='activity'?loadActivity(direction.toLowerCase()):loadSchools(kind,direction.toLowerCase());
-  $('ownerSchoolsList').onclick=e=>{const b=e.target.closest('[data-owner-message-id]');if(!b)return;const row=pages.schools.rows.find(r=>r.id===b.dataset.ownerMessageId);if(row)showTab('messages',{schoolId:row.id,schoolName:row.name});};
+  $('ownerSchoolsList').onclick=e=>{const b=e.target.closest('[data-owner-message-id],[data-owner-manage-id],[data-owner-check-id]');if(!b)return;if(b.dataset.ownerCheckId){checkDeletion(b.dataset.ownerCheckId);return;}const row=pages.schools.rows.find(r=>r.id===(b.dataset.ownerMessageId||b.dataset.ownerManageId));if(!row)return;if(b.dataset.ownerManageId)openSchoolReview(row,b.dataset.ownerAction);else if(!row.archived&&row.administrationState!=='deleting')showTab('messages',{schoolId:row.id,schoolName:row.name});};
+  $('ownerSchoolDialogClose').onclick=closeSchoolReview;$('ownerSchoolActionCancel').onclick=closeSchoolReview;$('ownerSchoolActionForm').onsubmit=submitSchoolAction;$('ownerSchoolDialog').addEventListener('cancel',e=>{e.preventDefault();closeSchoolReview();});$('ownerCheckDeletion').onclick=()=>checkDeletion();$('ownerRetryDeletion').onclick=async()=>{if(!allowed||!lastDeletion)return;const e=epoch,u=uid,id=lastDeletion;$('ownerRetryDeletion').disabled=true;try{await call('resumeSchoolHubOwnerSchoolDeletion',{schoolId:id,confirmSchoolId:id});if(active(e,u))await checkDeletion(id);}catch(error){if(active(e,u))text('ownerSchoolsStatus',String(error?.message||'Could not resume cleanup.'));}finally{if(active(e,u))$('ownerRetryDeletion').disabled=false;}};
   $('shStandaloneSignOut').onclick=async()=>{const button=$('shStandaloneSignOut');button.disabled=true;try{await firebase.auth().signOut();location.replace('./');}catch(error){text('ownerAccessStatus','Sign out failed. Check your connection and retry.');button.disabled=false;}};
   firebase.auth().onAuthStateChanged(authChanged);
  }

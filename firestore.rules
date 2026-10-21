@@ -7,12 +7,18 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function schoolAvailable(schoolId) {
+      return !exists(/databases/$(database)/documents/schoolAdministration/$(schoolId))
+        || !(get(/databases/$(database)/documents/schoolAdministration/$(schoolId)).data.get('state', '') in ['deleting','deleted']);
+    }
+
     function myUser() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
     function isHeadTeacher(schoolId) {
       return signedIn()
+        && schoolAvailable(schoolId)
         && myUser().schoolId == schoolId
         && myUser().role == 'headteacher'
         && myUser().status == 'active';
@@ -20,6 +26,7 @@ service cloud.firestore {
 
     function isActiveTeacher(schoolId) {
       return signedIn()
+        && schoolAvailable(schoolId)
         && myUser().schoolId == schoolId
         && myUser().role == 'teacher'
         && myUser().status == 'active';
@@ -65,6 +72,7 @@ service cloud.firestore {
         && request.resource.data.role == 'headteacher'
         && request.resource.data.status == 'active'
         && request.resource.data.schoolId != null
+        && schoolAvailable(request.resource.data.schoolId)
         && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == uid;
       // A user may refresh only their own display name. Login email changes
       // and membership fields are reconciled by trusted server Functions.
@@ -97,6 +105,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && (verifiedEmail() || isHeadTeacher(request.resource.data.schoolId))
         && request.resource.data.schoolId != null
+        && schoolAvailable(request.resource.data.schoolId)
         && exists(/databases/$(database)/documents/schools/$(request.resource.data.schoolId))
         && get(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)).data.ownerUid == request.auth.uid;
 
@@ -107,6 +116,7 @@ service cloud.firestore {
 
     match /schools/{schoolId} {
       allow read: if signedIn()
+        && schoolAvailable(schoolId)
         && (
           isHeadTeacher(schoolId)
           || isActiveTeacher(schoolId)
@@ -117,6 +127,7 @@ service cloud.firestore {
         );
 
       allow create: if verifiedEmail()
+        && schoolAvailable(schoolId)
         && request.auth.uid == request.resource.data.ownerUid
         && request.resource.data.profile.schoolName is string;
 

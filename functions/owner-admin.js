@@ -24,9 +24,10 @@ module.exports={millis,licence,register({onCall,HttpsError,db,admin,checkoutTest
  const count=async query=>(await query.count().get()).data().count;
  async function schoolRow(doc){
   const s=doc.data()||{},profile=s.profile||{};
-  const [head,billing]=await Promise.all([docId(s.ownerUid)?db.doc('users/'+s.ownerUid).get():Promise.resolve(null),db.doc(`schools/${doc.id}/billing/account`).get()]);
+  const [head,billing,administration]=await Promise.all([docId(s.ownerUid)?db.doc('users/'+s.ownerUid).get():Promise.resolve(null),db.doc(`schools/${doc.id}/billing/account`).get(),db.doc(`schoolAdministration/${doc.id}`).get()]);
   const h=head?.data()||{},a=billing.data()||{},linked=h.role==='headteacher'&&h.status==='active'&&h.schoolId===doc.id;
-  return {id:doc.id,name:clean(profile.schoolName||s.name)||'Unnamed school',contactEmail:clean(profile.email),address:clean(profile.address,500),createdAtMs:millis(s.createdAt),registration:linked?'linked':'needs-review',ownerUid:clean(s.ownerUid,128),headName:linked?clean(h.displayName):'',headEmail:linked?clean(h.email):'',licences:{live:licence(a,doc.id,'live'),test:licence(a,doc.id,'test')},credits:{live:Number.isFinite(a.balance)&&a.balance>=0?a.balance:0,test:Number.isFinite(a.testBalance)&&a.testBalance>=0?a.testBalance:0}};
+  const state=administration.data()||{};
+  return {archived:state.archived===true,revision:state.revision||0,administrationState:state.state||'active',id:doc.id,name:clean(profile.schoolName||s.name)||'Unnamed school',contactEmail:clean(profile.email),address:clean(profile.address,500),createdAtMs:millis(s.createdAt),registration:linked?'linked':'needs-review',ownerUid:clean(s.ownerUid,128),headName:linked?clean(h.displayName):'',headEmail:linked?clean(h.email):'',licences:{live:licence(a,doc.id,'live'),test:licence(a,doc.id,'test')},credits:{live:Number.isFinite(a.balance)&&a.balance>=0?a.balance:0,test:Number.isFinite(a.testBalance)&&a.testBalance>=0?a.testBalance:0}};
  }
  return {
   getSchoolHubOwnerOverview:secure(async()=>{
@@ -42,13 +43,13 @@ module.exports={millis,licence,register({onCall,HttpsError,db,admin,checkoutTest
    return {schools,nextCursor:page.docs.length>25?docs.at(-1).id:'',asOfMs:Date.now()};
   }),
   listSchoolHubOwnerActivity:secure(async d=>{
-   const kind=d.kind||'messages';if(!['messages','push'].includes(kind))fail('invalid-argument','Choose messages or push setup activity.');
+   const kind=d.kind||'messages';if(!['messages','push','schools'].includes(kind))fail('invalid-argument','Choose messages, push setup or school management activity.');
    if(d.cursor!=null&&d.cursor!==''&&!docId(d.cursor))fail('invalid-argument','Invalid activity page.');
-   const collection=kind==='messages'?'messageJobs':'messagingAudit',field=kind==='messages'?'createdAt':'at';
+   const collection=kind==='messages'?'messageJobs':kind==='schools'?'schoolAdministrationAudit':'messagingAudit',field=kind==='messages'?'createdAt':'at';
    let query=db.collection(collection).orderBy(field,'desc').orderBy('__name__','desc').limit(26);
    if(d.cursor){const cursor=await db.doc(collection+'/'+d.cursor).get();if(!cursor.exists||!cursor.data()?.[field])fail('invalid-argument','Activity page is no longer available. Refresh the list.');query=query.startAfter(cursor);}
    const page=await query.get(),docs=page.docs.slice(0,25);
-   return {kind,items:docs.map(doc=>{const p=doc.data()||{};return kind==='messages'?{id:doc.id,atMs:millis(p.createdAt),title:clean(p.title,160),actorUid:clean(p.actorUid,128),scope:p.owner===true&&!p.schoolId?'all-schools':p.recipientUid?'one-recipient':'one-school',schoolId:clean(p.schoolId,128),state:['queued','sending','complete','cancelled'].includes(p.state)?p.state:'unknown',sent:Number.isSafeInteger(p.sent)&&p.sent>=0?p.sent:0}:{id:doc.id,atMs:millis(p.at),actorUid:clean(p.actorUid,128),action:clean(p.action,80),enabled:p.enabled===true};}),nextCursor:page.docs.length>25?docs.at(-1).id:''};
+   return {kind,items:docs.map(doc=>{const p=doc.data()||{};return kind==='messages'?{id:doc.id,atMs:millis(p.createdAt),title:clean(p.title,160),actorUid:clean(p.actorUid,128),scope:p.owner===true&&!p.schoolId?'all-schools':p.recipientUid?'one-recipient':'one-school',schoolId:clean(p.schoolId,128),state:['queued','sending','complete','cancelled'].includes(p.state)?p.state:'unknown',sent:Number.isSafeInteger(p.sent)&&p.sent>=0?p.sent:0}:kind==='schools'?{id:doc.id,atMs:millis(p.at),action:clean(p.action,80),schoolId:clean(p.schoolId,128),schoolName:clean(p.schoolName),actorUid:clean(p.actorUid,128)}:{id:doc.id,atMs:millis(p.at),actorUid:clean(p.actorUid,128),action:clean(p.action,80),enabled:p.enabled===true};}),nextCursor:page.docs.length>25?docs.at(-1).id:''};
   })
  };
 }};

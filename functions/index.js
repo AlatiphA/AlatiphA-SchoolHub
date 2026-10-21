@@ -3,7 +3,9 @@ const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
 admin.initializeApp();
-const db = admin.firestore();
+const rawDb = admin.firestore();
+const schoolLifecycle = require('./school-lifecycle');
+const db = schoolLifecycle ? schoolLifecycle.guardDatabase(rawDb, HttpsError) : rawDb;
 const PAYSTACK_SECRET_KEY = defineSecret('PAYSTACK_SECRET_KEY');
 // Keep real-money checkout disabled until the end-to-end test is approved.
 const CHECKOUT_TEST_ONLY = true;
@@ -337,3 +339,5 @@ if(pushMessaging)Object.assign(exports,pushMessaging.register({onCall,HttpsError
 
 const ownerAdmin=require("./owner-admin");
 if(ownerAdmin)Object.assign(exports,ownerAdmin.register({onCall,HttpsError,db,admin,checkoutTestOnly:CHECKOUT_TEST_ONLY}));
+
+if(schoolLifecycle)Object.assign(exports,schoolLifecycle.register({onCall,HttpsError,db:rawDb,admin,onDocumentWritten:require('firebase-functions/v2/firestore').onDocumentWritten}));
