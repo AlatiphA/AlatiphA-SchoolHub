@@ -331,3 +331,9 @@ if(privateImagesModule){const {onObjectFinalized,onObjectMetadataUpdated}=requir
 
 const schoolRegistrationModule=require('./school-registration');
 if(schoolRegistrationModule)Object.assign(exports,schoolRegistrationModule.register({onCall,HttpsError,db,admin}));
+
+const pushMessaging=require("./push-messaging");
+if(pushMessaging)Object.assign(exports,pushMessaging.register({onCall,HttpsError,db,admin,onDocumentWritten:require("firebase-functions/v2/firestore").onDocumentWritten}));
+
+const ownerAdmin=require("./owner-admin");
+if(ownerAdmin)Object.assign(exports,ownerAdmin.register({onCall,HttpsError,db,admin,checkoutTestOnly:CHECKOUT_TEST_ONLY}));

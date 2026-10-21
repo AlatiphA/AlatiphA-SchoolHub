@@ -347,6 +347,26 @@ function isLikelyOfflineError(error) {
     message.includes('offline');
 }
 
+async function routeSchoolHubOwnerAfterSignIn(user, token) {
+  if (!user?.emailVerified || typeof user.getIdTokenResult !== 'function') return false;
+  let timer;
+  const result = await Promise.race([
+    user.getIdTokenResult(),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Could not confirm your account role. Connect and sign in again.')), 3000); })
+  ]).finally(() => clearTimeout(timer));
+  if (!isCurrentSession(token, user.uid, null) || firebase.auth().currentUser?.uid !== user.uid) return false;
+  if (result?.claims?.schoolhubOwner !== true || result.claims.email_verified !== true) return false;
+  // Only the signed-in account's Firebase-issued claim selects administration.
+  // Owner endpoints still enforce permissions on the server.
+  window.location.replace(new URL('./messaging.html', window.location.href).href);
+  return true;
+}
+async function resolveSchoolHubStartup(user, token) {
+  if (await routeSchoolHubOwnerAfterSignIn(user, token)) return { ownerAdministration: true };
+  if (!isCurrentSession(token, user.uid, null)) return { cancelled: true };
+  return schoolAccountForStartup(user);
+}
+
 async function schoolAccountForStartup(user) {
   const cached = loadVerifiedLocalSession(user);
   // A restored Firebase identity may open its existing, unexpired school cache
@@ -11326,6 +11346,7 @@ function browserNotificationsEnabled() {
 }
 
 async function showSchoolHubBrowserNotification(item) {
+  if (window.SchoolHubPush?.enabled()) return false;
   if (!item || item.read === true || !browserNotificationsEnabled() || document.visibilityState === 'visible') return false;
   try {
     if (!('serviceWorker' in navigator)) return false;
@@ -11366,6 +11387,7 @@ function updateNotificationBadge() {
 }
 
 function updateBrowserNotificationControls() {
+  if (window.SchoolHubPush) { window.SchoolHubPush.render(); return; }
   const status = document.getElementById('notificationBrowserStatus');
   const button = document.getElementById('notificationBrowserToggleBtn');
   if (!status || !button) return;
@@ -11395,6 +11417,7 @@ function updateBrowserNotificationControls() {
 }
 
 async function toggleBrowserNotifications() {
+  if (window.SchoolHubPush) return window.SchoolHubPush.toggle();
   const button = document.getElementById('notificationBrowserToggleBtn');
   if (!button || typeof Notification === 'undefined') return;
   if (browserNotificationsEnabled()) {
@@ -11839,7 +11862,8 @@ function initAuth() {
       // short restoration window.
       showSessionRestoring();
 
-      schoolAccountForStartup(user).then(async startup => {
+      resolveSchoolHubStartup(user, token).then(async startup => {
+        if (startup.ownerAdministration || startup.cancelled) return;
         if (!isCurrentSession(token, user.uid, null)) return;
         if (startup.cached) {
           startCachedAuthenticatedSession(user, startup.cached);

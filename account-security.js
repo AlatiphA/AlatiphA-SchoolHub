@@ -44,6 +44,27 @@ async function refreshSchoolHubLoginEmail(user){
   }
   return result;
 }
+const currentEmailVerificationSent=new Map();
+async function sendSchoolHubCurrentEmailVerification(user){
+  if(!user||firebase.auth().currentUser?.uid!==user.uid)throw Error('Your account changed. Sign in again.');
+  if(user.emailVerified)return 'Your current login email is already verified.';
+  const sent=Number(currentEmailVerificationSent.get(user.uid)||0);
+  const left=Math.max(0,60-Math.floor((Date.now()-sent)/1000));
+  if(left)throw Error('Wait '+left+' seconds before requesting another verification email.');
+  await user.sendEmailVerification({url:location.origin+'/?account-security=1'});
+  if(firebase.auth().currentUser?.uid!==user.uid)throw Error('Your account changed. Sign in again.');
+  currentEmailVerificationSent.set(user.uid,Date.now());
+  return 'Verification email sent to '+user.email+'. Open its link, then choose Check verification. Check Spam or Junk if needed.';
+}
+async function checkSchoolHubCurrentEmailVerification(user){
+  if(!user||firebase.auth().currentUser?.uid!==user.uid)throw Error('Your account changed. Sign in again.');
+  await user.reload();
+  if(firebase.auth().currentUser?.uid!==user.uid)throw Error('Your account changed. Sign in again.');
+  if(!user.emailVerified)return 'Your current login email is not verified yet. Open the link in the verification email, then check again.';
+  await user.getIdToken(true);
+  if(firebase.auth().currentUser?.uid!==user.uid)throw Error('Your account changed. Sign in again.');
+  return 'Your current login email is verified. Reopen Messages & Push to continue.';
+}
 async function openAccountSecurity(){
   document.getElementById('profileDropdown')?.classList.add('hidden');
   const user=FIREBASE_ENABLED?firebase.auth().currentUser:null;
@@ -52,13 +73,13 @@ async function openAccountSecurity(){
   if(previous?.dataset.busy==='true')return;
   if(previous){previous.close();previous.remove();}
   const dialog=document.createElement('dialog');dialog.id='accountSecurityDialog';dialog.className='my-staff-profile account-security dialog-fixed-shell';dialog.setAttribute('aria-labelledby','accountSecurityTitle');
-  dialog.innerHTML='<div class="dialog-fixed-header"><h2 id="accountSecurityTitle">Account Security</h2><button type="button" id="accountSecurityClose" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close Account Security" title="Close">&times;</button></div><div class="dialog-scroll-content"><p>Login email: <strong id="accountSecurityEmail"></strong></p><p class="hint">Your login email is separate from the contact email in My Details. Your school records and Staff link stay attached to the same account.</p><p id="accountSecurityStatus" role="status" aria-live="polite"></p>'+
+  dialog.innerHTML='<div class="dialog-fixed-header"><h2 id="accountSecurityTitle">Account Security</h2><button type="button" id="accountSecurityClose" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close Account Security" title="Close">&times;</button></div><div class="dialog-scroll-content"><p>Login email: <strong id="accountSecurityEmail"></strong></p><p class="hint">Your login email is separate from the contact email in My Details. Your school records and Staff link stay attached to the same account.</p><p id="accountSecurityStatus" role="status" aria-live="polite"></p><section aria-labelledby="accountCurrentEmailTitle"><h3 id="accountCurrentEmailTitle">Verify current login email</h3><p id="accountCurrentEmailState" role="status"></p><p><button type="button" id="accountVerifyCurrentEmailBtn" class="btn-primary">Send verification email</button> <button type="button" id="accountVerifyCurrentRefreshBtn" class="btn-secondary">Check verification</button></p></section>'+
     (passwordLoginAvailable(user)?'<form id="accountPasswordForm" class="stack"><h3>Change password</h3><label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>New password<input name="newPassword" type="password" autocomplete="new-password" minlength="6" required></label><label>Confirm new password<input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required></label><button type="submit" class="btn-primary">Change password</button></form><hr><form id="accountEmailForm" class="stack"><h3>Change login email</h3><label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>New login email<input name="newEmail" type="email" autocomplete="email" maxlength="254" required></label><p class="hint">We will send a verification link to the new address. Your login email changes only after verification. Requested addresses stay reserved for your account to protect verification and recovery links.</p><button type="submit" class="btn-primary">Send verification link</button></form>':'<p>You sign in with Google. Change your Google email or password in your Google account.</p><a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer">Open Google Account Security</a>')+
     '<p><button type="button" id="accountEmailRefresh" class="btn-secondary">I have verified my email — refresh</button></p></div>';
   document.body.append(dialog);dialog.showModal();
   const status=dialog.querySelector('#accountSecurityStatus'),token=sessionGeneration,school=currentSchoolId;
   const valid=()=>dialog.isConnected&&isCurrentSession(token,user.uid,school);
-  const display=()=>{dialog.querySelector('#accountSecurityEmail').textContent=user.email||'';};display();
+  const display=()=>{dialog.querySelector('#accountSecurityEmail').textContent=user.email||'';const state=dialog.querySelector('#accountCurrentEmailState'),send=dialog.querySelector('#accountVerifyCurrentEmailBtn'),check=dialog.querySelector('#accountVerifyCurrentRefreshBtn');if(state)state.textContent=user.emailVerified?'Verified: '+user.email:'Not verified: '+user.email;if(send)send.hidden=user.emailVerified===true;if(check)check.hidden=user.emailVerified===true;};display();
   const pending=currentUserData?.pendingLoginEmail;
   if(pending){const field=dialog.querySelector('[name="newEmail"]');if(field)field.value=pending;status.textContent='Verification requested for '+pending+'. If the email did not arrive, resend the link.';}
   let busy=false;
@@ -73,6 +94,8 @@ async function openAccountSecurity(){
   // Do not allow Escape to hide an in-flight credential change.
   dialog.addEventListener('cancel',event=>{if(busy)event.preventDefault();});
   dialog.addEventListener('close',()=>{dialog.querySelectorAll('input').forEach(input=>input.value='');dialog.remove();});
+  dialog.querySelector('#accountVerifyCurrentEmailBtn').onclick=()=>perform(()=>sendSchoolHubCurrentEmailVerification(user));
+  dialog.querySelector('#accountVerifyCurrentRefreshBtn').onclick=()=>perform(()=>checkSchoolHubCurrentEmailVerification(user));
   const passwordForm=dialog.querySelector('#accountPasswordForm');
   if(passwordForm)passwordForm.onsubmit=event=>{event.preventDefault();perform(async()=>{const fields=passwordForm.elements;await changeSchoolHubPassword(user,fields.currentPassword.value,fields.newPassword.value,fields.confirmPassword.value);return 'Password changed. Use your new password next time you sign in.';});};
   const emailForm=dialog.querySelector('#accountEmailForm');

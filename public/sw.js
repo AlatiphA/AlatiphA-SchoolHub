@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-notification-tap-16';
+const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-notification-tap-20';
 // Install a complete cold-start shell before retiring the previous cache.
 // Runtime-only library caching loses Firebase when an update activates after
 // the current page already loaded those libraries through the old worker.
@@ -13,7 +13,7 @@ const VENDOR_SHELL = [
  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
 ];
-const APP_SHELL = ['./','./index.html','./faq.html','./privacy.html','./terms.html','./complete-user-guide.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./private-images.js','./offline-drafts.js','./staff-transfer.js','./staff-qualifications.js','./account-security.js','./fees.js','./school-operations.js','./live-class-sync.js','./live-student-sync.js','./live-grade-sync.js','./live-attendance-sync.js','./record-edit-dialogs.js','./email-verification.js','./staff-add-draft.js','./weekly-supervision.js','./weekly-supervision.css','./school-operations.css','./sync-queue.js','./sync-client.js','./sync-worker.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
+const APP_SHELL = ['./owner-admin.js','./owner-admin.css','./owner-account-security.js','./push-messaging.js','./push-messaging.css','./messaging.html','./','./index.html','./faq.html','./privacy.html','./terms.html','./complete-user-guide.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./private-images.js','./offline-drafts.js','./staff-transfer.js','./staff-qualifications.js','./account-security.js','./fees.js','./school-operations.js','./live-class-sync.js','./live-student-sync.js','./live-grade-sync.js','./live-attendance-sync.js','./record-edit-dialogs.js','./email-verification.js','./staff-add-draft.js','./weekly-supervision.js','./weekly-supervision.css','./school-operations.css','./sync-queue.js','./sync-client.js','./sync-worker.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
 const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
 const BACKGROUND_SYNC_TAG = 'schoolhub-pending-sync-v1';
 if (typeof importScripts === 'function') importScripts('./sync-queue.js','./sync-worker.js');
@@ -51,6 +51,7 @@ self.addEventListener('message',event=>{
 });
 const backgroundSyncWaiters = new Map();
 self.addEventListener('message',e=>{
+  if(e.data?.type==='SCHOOLHUB_PUSH_BIND')storeSchoolHubPushBinding(e);
   if(e.data?.type==='SKIP_WAITING')self.skipWaiting();
   if(e.data?.type==='SCHOOLHUB_BACKGROUND_SYNC_RESULT'&&e.data.syncId){
     const waiter=backgroundSyncWaiters.get(e.data.syncId);if(waiter&&(!waiter.clientId||!e.source?.id||e.source.id===waiter.clientId)){backgroundSyncWaiters.delete(e.data.syncId);e.data.ok?waiter.resolve():waiter.reject(new Error('Client sync did not complete'));}
@@ -74,6 +75,7 @@ self.addEventListener('sync',event=>{if(event.tag===BACKGROUND_SYNC_TAG)event.wa
 })());});self.addEventListener('notificationclick',event=>{
   event.notification.close();
   event.waitUntil((async()=>{
+    if(event.notification.data?.push===true && event.notification.data?.recipientUid!==await readSchoolHubPushBinding())return;
     const tap=await retainNotificationTap(event.notification);
     const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
     const scope=new URL('./',self.location.href);
@@ -99,3 +101,19 @@ self.addEventListener('fetch',event=>{const request=event.request;if(request.met
   if(!shell&&!library)return;
   event.respondWith(shell?networkFirst(request):cacheFirst(request));
 });
+
+// Device opt-in is bound to one signed-in account, independent of shell updates.
+const PUSH_BIND_CACHE='schoolhub-push-binding-v1';
+async function readSchoolHubPushBinding(){try{const c=await caches.open(PUSH_BIND_CACHE),r=await c.match(new URL('./__push_binding__',self.location.href).href);return r?(await r.json()).uid||'':'';}catch(_){return '';}}
+function storeSchoolHubPushBinding(event){
+ event.waitUntil((async()=>{let ok=false;try{const root=new URL('./',self.location.href),source=new URL(event.source.url),uid=event.data.uid;if(source.origin!==root.origin||!source.pathname.startsWith(root.pathname)||typeof uid!=='string'||uid.length>128)throw Error('Invalid binding');const c=await caches.open(PUSH_BIND_CACHE);await c.put(new URL('./__push_binding__',root).href,new Response(JSON.stringify({uid}),{headers:{'Content-Type':'application/json'}}));ok=true;}catch(_){}event.ports?.[0]?.postMessage({ok});})());
+}
+
+self.addEventListener('push',event=>event.waitUntil((async()=>{
+ let p;try{p=event.data?.json()?.data;}catch(_){return;}
+ if(p?.schoolHub!=='1'||typeof p.uid!=='string'||p.uid!==await readSchoolHubPushBinding()||typeof p.noticeId!=='string'||!/^[A-Za-z0-9_-]{1,200}$/.test(p.noticeId))return;
+ const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+ if(clients.some(c=>c.visibilityState==='visible'&&new URL(c.url).origin===new URL(self.location.href).origin))return;
+ const root=new URL('./',self.location.href);
+ await self.registration.showNotification('SchoolHub notification',{body:'Open SchoolHub to read your notification.',icon:new URL('icon-192.png',root).href,badge:new URL('icon-192.png',root).href,tag:'schoolhub-'+p.noticeId,renotify:false,data:{recipientUid:p.uid,notificationId:p.noticeId,push:true,url:'./?notifications=1'}});
+})()));
