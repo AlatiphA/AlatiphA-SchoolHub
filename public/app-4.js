@@ -1,6 +1,7 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = 'v40';
+const APP_VERSION = '40.1.0';
+window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
 const SYNC_OUTBOX_KEY = 'arc_sync_outbox_v1';
@@ -1514,6 +1515,7 @@ function showAboutDialog() {
     else navigator.serviceWorker.getRegistration('./').then(r => { swStatus.textContent = r ? (r.active ? 'Active' : r.installing ? 'Installing' : r.waiting ? 'Waiting' : 'Registered') : 'Not registered'; }).catch(() => { swStatus.textContent = 'Unavailable'; });
   }
   dialog.classList.remove('hidden');
+  if (typeof window !== 'undefined') window.SchoolHubUpdates?.refresh();
 }
 
 function hideAboutDialog() {
@@ -1863,32 +1865,7 @@ document.getElementById('secureImageLinksBtn').addEventListener('click',async()=
 });
 
 
-document.getElementById('aboutCheckUpdateBtn').addEventListener('click', async () => {
-  const status = document.getElementById('aboutUpdateStatus');
-  status.textContent = 'Checking for an update…';
-  try {
-    if (!('serviceWorker' in navigator)) {
-      status.textContent = 'Service workers are not available in this browser.';
-      return;
-    }
-    const registration = await navigator.serviceWorker.getRegistration('./');
-    if (!registration) {
-      status.textContent = 'No SchoolHub service worker is registered in this browser.';
-      return;
-    }
-    schoolHubServiceWorkerRegistration = registration;
-    observeSchoolHubServiceWorker(registration);
-    const checked = await checkSchoolHubServiceWorkerUpdate('manual');
-    if (!checked) throw new Error('The service worker could not complete its update check.');
-    const active = registration.waiting ? 'waiting to activate' : registration.installing ? 'installing' : registration.active ? 'active' : 'registered';
-    const cacheVersion = await readControllingWorkerCacheVersion(registration);
-    status.textContent = `Update check completed. Service worker is ${active}. Cache version: ${cacheVersion}. Reload only when an update is reported ready.`;
-  } catch (err) {
-    const detail = err && err.message ? err.message : String(err || 'Unknown error');
-    status.textContent = 'Update check failed: ' + detail;
-    console.warn('SchoolHub update check failed:', err);
-  }
-});
+document.getElementById('aboutCheckUpdateBtn').addEventListener('click', () => window.SchoolHubUpdates?.check());
 const syncCenterImagesBtn = document.getElementById('syncCenterImagesBtn');
 if (syncCenterImagesBtn) {
   syncCenterImagesBtn.addEventListener('click', async () => {

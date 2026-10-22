@@ -873,3 +873,5 @@
 @media(max-width:600px){#app #view-students > .student-onboarding-group{padding:14px;}#app #studentRecoveryTools>button{width:100%;}}
 
 @media(max-width:600px){#app #studentOnboarding .student-onboarding-actions{flex-wrap:nowrap;min-width:0;}#app #studentOnboarding .student-onboarding-actions>button{height:auto;max-width:100%;box-sizing:border-box;}}
+
+#aboutDialog .about-actions{display:flex;flex-wrap:wrap;gap:10px;}#aboutDialog .about-actions>button{flex:1 1 180px;min-height:44px;}#aboutDialog .about-actions>button:disabled{opacity:.6;cursor:default;}

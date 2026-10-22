@@ -1,5 +1,6 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-notification-tap-27';
+const RELEASE_VERSION = '40.1.0';
+const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-release-' + RELEASE_VERSION;
 // Install a complete cold-start shell before retiring the previous cache.
 // Runtime-only library caching loses Firebase when an update activates after
 // the current page already loaded those libraries through the old worker.
@@ -13,7 +14,7 @@ const VENDOR_SHELL = [
  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
 ];
-const APP_SHELL = ['./owner-admin.js','./owner-admin.css','./owner-account-security.js','./push-messaging.js','./push-messaging.css','./messaging.html','./','./index.html','./faq.html','./privacy.html','./terms.html','./complete-user-guide.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./private-images.js','./offline-drafts.js','./staff-transfer.js','./staff-qualifications.js','./account-security.js','./fees.js','./school-operations.js','./live-class-sync.js','./live-student-sync.js','./live-grade-sync.js','./live-attendance-sync.js','./record-edit-dialogs.js','./email-verification.js','./staff-add-draft.js','./weekly-supervision.js','./weekly-supervision.css','./school-operations.css','./sync-queue.js','./sync-client.js','./sync-worker.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
+const APP_SHELL = ['./owner-admin.js','./owner-admin.css','./owner-account-security.js','./push-messaging.js','./push-messaging.css','./messaging.html','./','./index.html','./faq.html','./privacy.html','./terms.html','./complete-user-guide.html','./install.js','./style-3.css','./ui-polish.css','./app-4.js','./app-updates.js','./release.json','./private-images.js','./offline-drafts.js','./staff-transfer.js','./staff-qualifications.js','./account-security.js','./fees.js','./school-operations.js','./live-class-sync.js','./live-student-sync.js','./live-grade-sync.js','./live-attendance-sync.js','./record-edit-dialogs.js','./email-verification.js','./staff-add-draft.js','./weekly-supervision.js','./weekly-supervision.css','./school-operations.css','./sync-queue.js','./sync-client.js','./sync-worker.js','./firebase-config.js','./manifest.json','./icon.svg','./icon-192.png','./icon-512.png','./icon-512-maskable.png','./apple-touch-icon.png'];
 const CORE_FILES = /\/(?:app-4|staff-transfer|firebase-config|install)\.js$|\/(?:style-3|ui-polish)\.css$|\/index\.html$/;
 const BACKGROUND_SYNC_TAG = 'schoolhub-pending-sync-v1';
 if (typeof importScripts === 'function') importScripts('./sync-queue.js','./sync-worker.js');
@@ -36,7 +37,7 @@ self.addEventListener('message',event=>{
   if(!['GET_WORKER_VERSION','CHECK_NOTIFICATION_TAP','ACK_NOTIFICATION_TAP'].includes(event.data?.type))return;
   const source=event.source;
   try{const url=new URL(source?.url),scope=new URL('./',self.location.href);if(url.origin!==scope.origin||!url.pathname.startsWith(scope.pathname))return;}catch(_){return;}
-  if(event.data.type==='GET_WORKER_VERSION'){const reply={type:'SCHOOLHUB_WORKER_VERSION',cacheName:CACHE_NAME};if(event.ports?.[0])event.ports[0].postMessage(reply);else source.postMessage(reply);return;}
+  if(event.data.type==='GET_WORKER_VERSION'){const reply={type:'SCHOOLHUB_WORKER_VERSION',cacheName:CACHE_NAME,version:RELEASE_VERSION};if(event.ports?.[0])event.ports[0].postMessage(reply);else source.postMessage(reply);return;}
   event.waitUntil((async()=>{
     const tap=await readNotificationTap();
     if(event.data.type==='CHECK_NOTIFICATION_TAP' && event.ports?.[0]){event.ports[0].postMessage({type:'SCHOOLHUB_NOTIFICATION_TAP',tap:tap && (!tap.uid || tap.uid===event.data.uid) ? tap : null});return;}
@@ -91,11 +92,12 @@ self.addEventListener('sync',event=>{if(event.tag===BACKGROUND_SYNC_TAG)event.wa
 });
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(async cache=>{
   for(const url of [...APP_SHELL,...VENDOR_SHELL]){const response=await fetch(url,{cache:'reload'});if(!response.ok)throw new Error('Incomplete app shell');await cache.put(url,response);}
-}).then(()=>self.skipWaiting()));});
+}).then(()=>{if(!self.registration?.active)return self.skipWaiting();}));});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('schoolhub-cache-')&&k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
 async function networkFirst(request){const cache=await caches.open(CACHE_NAME);try{const response=await fetch(request,{cache:'no-store'});if(!response.ok)throw new Error('Network response failed');await cache.put(request,response.clone());return response;}catch(error){const cached=await cache.match(request,{ignoreSearch:true});if(cached)return cached;if(request.mode==='navigate'){const fallback=await cache.match('./index.html');if(fallback)return fallback;}throw error;}}
 async function cacheFirst(request){const cache=await caches.open(CACHE_NAME);const cached=await cache.match(request);if(cached)return cached;const response=await fetch(request);if(response.ok)await cache.put(request,response.clone());return response;}
 self.addEventListener('fetch',event=>{const request=event.request;if(request.method!=='GET')return;const url=new URL(request.url);const sameOrigin=url.origin===self.location.origin;
+  if(sameOrigin&&url.pathname===new URL('./release.json',self.location.href).pathname)return;
   const shell=sameOrigin&&(request.mode==='navigate'||APP_SHELL.some(p=>new URL(p,self.location.href).pathname===url.pathname));
   const library=(url.hostname==='www.gstatic.com'&&url.pathname.startsWith('/firebasejs/'))||(url.hostname==='cdnjs.cloudflare.com'&&url.pathname.startsWith('/ajax/libs/'));
   if(!shell&&!library)return;

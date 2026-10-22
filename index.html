@@ -1253,7 +1253,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">v40</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.0</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
@@ -1263,10 +1263,12 @@
       <div><span>Browser</span><strong id="aboutBrowserStatus">Checking…</strong></div>
       <div><span>Service worker</span><strong id="aboutSwStatus">Checking…</strong></div>
     </div>
-    <p id="aboutUpdateStatus" class="hint about-status">Use “Check for Updates” after deploying a new version.</p>
+    <p id="aboutUpdateStatus" class="hint about-status" role="status" aria-live="polite">Check for the latest SchoolHub release.</p>
     <div class="about-actions">
-      <button type="button" id="aboutCheckUpdateBtn" class="btn-primary">Check for Updates</button>
+      <button type="button" id="aboutCheckUpdateBtn" class="btn-primary">Check for updates</button>
+      <button type="button" id="aboutInstallUpdateBtn" class="btn-primary" disabled>Installed</button>
     </div>
+    <p class="hint">Installing reloads SchoolHub. Save open form entries first. Saved records and queued changes stay on this device.</p>
     <p class="about-copyright">© All Rights Reserved · AlatiphA Multimedia</p>
     </div>
   </div>
@@ -1287,6 +1289,7 @@
 <script src="sync-client.js?v=v40-private-images-1"></script>
 <script src="offline-drafts.js?v=v40-private-images-1"></script>
 <script src="private-images.js?v=v40-private-images-1"></script>
+<script src="app-updates.js"></script>
 <script src="app-4.js?v=v40-private-images-1-sync-center-1"></script>
 <script src="fees.js?v=v40-private-images-1"></script>
 <script src="school-operations.js?v=v40-private-images-1"></script>

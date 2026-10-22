@@ -35,6 +35,9 @@
           }
         ]
       }
+    ],
+    "predeploy": [
+      "node scripts/prepare-release.cjs"
     ]
   }
 }

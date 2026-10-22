@@ -3,6 +3,8 @@ const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..');
 process.chdir(root);
+const releaseCheck=spawnSync(process.execPath,[path.join(root,'scripts/prepare-release.cjs'),'--check'],{stdio:'inherit'});
+if(releaseCheck.status!==0)process.exit(releaseCheck.status??1);
 function walk(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(e=>e.isDirectory()?(['node_modules','.git','.firebase','outputs'].includes(e.name)?[]:walk(path.join(dir,e.name))):[path.join(dir,e.name)]);}
 let checked=0;
 for(const file of walk('.')){
