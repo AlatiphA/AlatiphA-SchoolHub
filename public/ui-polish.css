@@ -875,3 +875,21 @@
 @media(max-width:600px){#app #studentOnboarding .student-onboarding-actions{flex-wrap:nowrap;min-width:0;}#app #studentOnboarding .student-onboarding-actions>button{height:auto;max-width:100%;box-sizing:border-box;}}
 
 #aboutDialog .about-actions{display:flex;flex-wrap:wrap;gap:10px;}#aboutDialog .about-actions>button{flex:1 1 180px;min-height:44px;}#aboutDialog .about-actions>button:disabled{opacity:.6;cursor:default;}
+
+/* Attendance tables scroll within the screen; the identifying column stays put. */
+@media screen{
+ #app #view-attendance :is(#studentAttendancePanel,#teacherAttendancePanel,#attendanceFormWrap,#teacherAttendanceFormWrap,#attendanceSummaryWrap,#attendanceAnalysisWrap,#attendanceReportsWrap){min-width:0;max-width:100%;}
+ #app #view-attendance .table-scroll{position:relative;min-width:0;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;isolation:isolate;}
+ #app #view-attendance :is(.attendance-table,.attendance-report-table){border-collapse:separate;border-spacing:0;}
+ #app #view-attendance :is(.attendance-table,.attendance-report-table) thead th:first-child,
+ #app #view-attendance :is(.attendance-table,.attendance-report-table) tbody td:first-child:not([colspan]){position:sticky;left:0;z-index:2;background:var(--surface);box-shadow:2px 0 0 var(--rule);min-width:120px;max-width:180px;white-space:normal;overflow-wrap:anywhere;}
+ #app #view-attendance :is(.attendance-table,.attendance-report-table) thead th:first-child{z-index:3;background:var(--surface-alt);}
+ #app #view-attendance :is(.attendance-table,.attendance-report-table) tbody tr:nth-child(even) td:first-child:not([colspan]){background:var(--surface-alt);}
+ #app #attendanceSummaryWrap .attendance-report-table,#app #attendanceAnalysisWrap .attendance-report-table{min-width:680px;}
+ #app #view-attendance .attendance-summary-pills{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+ #app #view-attendance .attendance-summary-pills .attendance-summary-pill{width:100%;margin:0;}
+ #app #view-attendance .attendance-summary-pill span{min-width:0;overflow-wrap:anywhere;}
+ @media(max-width:600px){#app #view-attendance .attendance-summary-pills{grid-template-columns:minmax(0,1fr);}#app #view-attendance :is(.attendance-table,.attendance-report-table) th,#app #view-attendance :is(.attendance-table,.attendance-report-table) td{padding:9px 8px;}}
+}
+.attendance-pdf-capture-host :is(.attendance-table,.attendance-report-table) :is(th,td):first-child{position:static!important;box-shadow:none!important;}
+@media print{#view-attendance :is(.attendance-table,.attendance-report-table) :is(th,td):first-child{position:static!important;box-shadow:none!important;}}

@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.0';
+const APP_VERSION = '40.1.1';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -5432,8 +5432,41 @@ function renderAttendanceClassSelect() {
   renderAttendanceForm();
 }
 
+function dailyAttendanceCounts(statuses) {
+  const counts = { presentLate:0, absent:0 };
+  for (const value of statuses) {
+    const status = String(value || '').trim().toUpperCase();
+    if (status === 'P' || status === 'L') counts.presentLate++;
+    else if (status === 'A') counts.absent++;
+  }
+  return counts;
+}
+
+function refreshAttendanceDailyPills(wrap) {
+  if (!wrap) return;
+  const statuses = Array.from(wrap.querySelectorAll('.attendance-status, .teacher-attendance-status'), select => select.value);
+  const counts = dailyAttendanceCounts(statuses);
+  const present = wrap.querySelector('[data-daily-present-late]'), absent = wrap.querySelector('[data-daily-absent]');
+  if (present) present.textContent = String(counts.presentLate);
+  if (absent) absent.textContent = String(counts.absent);
+}
+
+function installAttendanceDailyPills(wrap) {
+  if (!wrap) return;
+  if (!wrap.dataset.attendanceDailyBound) {
+    wrap.addEventListener('change', event => {
+      if (event.target.matches('.attendance-status, .teacher-attendance-status')) refreshAttendanceDailyPills(wrap);
+    });
+    wrap.addEventListener('click', event => {
+      if (event.target.closest('.attendance-toolbar button')) refreshAttendanceDailyPills(wrap);
+    });
+    wrap.dataset.attendanceDailyBound = '1';
+  }
+  refreshAttendanceDailyPills(wrap);
+}
+
 function attendanceSummaryHeader(label, timesOpen, averageRatio) {
-  return `<div class="attendance-summary-pills"><div class="attendance-summary-pill"><span>Times Open</span><strong>${timesOpen || 0} day${timesOpen === 1 ? '' : 's'}</strong></div><div class="attendance-summary-pill"><span>${label}</span><strong>${formatAttendanceRatio(averageRatio)}</strong></div></div>`;
+  return `<div class="attendance-summary-pills"><div class="attendance-summary-pill"><span>Times Open</span><strong>${timesOpen || 0} day${timesOpen === 1 ? '' : 's'}</strong></div><div class="attendance-summary-pill"><span>${label}</span><strong>${formatAttendanceRatio(averageRatio)}</strong></div><div class="attendance-summary-pill attendance-daily-pill"><span>Present + Late (day)</span><strong data-daily-present-late aria-live="polite">0</strong></div><div class="attendance-summary-pill attendance-daily-pill"><span>Absent (day)</span><strong data-daily-absent aria-live="polite">0</strong></div></div>`;
 }
 
 function renderAttendanceForm() {
@@ -5481,6 +5514,7 @@ function renderAttendanceForm() {
   html += '</tbody></table></div>';
   html += `<p class="hint">${attendanceRecordsForTerm(classId, settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays, midterm and strike days.</p>`;
   wrap.innerHTML = html;
+  installAttendanceDailyPills(wrap);
   document.getElementById('attendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('attendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = 'A'));
   document.getElementById('attendanceUnmarkAll').addEventListener('click', () => wrap.querySelectorAll('.attendance-status').forEach(s => s.value = ''));
@@ -5499,6 +5533,7 @@ function refreshLiveAttendanceTotals() {
       if (target.textContent !== String(value)) target.textContent=String(value);
     });
   });
+  refreshAttendanceDailyPills(document.getElementById('attendanceFormWrap'));
 }
 
 
@@ -5546,6 +5581,7 @@ function renderTeacherAttendanceForm() {
   html += '</tbody></table></div>';
   html += `<p class="hint">${teacherAttendanceRecordsForTerm(settings.currentTerm, settings.currentYear).filter(r => attendanceDayType(settings.currentTerm, settings.currentYear, r.date) === 'open').length} open-school teacher attendance day(s) recorded for ${escapeHtml(settings.currentTerm)} ${escapeHtml(settings.currentYear)}. Times Open is ${timesOpen || 0} day(s), excluding weekends, holidays, midterm and strike days.</p>`;
   wrap.innerHTML = html;
+  installAttendanceDailyPills(wrap);
   document.getElementById('saveTeacherStrikePolicy').onclick=()=>{if(!requireHeadTeacher('change the strike ratio policy'))return;const policy=document.getElementById('teacherStrikePolicy').value;if(!policy){alert('Choose how On Strike days affect the attendance ratio.');return;}const settings=DB.get(KEYS.settings,{});settings.teacherStrikeRatioPolicy=policy;DB.set(KEYS.settings,settings);renderTeacherAttendanceForm();};
   document.getElementById('teacherAttendanceAllPresent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'P'));
   document.getElementById('teacherAttendanceAllAbsent').addEventListener('click', () => wrap.querySelectorAll('.teacher-attendance-status').forEach(s => s.value = 'A'));
