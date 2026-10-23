@@ -893,3 +893,15 @@
 }
 .attendance-pdf-capture-host :is(.attendance-table,.attendance-report-table) :is(th,td):first-child{position:static!important;box-shadow:none!important;}
 @media print{#view-attendance :is(.attendance-table,.attendance-report-table) :is(th,td):first-child{position:static!important;box-shadow:none!important;}}
+
+/* Fixed table layout prevents sparse report columns from stretching the frozen label. */
+@media screen and (max-width:900px){
+ #app #view-attendance{--attendance-frozen-width:clamp(80px,22vw,96px);}
+ #app #view-attendance :is(.attendance-table,.attendance-report-table){table-layout:fixed;width:680px;min-width:680px;max-width:none;}
+ #app #view-attendance .attendance-table{width:1000px;min-width:1000px;}
+ #app #view-attendance .attendance-table thead th:nth-child(2){width:160px;}
+ #app #view-attendance :is(.attendance-table,.attendance-report-table) thead th:first-child,
+ #app #view-attendance :is(.attendance-table,.attendance-report-table) tbody td:first-child:not([colspan]){width:var(--attendance-frozen-width);min-width:var(--attendance-frozen-width);max-width:var(--attendance-frozen-width);box-sizing:border-box;text-align:left;white-space:normal;overflow-wrap:anywhere;}
+ #app #view-attendance .attendance-report-table :is(th,td){white-space:normal;overflow-wrap:anywhere;}
+ #app #view-attendance .table-scroll{overflow-x:auto;max-width:100%;scrollbar-width:auto;}
+}
