@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.3';
+const APP_VERSION = '40.1.4';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -1176,51 +1176,67 @@ function tourSlidesForHeadTeacher() {
   return [
   {
     "title": "Welcome, Head Teacher",
-    "body": "Start from Home for school records. Open Profile → Settings for app controls, or Profile → Help → Show Guided Tour to replay this guide."
+    "body": "Start from Home for school work. Profile → Settings contains app controls; Profile → Help contains this tour, Help & FAQ and the Complete user guide."
   },
   {
-    "title": "1. Set up your school",
-    "body": "Open Home → Setup or Profile → Settings → School Setup. Confirm the school, academic year, term, attendance and report settings. Save before adding records."
+    "title": "1. Install SchoolHub",
+    "body": "Open SchoolHub online. Use the installation banner or your browser’s install/Add to Home Screen option. Inside the workspace, Help → Install SchoolHub provides the same guidance. Installation is optional: you can continue in the browser. Sign in or choose the Guest trial next."
   },
   {
-    "title": "2. Prepare records and approve teachers",
-    "body": "Add staff, classes and subjects, then pupils. Share the join code with teachers. In Manage Teachers, approve their requests and assign their classes and subjects. New email/password signups must verify their email first."
+    "title": "2. Set up and approve teachers",
+    "body": "Complete school and term settings, then prepare Staff, Classes and Subjects. Share the school join code, approve teachers in Manage Teachers and assign their classes and subjects. A verified email alone does not grant school access."
   },
   {
-    "title": "3. Attendance, grades and reports",
-    "body": "Record attendance, scores and remarks for the selected class. Generate report cards from Reports. Fewer than six complete subject results produce a dash for the aggregate; the report explains missing results near its footer."
+    "title": "3. Onboard pupils",
+    "body": "In Students → Onboarding, expand Add Student for one pupil, Bulk add for one line per pupil, or Excel template to download, complete and import a spreadsheet. Bulk lines use Full name, Sex, optional Student ID; use F/M or Female/Male. Review spreadsheet imports before saving."
   },
   {
-    "title": "4. Weekly Supervision",
-    "body": "Choose a week beginning on Monday and record a check for a teacher. Review lesson plans, exercises, assessments, books and the attendance register; add feedback and follow-up. Subjects come from the Subjects tab. Teachers see only their own feedback."
+    "title": "4. Search and class totals",
+    "body": "Choose a Class before Search, or choose All classes to search your accessible school records. Excel export and Print use that selection and search text. The class enrolment summary counts current pupils independently of the filters; Check for missing students is below the student table."
   },
   {
-    "title": "5. Fees & Receipts",
-    "body": "Use fee categories and fee items to charge pupils, record payments and generate receipts and statements. Check confirmed balances and the separate financial pending-save list. Review reversals rather than deleting payment history."
+    "title": "5. Daily attendance",
+    "body": "Select the correct class and date, mark attendance and save. Present + Late (day) and Absent (day) show the marks for that date; Times Open and average ratio remain term figures. Teacher attendance is separate. Swipe sideways inside wide tables; the narrow first column stays visible."
   },
   {
-    "title": "6. Stores, Assets & Liabilities",
-    "body": "Open the Home card after Reports. New stock codes are assigned automatically, such as SC-001. Receive, issue or correct stock with a reference. Review teacher requests and use Approve & issue or Reject. Search codes and names, or use View for details."
+    "title": "6. Grades and reports",
+    "body": "Enter scores and remarks for the selected class and subject, then save. Generate report cards from Reports. Fewer than six complete subject results produce an aggregate dash; check the missing-result notes before issuing a report."
   },
   {
-    "title": "7. Offline & Sync Center",
-    "body": "Supported pupil, attendance, grade and remark changes can save locally as pending uploads. My Details, stock requests and supervision forms use drafts that must be submitted online. Keep this device’s data until confirmation."
+    "title": "7. Weekly Supervision",
+    "body": "Choose a Monday week start and review a teacher’s lesson plans, subject work, books and attendance register. Add feedback and follow-up. Teachers view only checks linked to their Staff record; official saves require internet."
   },
   {
-    "title": "8. Reconnect and confirm",
-    "body": "After reconnecting you may see Waiting to reconnect, Checking, then Up to date. Account verification happens before uploads. Check pending saves and the record itself. Closed-app background uploads depend on browser support and are not guaranteed."
+    "title": "8. Fees & Receipts",
+    "body": "Create fee categories and fee items, record payments and review confirmed balances, receipts, arrears and statements. Check any retained financial request before entering another copy. Billing & Credits is a separate service tool and live billing remains suspended in this build."
   },
   {
-    "title": "9. Account, help and notifications",
-    "body": "Profile → Account Security manages login email/password while online. Profile → Settings contains Notifications, Sync Center and System Health. Head Teachers open Billing & Credits directly from Profile, between Settings and Help. The header bell opens notifications directly. Profile → Help contains the FAQ, installation, About and policies."
+    "title": "9. Stores and requests",
+    "body": "Use Stores, Assets & Liabilities to manage stock, requests and school property. Stock codes are assigned automatically. Receive, issue or correct stock with a reference; review teacher requests. A pending action is not a confirmed stock movement."
   },
   {
-    "title": "10. Backups and rollover",
-    "body": "Use Setup → Backup & Restore to export a backup. Use Term History for a new term. Review promotions, repeats, completions and transfers in Academic Year Rollover; retain its year-end backup for recovery. Setup → Academic Year Rollover → Restore Year-End Backup is the emergency restore tool. Setup → Academic Year Rollover → Restore Year-End Backup is the emergency restore tool."
+    "title": "10. Messages and push",
+    "body": "Open Settings → Messages & Push. Head Teachers send to active teachers in their own school; school users do not send cross-school service messages. Under This device, enable push and allow browser notifications. Saved inbox messages and delivered device alerts are different confirmations."
+  },
+  {
+    "title": "11. Offline & Sync Center",
+    "body": "Supported saved records can wait in the device’s upload queue. My Details, stock requests and supervision forms can also have drafts that still need submission. Sync Center lists Pending school data separately from image coverage. Use Sync Everything and check what remains."
+  },
+  {
+    "title": "12. Review a conflict",
+    "body": "If another device changed a saved value, open Sync Center → Review conflicting edits. Select the record, read the local and cloud values and choose each conflict before Apply reviewed choices and retry. Cloud-only changes are kept; a newer edit can require another review. Keep browser data intact."
+  },
+  {
+    "title": "13. Account and updates",
+    "body": "Use Profile → Account Security for verification and supported login changes. In Help → About SchoolHub, use Check for updates and then Install update when ready. Save open form entries first; installing reloads the app and retains saved records and pending uploads."
+  },
+  {
+    "title": "14. Backups and year end",
+    "body": "Export core records from Setup → Backup & Restore and keep the file safely. This is not a full backup of fees, stock, supervision or cloud images. Use Term History for a new term and Academic Year Rollover for promotions, repeats, completions and transfers. Restore Year-End Backup is its emergency reversal tool."
   },
   {
     "title": "You’re ready",
-    "body": "Use View to inspect records and Edit → Update to change existing records. Follow any confirmation or error message before retrying. Open Profile → Help → Help & FAQ whenever you need the detailed steps."
+    "body": "Use View to inspect a record and Edit → Update to change it. Read pending-save and error messages before retrying. Help & FAQ answers common questions; the Complete user guide gives the longer school workflow."
   }
 ];
 }
@@ -1229,47 +1245,55 @@ function tourSlidesForTeacher() {
   return [
   {
     "title": "Welcome, Teacher",
-    "body": "Your Home pages follow your assigned classes and subjects. Open Profile → Help → Show Guided Tour to replay this guide."
+    "body": "Your workspace follows your assigned classes and subjects. Replay this tour through Profile → Help → Show Guided Tour. The Complete user guide is available there too."
   },
   {
-    "title": "1. Verify, join and get approved",
-    "body": "For a new email/password signup, open the verification email and return to confirm it. Join with the school code, then wait for approval and assignments. Keep using your approved account."
+    "title": "1. Install SchoolHub",
+    "body": "Open SchoolHub online. Use the installation banner or your browser’s install/Add to Home Screen option. Inside the workspace, Help → Install SchoolHub provides the same guidance. Installation is optional: you can continue in the browser. Sign in or choose the Guest trial next."
   },
   {
-    "title": "2. Pupils and attendance",
-    "body": "Choose your assigned class to work with its pupils. Record attendance by date and save. Use View to inspect a pupil and Edit → Update for supported changes."
+    "title": "2. Verify, join and get approved",
+    "body": "Verify your email if prompted, join with the school code and wait for Head Teacher approval and assignments. Keep using your approved account. Ask the Head Teacher to check missing class, subject or Staff links."
   },
   {
-    "title": "3. Grades, remarks and reports",
-    "body": "Choose an assigned subject, enter scores and save; add remarks and generate available reports. Fewer than six complete subject results produce an aggregate dash. Complete missing results before issuing the final report."
+    "title": "3. Your pupils",
+    "body": "Choose one of your assigned classes before Search. Teachers do not have an All classes option. Excel export and Print use the chosen class and search text. Your pupil summary is a pie with Male, Female, Sex not set and Total for accessible current pupils."
   },
   {
-    "title": "4. My Details and account security",
-    "body": "Open Profile → My Details for your linked staff details and qualification dropdowns. Offline changes are drafts; reconnect and press Save My Details to submit. Profile → Account Security manages login changes online. Contact email and login email are separate."
+    "title": "4. Onboarding",
+    "body": "Under Students → Onboarding, use Add Student, Bulk add or Excel template. Bulk lines use Full name, Sex, optional Student ID. For a spreadsheet, download the template, fill it in, import and review before saving. Expand and Close keep each method separate."
   },
   {
-    "title": "5. Stock requests",
-    "body": "Open Stores, Assets & Liabilities → My Requests. Choose an item, quantity and purpose. Save draft & add another keeps separate item drafts on this device. Reconnect and send each draft; a draft has not requested or reserved stock."
+    "title": "5. Attendance by date",
+    "body": "Choose your class and date, mark the pupils and save. Present + Late (day) and Absent (day) count that date’s displayed marks, not the whole term. Swipe sideways inside tables; the first column stays narrow and visible."
   },
   {
-    "title": "6. Weekly Supervision feedback",
-    "body": "Open Weekly Supervision to view checks and feedback linked to your Staff record. The Head Teacher records and edits checks. Ask the Head Teacher if your account needs a Staff link."
+    "title": "6. Grades, remarks and reports",
+    "body": "Use assigned subjects to enter scores and save. Add remarks and prepare available reports. Fewer than six complete subject results produce an aggregate dash; check missing results before issuing the report."
   },
   {
-    "title": "7. Offline work and recovery",
-    "body": "After loading your verified workspace online, supported pupil, attendance, grade and remark edits can save locally as pending uploads. Wait for the local save before closing. Reopen with internet and keep the app open until account verification and upload finish."
+    "title": "7. My Details and account security",
+    "body": "Profile → My Details edits your linked Staff details. An offline draft still needs Save My Details after reconnecting. Profile → Account Security handles verification and supported login changes online. Your contact email and login email are separate."
   },
   {
-    "title": "8. Check confirmation",
-    "body": "Waiting to reconnect and Checking mean recovery is unfinished. Up to date does not submit unsent drafts. Check the saved value and any pending/error message. Background upload timing while the app is closed depends on the browser."
+    "title": "8. Stock requests and feedback",
+    "body": "In Stores → My Requests, Save draft & add another keeps separate stock-request drafts. Reconnect and send each request. Weekly Supervision shows feedback linked to your Staff record; the Head Teacher records and edits the checks."
   },
   {
-    "title": "9. Help and app controls",
-    "body": "Profile → Settings opens Notifications, Sync Center and System Health. Profile → Help opens the FAQ, installation, About and policies. Use the header bell for announcements and stock decisions. School management and billing remain Head Teacher controls."
+    "title": "9. Saved edits and drafts",
+    "body": "After loading a verified workspace online, supported pupil, attendance, grade and remark saves can remain pending on this device. Up to date does not submit an unsent form draft. Keep browser data intact until uploads and submissions are confirmed."
+  },
+  {
+    "title": "10. Sync and conflicting marks",
+    "body": "Open Settings → Sync Center → Sync Everything and read Pending school data. In Review conflicting edits, select a pending attendance, grade or remark record, compare both versions and choose each conflict before retrying. Different pupils’ changes can merge; different marks for the same pupil need review."
+  },
+  {
+    "title": "11. Notifications and updates",
+    "body": "Use the header bell for saved notices. Settings → Messages & Push → This device enables supported push alerts; allow notifications when asked. Help → About SchoolHub provides Check for updates and Install update. Save open form entries before installing."
   },
   {
     "title": "You’re ready",
-    "body": "If a class, subject or personal record is missing, ask the Head Teacher to check your assignments and Staff link. Keep drafts and pending edits until their server confirmation succeeds."
+    "body": "Head Teachers manage school setup, staff administration, teacher assignments and school financial changes. Use Help & FAQ or the Complete user guide when you need detailed steps."
   }
 ];
 }
@@ -1278,27 +1302,31 @@ function tourSlidesForGuest() {
   return [
   {
     "title": "Welcome",
-    "body": "Guest mode is a 7-day trial. Data stays on this device. Profile → Help contains the guided tour and FAQ."
+    "body": "Guest mode is a 7-day trial with data on this device. Use sample records to explore SchoolHub. Profile → Help contains this tour, Help & FAQ and the Complete user guide."
   },
   {
-    "title": "1. Prepare trial records",
-    "body": "Use Setup, then add staff, classes, subjects and pupils. Test attendance, grades, remarks and reports with sample data."
+    "title": "1. Install SchoolHub",
+    "body": "Open SchoolHub online. Use the installation banner or your browser’s install/Add to Home Screen option. Inside the workspace, Help → Install SchoolHub provides the same guidance. Installation is optional: you can continue in the browser. Sign in or choose the Guest trial next."
   },
   {
-    "title": "2. Explore the current flow",
-    "body": "Home contains school-work pages. Profile → Settings contains available app controls; Profile → Help contains guidance, installation, About and policies. Account and school permissions control which tools are available."
+    "title": "2. Prepare trial records",
+    "body": "Use Setup, then prepare staff, classes and subjects. In Students → Onboarding, try Add Student, Bulk add or Excel template. A student bulk line contains Full name, Sex, optional Student ID."
   },
   {
-    "title": "3. Keep a backup",
-    "body": "Use Setup → Backup & Restore to export a JSON copy before clearing browser data or moving devices. Guest data is not a shared cloud school."
+    "title": "3. Search and explore",
+    "body": "Choose a class and use Search. Excel export and Print follow the selection. Explore attendance by date, grades, remarks and report cards with sample data."
   },
   {
-    "title": "4. Create or join a school",
-    "body": "Sign up online and verify your email when requested. Register a school as Head Teacher or join with a school code as Teacher. Teachers need approval and assignments."
+    "title": "4. Keep a backup",
+    "body": "Export core records through Setup → Backup & Restore before clearing browser data or changing devices. Guest records are not a shared cloud school; cloud sync, messages and push require the appropriate signed-in account."
+  },
+  {
+    "title": "5. Create or join a school",
+    "body": "Sign up online and verify your email when requested. A Head Teacher registers a school; a Teacher joins with its code and waits for approval and assignments."
   },
   {
     "title": "You’re ready",
-    "body": "Use Profile → Help → Help & FAQ for the detailed workflow. Sign in to an active school for shared records and protected school operations."
+    "body": "Use Help & FAQ for quick answers or open the Complete user guide for the full workflow. A trial backup contains core records, not every cloud service or image."
   }
 ];
 }

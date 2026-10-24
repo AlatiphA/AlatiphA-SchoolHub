@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AlatiphA SchoolHub v40 Complete User Guide</title>
-<meta name="description" content="Current complete user guide to AlatiphA SchoolHub v40, updated for the current SchoolHub flow on 6 October 2026. Covers accounts, duplicate-identity protection, Account Security, Weekly Supervision, Stores/Inventory/Assets/Liabilities, notifications, offline drafts and sync, attendance, grades, reports, Fees & Receipts, financial reports, backups and academic-year rollover.">
+<title>AlatiphA SchoolHub Complete User Guide</title>
+<meta name="description" content="SchoolHub school-user guide, reviewed 24 October 2026. Covers Head Teacher, Teacher and Guest workflows, student onboarding, daily attendance, class filters, sync conflict review, app updates, messages, fees, stock, backups and recovery.">
 <style>
 html { scroll-behavior: smooth; }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
@@ -109,22 +109,22 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <body>
 <div class="schoolhub-post">
 
-<h1>AlatiphA SchoolHub v40 Complete User Guide</h1>
+<h1>AlatiphA SchoolHub Complete User Guide</h1>
 <p><a href="https://alatipha-schoolhub.web.app/">Open SchoolHub</a></p>
-<p class="updated"><strong>Updated:</strong> 6 October 2026 · Current SchoolHub workflow</p>
+<p class="updated"><strong>Updated:</strong> 24 October 2026 · School-user workflows, including Sync Review</p>
 
 <div class="intro-box">
 <strong>AlatiphA SchoolHub</strong> is a school-management Progressive Web App designed to bring school administration, staff and pupil records, weekly teaching supervision, stores and school property, attendance, assessment, report cards, fees and receipts, notifications and school communication, parent fee communication, synchronisation, backup and recovery into one working environment.
 </div>
 
-<p>This guide explains the current SchoolHub v40 build from the perspective of a <strong>Guest</strong>, <strong>Head Teacher</strong> and <strong>Teacher</strong>. It covers the current major tabs, protected school joining and approval, Weekly Supervision, Stores/Inventory/Assets/Liabilities, the Notification Center and announcements, Fees &amp; Receipts, account security, offline drafts and synchronisation, and the safeguards that protect school data.</p>
+<p>This guide explains the current SchoolHub school workspace from the perspective of a <strong>Guest</strong>, <strong>Head Teacher</strong> and <strong>Teacher</strong>. It covers the current major tabs, protected school joining and approval, Weekly Supervision, Stores/Inventory/Assets/Liabilities, the Notification Center and announcements, Fees &amp; Receipts, account security, offline drafts and synchronisation, and the safeguards that protect school data.</p>
 
-<div class="success-box"><strong>Current production additions covered in this revision:</strong> the compact Profile → Settings and Profile → Help menus; role-specific guided tours; new signup-email verification; Weekly Supervision; Stores, Assets &amp; Liabilities; Account Security; offline pupil saves and device-scoped form drafts; live Class-list updates across devices; popup record editing; the six-completed-subject aggregate rule; Notifications/Communication v1; and the Duplicate Teacher Identity Guard.</div>
+<div class="success-box"><strong>Included in this revision:</strong> separate student onboarding methods, class-scoped Search and exports, role-specific pupil summaries, daily attendance pills, narrow frozen attendance columns, configured Messages &amp; Push, Check for updates / Install update, and Sync Center pending-record and conflict review. This guide is for Head Teachers, Teachers and Guests.</div>
 
 <details class="toc" open>
 <summary>Table of Contents</summary>
 <ol>
-<li><a href="#introduction">Introduction</a></li>
+<li><a href="#install">Install or Open SchoolHub</a></li>
 <li><a href="#accounts">SchoolHub Accounts</a>
   <ol>
     <li><a href="#guest-account">Guest Account</a></li>
@@ -148,7 +148,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <li><a href="#manage-teachers">Manage Teachers</a></li>
 <li><a href="#staff">Staff</a></li>
 <li><a href="#classes">Classes</a></li>
-<li><a href="#students">Students</a></li>
+<li><a href="#students">Students</a><ol><li><a href="#student-onboarding">Onboarding</a></li><li><a href="#student-search">Search and exports</a></li><li><a href="#student-summary">Current-pupil summary</a></li><li><a href="#student-recovery">Editing and recovery</a></li></ol></li>
 <li><a href="#subjects">Subjects</a></li>
 <li><a href="#attendance">Attendance</a>
   <ol>
@@ -210,10 +210,9 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
   </ol>
 </li>
 <li><a href="#billing">Billing &amp; Credits</a></li>
-<li><a href="#offline">Offline Mode, Drafts &amp; Synchronisation</a></li>
+<li><a href="#offline">Offline Mode, Drafts &amp; Synchronisation</a><ol><li><a href="#app-updates">App updates</a></li><li><a href="#sync-center">Sync Center</a></li><li><a href="#conflict-review">Review conflicting edits</a></li></ol></li>
 <li><a href="#recovery">Data Protection &amp; Recovery</a></li>
 <li><a href="#profile">Profile Menu &amp; Help</a></li>
-<li><a href="#install">Installing SchoolHub as an App</a></li>
 <li><a href="#mobile-tables">Mobile Tables and Horizontal Scrolling</a></li>
 <li><a href="#save-update">Save, Update and Popup Editing</a></li>
 <li><a href="#recommended-workflow">Recommended School Workflow</a></li>
@@ -221,49 +220,10 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 </ol>
 </details>
 
-<h2 id="introduction"><span class="chapter-number">Chapter 1:</span> Introduction</h2>
-<p>Managing a school involves much more than entering examination scores. Administrators have to manage pupils, teachers, attendance, school calendars, remarks, reports, fees, payments, arrears, parent communication, term changes and historical records while ensuring that important information is not accidentally lost.</p>
-
-<p>AlatiphA SchoolHub brings these activities into one application. It is designed as a <strong>Progressive Web App (PWA)</strong>, which means it can be opened in a browser and can also be installed on supported phones and computers like a normal application.</p>
-
-<p>The current SchoolHub provides tools for:</p>
-<ul class="feature-list">
-<li>School and academic-term setup</li>
-<li>Role-based Head Teacher and Teacher accounts</li>
-<li>Email/password and Google sign-in</li>
-<li>Guest trial access</li>
-<li>Teacher school joining, approval and assignment</li>
-<li>Account Security for verified login-email and password changes</li>
-<li>Weekly teaching supervision with teacher feedback and follow-up</li>
-<li>Stores and inventory, teacher stock requests, assets and liabilities</li>
-<li>Device-scoped offline form drafts for supported workflows</li>
-<li>Live updates to open Class lists across signed-in devices</li>
-<li>Duplicate-account protection for teacher school membership</li>
-<li>Notification Center with unread badge and notification history</li>
-<li>Head Teacher announcements to active teachers</li>
-<li>Staff management</li>
-<li>Class management</li>
-<li>Student records</li>
-<li>Subject management</li>
-<li>Student and teacher attendance</li>
-<li>School calendar exceptions such as holidays and midterms</li>
-<li>Grade entry</li>
-<li>Student remarks</li>
-<li>Report-card generation</li>
-<li>Attendance reports</li>
-<li>Fees, receipts, arrears and pupil financial records</li>
-<li>Financial dashboards and reports</li>
-<li>Pupil and parent fee statements</li>
-<li>Parent fee reminders with copy, WhatsApp and print options</li>
-<li>Term history</li>
-<li>Activity logging</li>
-<li>Cloud synchronisation</li>
-<li>Offline-first access for previously verified users</li>
-<li>Background synchronisation support where the browser provides it</li>
-<li>Backup and recovery</li>
-<li>Academic-year rollover</li>
-<li>Emergency year-end restoration</li>
-</ul>
+<h2 id="install"><span class="chapter-number">Chapter 1:</span> Install or Open SchoolHub</h2>
+<p>Open <a href="https://alatipha-schoolhub.web.app/">SchoolHub</a> online on the device you intend to use. You can work in a supported browser or install the Progressive Web App. Installing is optional and does not create an account or school.</p>
+<ol class="mini-steps"><li>Open SchoolHub with internet available.</li><li>Use the available installation banner or your browser’s install/Add to Home Screen option. Inside the workspace, <strong>Profile → Help → Install SchoolHub</strong> provides installation guidance.</li><li>Follow the device prompt, then launch SchoolHub from its app icon. If no install option is offered, continue in the browser.</li><li>Proceed to <a href="#accounts">SchoolHub Accounts</a> to sign in, create an account or try Guest mode. First sign-in, school joining and loading an uncached workspace need internet.</li></ol>
+<p>The installed app uses the same account and school data. Installation alone does not download every school record or enable offline work on a new device. Load and verify the workspace online first. For later releases, follow <a href="#app-updates">Check for updates and install</a>; app installation and release updates are separate actions.</p>
 
 <h2 id="accounts"><span class="chapter-number">Chapter 2:</span> SchoolHub Accounts</h2>
 <p>SchoolHub uses different account types because not every user should have access to every part of a school's information.</p>
@@ -400,34 +360,43 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>Editing an existing Class opens in a popup window so the user does not have to leave the current list position.</p>
 
 <h2 id="students"><span class="chapter-number">Chapter 8:</span> Students</h2>
-<p>The Students tab manages pupil records such as Full Name, Sex, Date of Birth, Age, Student ID, Disability status, Guardian Name, Parent Phone, House Number / GhanaPost GPS and Class.</p>
-<p>Choose a Class before using Search. Head Teachers can choose All classes to search every class they can access. Teachers select one of their assigned classes; they do not have an All classes option. Excel export and Print use that same class selection and search text; clear Search to include every pupil in the selection. Students can also be checked against saved recovery sources when records appear missing. Under Onboarding, choose Add Student for one-by-one entry, Bulk add for one student per line in the format Name, Sex, optional Student ID (Female/Male or F/M), or Excel template to download, complete and import a spreadsheet. Each method expands separately. Check for missing students is below the Student details table. Review an Excel import before saving.</p>
-<p>Supported pupil edits and pupil additions can be saved locally while offline after the device has a verified school workspace. They remain pending until the account is revalidated and the upload succeeds. A successful pupil addition clears the active pupil-search filter so the full class can be shown again.</p>
-<p>Editing an existing Student opens in a popup window, and the Student details window also provides an <strong>Edit</strong> action.</p>
+<p>The Students tab manages pupil details, including name, sex, date of birth, Student ID, guardian details, parent phone and class. Teachers work within assigned classes; the Head Teacher manages the school roster.</p>
+<h3 id="student-onboarding">8.1 Three onboarding methods</h3>
+<p>Choose one class, then open <strong>Onboarding</strong>. Expand the method you need. Each method has its own Expand / Close control.</p>
+<ol class="mini-steps"><li><strong>Add Student:</strong> enter one pupil’s personal and guardian details, then save.</li><li><strong>Bulk add:</strong> type or paste one pupil per line as <strong>Full name, Sex, optional Student ID</strong>. Use F/M or Female/Male. For example: <code>Ama Mensah, F, 00124</code> or <code>Kojo Mensah, Male</code>. Correct validation messages before saving.</li><li><strong>Excel template:</strong> download the template, fill in its columns, import the spreadsheet and review the preview before saving. Keep identifiers as text when leading zeroes matter. Follow the template’s required-field and validation messages.</li></ol>
+<p>Template download prepares a blank import file. <strong>Export to Excel</strong> exports existing pupils. Select one class before adding or importing pupils; All classes is for reviewing and searching records.</p>
+<h3 id="student-search">8.2 Search, class selection and exports</h3>
+<p><strong>Search</strong> works within the selected <strong>Class</strong>. A Head Teacher can choose <strong>All classes</strong> to search accessible school records. Teachers choose one of their assigned classes and do not have an All classes option. Search by name or ID.</p>
+<p><strong>Export to Excel</strong> and <strong>Print / Save as PDF</strong> use the same class selection and search text. Clear Search to include every pupil in that selection. To export one class, select it first. To export all accessible classes as a Head Teacher, choose All classes and clear Search.</p>
+<h3 id="student-summary">8.3 Current-pupil summary</h3>
+<p>Head Teachers can expand <strong>Class enrolment summary</strong> to see Class, Class Teacher, Males, Females, Sex not set and Total. Teachers see a pie and totals for their accessible current pupils. These summary counts are independent of Search and Class filters. Graduates are excluded from the current-pupil summary. Missing sex values stay in Sex not set until corrected.</p>
+<h3 id="student-recovery">8.4 Editing and missing records</h3>
+<p>Use <strong>View</strong> to inspect details and <strong>Edit → Update</strong> to change a pupil. <strong>Check for missing students</strong> is below the student table and compares available recovery sources. It can recover only records that still exist in a saved source.</p>
+<p>Supported pupil additions and edits can save locally in a verified offline workspace. They remain pending until online verification and upload succeed. A new addition clears the active pupil search so the class list can be shown again. Keep local records and drafts until confirmation.</p>
 
 <h2 id="subjects"><span class="chapter-number">Chapter 9:</span> Subjects</h2>
 <p>The Subjects tab defines the subjects taught in the school. Users can add subjects, edit existing subjects and arrange subject order.</p>
 <p>Subject order matters for report calculations and is also the display order used by Weekly Supervision. Editing an existing Subject opens in a popup window.</p>
 
 <h2 id="attendance"><span class="chapter-number">Chapter 10:</span> Attendance</h2>
-
 <h3 id="student-attendance">10.1 Student Attendance</h3>
-<p>Choose a class and date, mark the pupils and save the attendance record. Date navigation controls make it easier to move between attendance dates.</p>
-
+<ol class="mini-steps"><li>Select the correct academic period, class and date.</li><li>Mark each pupil, or use the available Mark All controls and then correct individual marks.</li><li>Review the daily counts and choose <strong>Save attendance</strong>. Unmark All clears the displayed marks; save deliberately if you intend to retain that change.</li></ol>
+<p>Teachers work within assigned classes. A closed date, such as a weekend or a configured closure, is not treated as an ordinary open school day. Review the school calendar if a date cannot be marked.</p>
 <h3 id="teacher-attendance">10.2 Teacher Attendance</h3>
-<p>Head Teachers can maintain teacher attendance separately from pupil attendance.</p>
-
-<h3 id="calendar">10.3 Calendar</h3>
-<p>The Calendar is used to manage school-day exceptions such as holidays and midterms. Editing an event updates the existing record, and changing its date moves it rather than creating a duplicate.</p>
-
-<h3 id="attendance-summary">10.4 Summary</h3>
-<p>The Summary area provides consolidated attendance information for the selected period.</p>
-
-<h3 id="attendance-analytics">10.5 Analytics</h3>
-<p>The Analytics section helps turn recorded attendance into information that can be reviewed more easily than individual daily registers.</p>
-
-<h3 id="attendance-reports">10.6 Attendance Reports</h3>
-<p>Attendance reports can be prepared for printing and downloading using a common modern report presentation.</p>
+<p>Head Teachers record teacher attendance separately, selecting its date and saving its marks. School-day closures and the school’s strike-policy settings affect the available attendance workflow and ratio calculations.</p>
+<h3 id="daily-attendance-counts">10.3 Daily counts and term figures</h3>
+<p><strong>Present + Late (day)</strong> adds the displayed P and L marks for the selected date. <strong>Absent (day)</strong> counts A marks for that date. The pupil counts follow the selected class; teacher counts follow the displayed teacher list. Both update while marking, including Mark All and Unmark All. Save attendance to retain those changes.</p>
+<p>Unmarked and other statuses do not count as Present/Late or Absent. <strong>Times Open</strong> and the average attendance ratio remain term figures. A changed daily pill is not, by itself, confirmation of an uploaded save.</p>
+<h3 id="calendar">10.4 School Calendar</h3>
+<p>Use Calendar for school-day exceptions such as holidays, midterms and school-wide closures. Editing an event updates it; changing its date moves it rather than creating a duplicate. Check the academic period and date before changing the calendar.</p>
+<h3 id="attendance-summary">10.5 Summary</h3>
+<p>Summary consolidates attendance for the selected period and includes daily class-completion information where available. Check its date and filters before interpreting a count.</p>
+<h3 id="attendance-analytics">10.6 Analytics</h3>
+<p>Use Analytics and class comparison to compare recorded attendance. Swipe sideways inside wide tables; the narrow first identifying column stays visible while the other columns move.</p>
+<h3 id="attendance-reports">10.7 Attendance Reports</h3>
+<p>Select the required report type, academic period, class/person and date where applicable. Review the preview before printing or saving a PDF. Filters differ between daily, term, class and individual reports.</p>
+<h3 id="attendance-concurrency">10.8 Two people marking attendance</h3>
+<p>Edits to different pupils can merge; the same desired mark on both devices does not itself create a conflict. Different changes to the same saved value can be blocked rather than silently choosing one person’s mark. Open <a href="#conflict-review">Sync Center’s conflict review</a>, compare both versions and choose the correct mark. Keep the browser data intact until resolved.</p>
 
 <h2 id="grades"><span class="chapter-number">Chapter 11:</span> Grade Entry</h2>
 <p>The Grade Entry tab is where assessment scores are entered for pupils. It supports manual entry, saving class grades, exporting to Excel and importing from Excel.</p>
@@ -556,7 +525,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>The Activity Log provides a record of important actions performed within the school workspace.</p>
 
 <h2 id="notifications"><span class="chapter-number">Chapter 18:</span> Notifications &amp; Communication</h2>
-<p>Notifications/Communication v1 adds a persistent in-app communication layer to SchoolHub. Notifications are stored for the intended user and remain available in the Notification Center until reviewed.</p>
+<p>SchoolHub provides saved in-app notifications, school messages and optional configured device push alerts. Notifications are stored for the intended user and remain available in the Notification Center until reviewed.</p>
 
 <h3 id="notification-center">18.1 Notification Center</h3>
 <p>The notification bell displays an unread badge when new items are waiting. Users can also open <strong>Profile → Settings → Notifications</strong>.</p>
@@ -579,11 +548,11 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>A teacher who is still waiting for approval can use <strong>Check Approval Status</strong> to refresh the membership state after the Head Teacher has acted.</p>
 
 <h3 id="announcements">18.3 School Announcements</h3>
-<p>The Head Teacher can prepare and send a SchoolHub announcement to active teacher accounts. Each announcement is stored in the recipients' Notification Center rather than being a temporary on-screen message only.</p>
+<p>The Head Teacher can use <strong>Notifications → Send school announcement</strong> for a school announcement, or <strong>Settings → Messages &amp; Push → Messages</strong> for the available school messaging workflow. Head Teacher messages go only to active teachers in the same school; choose all eligible recipients or a selected teacher, enter the title and message, then use <strong>Review and send</strong>. Check the audience before confirming.</p><p>A saved inbox message remains in the recipient’s history. Its inbox confirmation does not prove that a device displayed an alert. Teachers receive messages and manage their own device preferences.</p>
 
-<h3 id="browser-notifications">18.4 Browser / PWA Notifications</h3>
-<p>Where the browser supports notifications, the user can optionally grant permission for SchoolHub to show a browser/PWA alert while the application is running or backgrounded.</p>
-<div class="note-box"><strong>Current limitation:</strong> Notifications/Communication v1 does not use Firebase Cloud Messaging to wake a completely closed PWA. If SchoolHub is fully closed, the persisted notification remains in the user's history and appears when SchoolHub is opened again.</div>
+<h3 id="browser-notifications">18.4 Device push alerts</h3>
+<ol class="mini-steps"><li>Sign in with a verified, enabled account on the device.</li><li>Open <strong>Profile → Settings → Messages &amp; Push → This device</strong>.</li><li>Choose message and school-activity preferences, select <strong>Enable push on this device</strong> and allow browser notifications when prompted.</li><li>Use <strong>Refresh device status</strong> to check the result. Repeat setup on each device that should receive alerts.</li></ol>
+<p>Configured web push supports closed-app delivery on supported browsers, subject to connectivity, browser/phone restrictions and notification settings. If push is blocked, review the browser’s site notification permissions. If the service configuration is unavailable, contact SchoolHub support. Saved in-app messages remain accessible through the bell even without push permission.</p>
 
 <h2 id="fees"><span class="chapter-number">Chapter 19:</span> Fees &amp; Receipts (FIS)</h2>
 <p>The current Fees &amp; Receipts system has been expanded from the older single-fee model into a multi-category fee-item system. It keeps separate pupil charges, payments, allocations, balances, receipts, adjustments and arrears while preserving legacy v40 fee information during migration.</p>
@@ -668,7 +637,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>A rejected financial queue entry can block later financial saves until it is reviewed. When SchoolHub offers <strong>Dismiss rejected entry</strong>, that action removes the failed queue item itself; it does not delete an already confirmed payment, receipt or charge.</p>
 <p>After connectivity returns, valid queued financial operations can continue synchronising. Use <strong>Refresh balances</strong> when needed to reload confirmed ledger information.</p>
 
-<div class="note-box">The general SchoolHub sync indicator and the protected FIS financial queue are related but not identical. A screen can show the main workspace as up to date while an FIS save is still waiting for server confirmation.</div>
+<div class="note-box">The header counts retained supported school-record, fee and operations requests, including rejected fee requests. Sync Center also lists pending sections. Always check the specific financial action: only a server-confirmed action contributes to confirmed balances. Up to date does not submit a form draft or prove another device has refreshed.</div>
 
 <h2 id="billing"><span class="chapter-number">Chapter 20:</span> Billing &amp; Credits</h2>
 <p>SchoolHub contains Billing &amp; Credits infrastructure for report-card generation.</p>
@@ -690,10 +659,19 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <div class="note-box"><strong>Important distinction:</strong> My Details drafts, stock-request drafts, Add Staff drafts and Weekly Supervision drafts are not automatically submitted merely because the header shows Up to date. A server-confirmed action must complete through its own workflow.</div>
 
 <h3>21.4 Cross-device updates</h3>
-<p>An open Classes list can receive supported class additions, renames and confirmed deletions automatically from another device. The Stores section periodically refreshes its own visible records while online and verified. Other lists may still need an explicit refresh on the observing device.</p>
+<p>Connected live views can receive supported class, pupil, grade and attendance updates from another device while retaining open edits. Keep the relevant view open and check its connection or conflict message. Stores periodically refreshes visible records while online and verified; other views can still require Refresh. One device’s saved value is not proof that every other screen has refreshed.</p>
 
-<h3>21.5 Service-worker updates</h3>
-<p>The current PWA manages service-worker registration, update checks and lifecycle events and surfaces registration problems through diagnostics rather than silently ignoring them.</p>
+<h3 id="app-updates">21.5 Check for updates and install</h3>
+<ol class="mini-steps"><li>Open <strong>Profile → Help → About SchoolHub</strong> to read the installed release.</li><li>While online, choose <strong>Check for updates</strong> and wait for the check and download.</li><li>When ready, choose <strong>Install update</strong>. Save open form entries first because installing reloads SchoolHub.</li><li>Reopen About to confirm the new release. If no update is ready, the installation button shows <strong>Installed</strong>. Reconnect and retry if the check fails.</li></ol>
+<p>Saved records and pending uploads stay on this device through an app update. The release number advances when changed app content is prepared for deployment; checking for updates or deploying unchanged content does not itself create a new version. System Health reports service-worker problems when available.</p>
+
+<h3 id="sync-center">21.6 Sync Center</h3>
+<p>Open <strong>Profile → Settings → Sync Center</strong> or use the header sync indicator. <strong>Pending school data</strong> lists saved records waiting for confirmation, including their section, any class/date identifier and available error messages. Image coverage is separate: <strong>Image cache appears synchronized</strong> does not mean data edits uploaded.</p>
+<p><strong>Sync Everything</strong> verifies the account and attempts saved data sections, fee requests, operations and images. A blocked section remains pending while unrelated work can finish. <strong>Sync Images</strong> handles image coverage; <strong>Recover Local Images</strong> is a Head Teacher tool. <strong>Refresh</strong> updates the displayed status. Read the final result instead of assuming that a recent data timestamp means every queue is clear.</p>
+<h3 id="conflict-review">21.7 Review conflicting edits</h3>
+<ol class="mini-steps"><li>Keep browser data intact. In Sync Center, read the pending section and any class/date or error.</li><li>Under <strong>Review conflicting edits</strong>, select a pending setup, attendance, grade or remark record and choose <strong>Review saved edits</strong>.</li><li>Read the local and cloud values. For every conflict, choose <strong>Keep this device’s value</strong> or <strong>Use cloud value</strong>.</li><li>Choose <strong>Apply reviewed choices and retry</strong>, then check the remaining pending records and saved values.</li></ol>
+<p>Cloud-only changes are preserved. Before applying a reviewed edit, SchoolHub saves an original recovery copy on this device. Normal server checks still apply: a newer cloud change can require another review. Changed assignments, a newer local edit or an account change invalidate an old review. Deleted or cleared records cannot be recreated through this tool.</p>
+<p>Financial and stock requests use their own pending-save controls and retained request identifiers; this review does not override rejected payments or stock movements. For an internal error, note the section, class/date or record ID, time and app version and contact support. Keep passwords, authentication tokens and full private backups out of ordinary support messages.</p>
 
 <h2 id="recovery"><span class="chapter-number">Chapter 22:</span> Data Protection &amp; Recovery</h2>
 <p><strong>Sync Center:</strong> Pending school data lists retained edits separately from image coverage. Sync Everything tries each data section, fees, operations and images without treating an image download as confirmation of a data upload. A failed section remains queued while unrelated sections can finish. Review conflicting edits compares pending setup, attendance, grades or remarks against the latest cloud record. Choose each conflicting value, then apply and retry. Cloud-only changes are retained, an original recovery copy stays on this device, and the server checks for newer changes again. A cleared/deleted record cannot be recreated through this review. Fee and stock requests retain their original request identifiers; rejected financial requests need review in their own section.</p>
@@ -702,23 +680,19 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h2 id="profile"><span class="chapter-number">Chapter 23:</span> Profile Menu &amp; Help</h2>
 <p>The compact <strong>Profile menu</strong> keeps account actions together: My Details for linked Teachers, Account Security for active accounts, Settings, Help and Log Out (or sign-in when applicable). <strong>Settings and Help are no longer Home cards.</strong></p>
-<ul class="feature-list"><li><strong>Profile → Settings:</strong> Notifications, Sync Center and System Health; Head Teachers also see School Setup and Billing &amp; Credits when available.</li><li><strong>Profile → Help:</strong> Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, About SchoolHub, Privacy and Terms of Use.</li><li><strong>Home:</strong> school-work pages, including Setup, Reports, Stores, Assets &amp; Liabilities and Weekly Supervision, according to your permissions.</li></ul>
+<ul class="feature-list"><li><strong>Profile → Settings:</strong> Notifications, Messages &amp; Push, Sync Center and System Health; Head Teachers also see School Setup. Billing &amp; Credits appears directly in Profile for Head Teachers, between Settings and Help.</li><li><strong>Profile → Help:</strong> Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, About SchoolHub, Privacy and Terms of Use.</li><li><strong>Home:</strong> school-work pages, including Setup, Reports, Stores, Assets &amp; Liabilities and Weekly Supervision, according to your permissions.</li></ul>
 <p>The guided tour matches your role: Head Teacher, Teacher or Guest. The <strong>Complete user guide</strong> link in each tour opens this detailed guide in a separate tab without closing your SchoolHub workspace. The guide is also accessible from Profile → Help. It is included in the updated app cache so it can open offline after that cache has been prepared online.</p>
 <p><strong>My Details</strong> edits the user's linked personal Staff record subject to permission and conflict checks. It can preserve a device-scoped draft for later online submission.</p>
 <p><strong>Account Security</strong> changes login credentials for email/password accounts or directs Google-only users to Google Account Security. Credential changes are online-only and are never stored as drafts.</p>
-<p>The current Help &amp; FAQ covers account security, protected school joining, duplicate-account safeguards, Weekly Supervision, Stores/Assets/Liabilities and stock-request drafts, Notifications/Communication, the full Fees &amp; Receipts system, financial reports, offline saves/drafts, Background Sync, PWA behaviour and mobile tables.</p>
+<p>Help &amp; FAQ provides quick answers on onboarding, class filters, daily attendance, school messages, device push, sync conflicts, app updates and the existing school workflows. This Complete user guide provides the longer instructions for Head Teachers, Teachers and Guests.</p>
 <p>Help, Privacy and Terms are integrated into the SchoolHub interface and follow the application's theme. <strong>System Health</strong> can surface PWA and synchronisation diagnostics, including service-worker registration problems when they occur.</p>
 
-<h2 id="install"><span class="chapter-number">Chapter 24:</span> Installing SchoolHub as an App</h2>
-<p>Because SchoolHub is a Progressive Web App, supported browsers can install it without requiring a traditional app-store package. When available, use <strong>Profile → Help → Install SchoolHub</strong>.</p>
-<p>After installation, SchoolHub continues using the same school account and cloud data. The service worker provides the app shell and supports offline-first reopening where the required data has already been verified and cached.</p>
-
-<h2 id="mobile-tables"><span class="chapter-number">Chapter 25:</span> Mobile Tables and Horizontal Scrolling</h2>
+<h2 id="mobile-tables"><span class="chapter-number">Chapter 24:</span> Mobile Tables and Horizontal Scrolling</h2>
 <p>Wide SchoolHub tables are designed to remain usable on phones. Where a table contains more columns than can fit on the screen, swipe left or right inside the table to scroll horizontally.</p>
 <p>Fees &amp; Receipts tables pin their main row-label column; the Arrears table keeps the pupil/name area beside its selection checkbox. Stores tables keep headings aligned and the first identifying column visible where the layout supports it. Weekly Supervision also uses a sideways-scrollable table so teacher/class context remains readable while reviewing check columns.</p>
-<div class="note-box">The page itself continues to scroll vertically as normal. Horizontal scrolling applies only to the wide table area.</div>
+<div class="note-box">Attendance entry, class comparison, completion, calendar and summary tables keep a narrow first identifying column visible on small screens; labels can wrap. Student class summaries center their headings and keep the Class column visible. The page scrolls vertically as normal; swipe sideways inside the table to reveal other columns.</div>
 
-<h2 id="save-update"><span class="chapter-number">Chapter 26:</span> Save, Update and Popup Editing</h2>
+<h2 id="save-update"><span class="chapter-number">Chapter 25:</span> Save, Update and Popup Editing</h2>
 <div class="table-wrap">
 <table>
 <thead><tr><th>Action</th><th>Meaning</th></tr></thead>
@@ -732,7 +706,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>Editing an existing <strong>Staff, Student, Class or Subject</strong> record now opens in a popup window. Staff and Student detail windows also provide an <strong>Edit</strong> action.</p>
 <p>Background refreshes are designed not to wipe values already entered in an open editing window. If the same record changes elsewhere, close and reopen it to review the newest confirmed version before updating.</p>
 
-<h2 id="recommended-workflow"><span class="chapter-number">Chapter 27:</span> Recommended SchoolHub Workflow</h2>
+<h2 id="recommended-workflow"><span class="chapter-number">Chapter 26:</span> Recommended SchoolHub Workflow</h2>
 <ol class="mini-steps">
 <li><strong>Create the Head Teacher school account.</strong></li>
 <li><strong>Complete School Setup.</strong></li>
@@ -757,12 +731,12 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <li><strong>Use Academic Year Rollover at the end of the year.</strong></li>
 </ol>
 
-<h2 id="conclusion"><span class="chapter-number">Chapter 28:</span> Conclusion</h2>
+<h2 id="conclusion"><span class="chapter-number">Chapter 27:</span> Conclusion</h2>
 <p>AlatiphA SchoolHub has developed from a simple school-record system into a broader school-management platform covering the daily workflow of Head Teachers and Teachers.</p>
 
 <p>Its role-based accounts separate administrative responsibilities from classroom access. Staff, Classes, Students, Subjects, Attendance, Grades, Remarks, Reports, Stores/Assets/Liabilities, Weekly Supervision, Fees &amp; Receipts and Term History provide the main working environment, while notifications, announcements, account security, financial reporting, parent statements, reminders, backups, cloud synchronisation, offline support and year-end rollover support the wider life of school records.</p>
 
-<p>The current v40 safety architecture places particular emphasis on protecting school data and account identity by preserving pending edits and scoped drafts, controlling sensitive cloud operations, preventing duplicate teacher memberships for the same normalised email, isolating protected financial/stock/supervision saves, applying conflict checks, maintaining recovery information and reducing the risk of incomplete local data overwriting fuller cloud records.</p>
+<p>The current safety architecture places particular emphasis on protecting school data and account identity by preserving pending edits and scoped drafts, controlling sensitive cloud operations, preventing duplicate teacher memberships for the same normalised email, isolating protected financial/stock/supervision saves, applying conflict checks, maintaining recovery information and reducing the risk of incomplete local data overwriting fuller cloud records.</p>
 
 <p>For schools using SchoolHub, the best practice remains simple: <strong>keep records current, use one teacher identity per person, review join requests carefully, supervise teaching consistently, record stock and liabilities with references, distinguish drafts from confirmed saves, monitor notifications and synchronisation, use role permissions responsibly, and maintain regular backups.</strong></p>
 
@@ -773,7 +747,5 @@ Developed by AlatiphA Multimedia<br>
 </div>
 
 </div>
-<p><strong>App updates:</strong> About shows the installed SchoolHub release. Use Check for updates, wait for the download, then Install update. Installing reloads the app; save open form entries first. Saved records and pending uploads remain on this device. The release number advances when changed app content is prepared for deployment.</p>
-<p><strong>Daily attendance pills:</strong> Present + Late (day) and Absent (day) count the marks shown for the selected date and class, or the teacher list. They update while marking, including Mark All and Unmark All. Save attendance to keep those changes. Unmarked, Excused, Leave and Strike do not count as Present/Late or Absent. Times Open and the average ratio remain term figures. Attendance tables keep their first identifying column visible during sideways scrolling.</p>
 </body>
 </html>

@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const RELEASE_VERSION = '40.1.3';
+const RELEASE_VERSION = '40.1.4';
 const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-release-' + RELEASE_VERSION;
 // Install a complete cold-start shell before retiring the previous cache.
 // Runtime-only library caching loses Firebase when an update activates after

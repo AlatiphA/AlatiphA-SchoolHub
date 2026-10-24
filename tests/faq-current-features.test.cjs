@@ -56,7 +56,7 @@ test('root and public index keep matching inline FAQ content', () => {
 });
 
 test('FAQ preserves important existing help topics and support links', () => {
-  for (const phrase of ['Save, Update &amp; deleting','Attendance &amp; Calendar','Backup, recovery &amp; rollover','Install, security &amp; troubleshooting','Call 0243443688']) {
+  for (const phrase of ['Save, Update &amp; deleting','Attendance &amp; Calendar','Backup, recovery &amp; rollover','Security &amp; troubleshooting','Call 0243443688']) {
     assert.ok(faq.includes(phrase), `existing FAQ topic missing: ${phrase}`);
   }
 });

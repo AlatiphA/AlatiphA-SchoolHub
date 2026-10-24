@@ -67,10 +67,13 @@ test('browser notification support is opt-in and does not replace in-app notific
   assert.ok(css.includes('/* Notifications / Communication v1 */'));
 });
 
-test('FAQ explains notification scope and closed-app limitation',()=>{
+test('FAQ explains notification scope and configured closed-app push',()=>{
   assert.ok(faq.includes('Notifications &amp; communication'));
   assert.ok(faq.includes('Refreshing the page or restoring an already signed-in session does not create a new sign-in notification.'));
-  assert.ok(faq.includes('Not in Notifications v1.'));
+  assert.ok(faq.includes('SchoolHub supports configured web push'));
+  assert.ok(faq.includes('Each device must opt in.'));
+  assert.ok(faq.includes('a saved inbox message does not prove that an alert appeared'));
+  assert.equal(faq.includes('Not in Notifications v1.'),false);
   assert.equal(hostedFaq,faq);
 });
 
