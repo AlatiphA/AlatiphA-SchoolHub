@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.2';
+const APP_VERSION = '40.1.3';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -379,6 +379,17 @@ async function schoolAccountForStartup(user) {
   return { snapshot };
 }
 
+function pendingFeeSyncState() {
+  if (!currentUid || !currentSchoolId) return {count:0,error:''};
+  try {
+    const raw = localStorage.getItem('schoolhub_fee_queue_' + currentSchoolId + '_' + currentUid);
+    if (!raw) return {count:0,error:''};
+    const queue = JSON.parse(raw);
+    if (!Array.isArray(queue)) throw new Error('Invalid saved fee queue.');
+    return {count:queue.length,error:String(queue.find(item => item && item.error)?.error || '')};
+  } catch (_) { return {count:1,error:'The saved fee queue needs recovery. Keep browser data intact.'}; }
+}
+
 function pendingSyncCountForCurrentSchool() {
   if (!currentSchoolId) return 0;
   let count = 0;
@@ -386,6 +397,7 @@ function pendingSyncCountForCurrentSchool() {
     syncableFields().forEach(field => { count += dirtyIdsFor(field.key).length; });
   } catch (e) {}
   if (currentUid && typeof operationsPendingCount === 'function') count += operationsPendingCount();
+  if (typeof pendingFeeSyncState === 'function') count += pendingFeeSyncState().count;
   return count;
 }
 
@@ -399,7 +411,7 @@ function updateOfflineModeBanner(message) {
   const pending = pendingSyncCountForCurrentSchool();
   const statusButton = document.getElementById('syncStatusBtn');
   if (statusButton) {
-    const writeFailed = pending > 0 && (syncableFields().some(field => syncErrors.has(field.key)) || (typeof operationsHasErrors === 'function' && operationsHasErrors()));
+    const writeFailed = pending > 0 && (syncableFields().some(field => syncErrors.has(field.key)) || (typeof operationsHasErrors === 'function' && operationsHasErrors()) || (typeof pendingFeeSyncState === 'function' && !!pendingFeeSyncState().error));
     const hydrationErrorText = typeof cloudHydrationStatusError === 'string' ? cloudHydrationStatusError : '';
     const hydrationFailed = !!hydrationErrorText;
     const failed = writeFailed || hydrationFailed;
@@ -433,7 +445,7 @@ function updateOfflineModeBanner(message) {
       ? `${pending} pending change${pending === 1 ? '' : 's'} saved on this device. They will sync after your account is reverified online.`
       : 'SchoolHub is using the verified data saved on this device. Cloud features will resume when internet returns.');
   } else {
-    const failed = syncableFields().some(field => syncErrors.has(field.key));
+    const failed = syncableFields().some(field => syncErrors.has(field.key)) || (typeof operationsHasErrors === 'function' && operationsHasErrors()) || (typeof pendingFeeSyncState === 'function' && !!pendingFeeSyncState().error);
     if (title) title.textContent = failed ? 'Could not sync' : 'Saving to cloud…';
     if (detail) detail.textContent = message || (failed
       ? 'Changes are saved on this device. Open Profile → Sync Center to retry.'
@@ -1583,7 +1595,49 @@ function withUiTimeout(promise, milliseconds, message) {
   ]);
 }
 
+function renderPendingSyncData() {
+  const el = document.getElementById('syncPendingData');
+  if (!el) return;
+  if (!currentUid || !currentSchoolId || currentStatus !== 'active') {
+    el.textContent = 'Sign in to view pending school data.';
+    if (typeof window !== 'undefined') window.SchoolHubConflictReview?.refresh();
+    return;
+  }
+  const names = {settings:'School setup',classes:'Classes',subjects:'Subjects',students:'Students',staff:'Staff',grades:'Grades',attendance:'Pupil attendance',teacherAttendance:'Teacher attendance',schoolCalendar:'School calendar',remarks:'Remarks'};
+  const lines = [];
+  for (const match of syncableFields()) {
+    const ids = dirtyIdsFor(match.key);
+    if (!ids.length) continue;
+    lines.push((names[match.field] || match.field) + ': ' + ids.length + ' pending');
+    const allowed = isHeadTeacher() ? null : classIdsForCloudSync();
+    const classes = DB.get(KEYS.classes, []);
+    for (const id of ids.slice(0, 30)) {
+      if (['attendance','grades','remarks'].includes(match.field)) {
+        const parts = id.split('__'), classId = parts[0];
+        if (allowed && !allowed.has(classId)) { lines.push('  A saved record needs renewed class access.'); continue; }
+        const cls = classes.find(c => String(c.id) === classId);
+        lines.push('  ' + (cls ? cls.name : classId) + ' · ' + parts.slice(1).join(' · '));
+      } else if (match.field === 'teacherAttendance') {
+        lines.push(isHeadTeacher() ? '  ' + id.split('__').join(' · ') : '  A saved record needs Head Teacher access.');
+      } else lines.push('  Record: ' + id);
+    }
+    if (ids.length > 30) lines.push('  …and ' + (ids.length - 30) + ' more.');
+    const failure = syncErrors.get(match.key);
+    if (failure && typeof failure === 'object') lines.push('  Last error: ' + failure.message + (failure.code ? ' (' + failure.code + ')' : ''));
+  }
+  const operations = typeof operationsPendingCount === 'function' ? operationsPendingCount() : 0;
+  if (operations) {
+    lines.push('School operations: ' + operations + ' pending.');
+    try { const error = typeof operationsQueueRead === 'function' ? operationsQueueRead().find(item => item.error)?.error : ''; if (error) lines.push('  Last error: ' + error); } catch (_) { lines.push('  Saved operations need recovery. Keep browser data intact.'); }
+  }
+  const fees = pendingFeeSyncState();
+  if (fees.count) lines.push('School fees: ' + fees.count + ' pending.' + (fees.error ? '\n  Last error: ' + fees.error : ''));
+  el.textContent = lines.length ? lines.join('\n') + '\nSaved edits are retained. A conflict needs review; retrying does not replace the cloud record.' : 'No pending school data edits on this device.';
+  if (typeof window !== 'undefined') window.SchoolHubConflictReview?.refresh();
+}
+
 async function updateSyncCenter() {
+  if (typeof renderPendingSyncData === 'function') renderPendingSyncData();
   const cloudEl = document.getElementById('syncCloudImages');
   const localEl = document.getElementById('syncLocalImages');
   const lastEl = document.getElementById('syncLastImage');
@@ -1684,19 +1738,38 @@ async function runSyncCenterSync() {
     if (status) status.textContent = 'Sign in to a school account first.';
     return;
   }
+  const token = sessionGeneration, uid = currentUid, school = currentSchoolId;
+  const current = () => isCurrentSession(token, uid, school);
+  const verified = () => current() && sessionReady && sessionDataReady && currentStatus === 'active' && !offlineAuthenticatedMode;
   setSyncCenterActionsBusy(true);
-  if (status) status.textContent = 'Synchronizing school data and images…';
+  if (status) status.textContent = 'Checking your account and uploading saved data edits…';
   try {
-    await pullCloudData();
+    await revalidateAndSyncAfterReconnect();
+    if (!verified()) throw new Error('Account verification is incomplete. Saved edits remain on this device.');
+    // Reconnect may report a conflict and return. Explicitly await the retained
+    // outbox; downloading images does not confirm that data edits were uploaded.
+    const failures = [];
+    try { await flushAllSchoolHubWrites(); } catch (error) { failures.push(error.message || String(error)); }
+    if (!verified()) return;
+    try { await pullCloudData(); } catch (error) { failures.push('Cloud refresh: ' + (error.message || String(error))); }
+    if (!verified()) return;
     renderCloudSyncStatus();
     renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList(); renderHome();
-    const result = await syncImagesFromCloud({ force: false });
+    let result = {downloaded:0,repaired:0,failed:0};
+    try { result = await syncImagesFromCloud({ force: false }); } catch (error) { failures.push('Images: ' + (error.message || String(error))); }
+    if (!verified()) return;
     renderImageSyncDiagnostics(result);
-    if (status) status.textContent = `Sync complete: ${result.downloaded} downloaded, ${result.repaired} metadata repaired, ${result.failed} failed.`;
+    const pending = pendingSyncCountForCurrentSchool() > 0 || hasPendingSchoolHubSync();
+    if (status) status.textContent = pending || failures.length
+      ? 'Sync incomplete. ' + (pending ? 'Saved data edits are still pending. See Pending school data above. ' : '') + failures.join(' · ') + ' Images: ' + result.downloaded + ' downloaded, ' + result.failed + ' failed.'
+      : result.failed ? 'Data edits uploaded. Image sync incomplete: ' + result.failed + ' failed.'
+      : 'Sync complete: no pending data edits. Images: ' + result.downloaded + ' downloaded, ' + (result.repaired || 0) + ' metadata repaired, 0 failed.';
     await updateSyncCenter();
   } catch (e) {
-    if (status) status.textContent = 'Sync failed: ' + (e && e.message ? e.message : String(e || 'Unknown error'));
+    if (current() && status) status.textContent = 'Data sync incomplete: ' + (e && e.message ? e.message : String(e || 'Unknown error')) + ' Saved edits remain on this device.';
   } finally {
+    if (!current() && status) status.textContent = '';
+    if (current()) renderPendingSyncData();
     setSyncCenterActionsBusy(false);
   }
 }
@@ -1877,7 +1950,7 @@ if (syncCenterImagesBtn) {
       let recovery = { published: 0, skipped: 0, failed: 0 };
       if (isHeadTeacher()) recovery = await publishLocalImagesToCloud();
       const result = await syncImagesFromCloud({ force: false });
-      if (status) status.textContent = `Sync complete: ${result.local}/${result.total} cloud images local, ${result.downloaded} downloaded, ${recovery.published || 0} local image${recovery.published === 1 ? '' : 's'} published, ${result.failed + (recovery.failed || 0)} failed`;
+      if (status) status.textContent = `${result.failed + (recovery.failed || 0) ? 'Image sync incomplete' : 'Sync complete (images only)'}: ${result.local}/${result.total} cloud images local, ${result.downloaded} downloaded, ${recovery.published || 0} local image${recovery.published === 1 ? '' : 's'} published, ${result.failed + (recovery.failed || 0)} failed`;
       await updateSyncCenter();
     } catch (err) {
       if (status) status.textContent = 'Image sync failed: ' + (err && err.message ? err.message : String(err));
@@ -10521,10 +10594,10 @@ function pushFieldToCloud(match) {
   const perform = () => token === sessionGeneration && syncableFields().some(field => field.field === match.field && field.key === match.key)
     ? performFieldPush(match) : Promise.resolve();
   const pending = (typeof runWithWorkerFieldLock === 'function' ? runWithWorkerFieldLock(match, perform) : perform()).then(result => {
-    if (token === sessionGeneration) { syncErrors.delete(match.key); updateOfflineModeBanner(); }
+    if (token === sessionGeneration) { syncErrors.delete(match.key); updateOfflineModeBanner(); if (typeof renderPendingSyncData === 'function') renderPendingSyncData(); }
     return result;
   }, error => {
-    if (token === sessionGeneration) { syncErrors.set(match.key, true); updateOfflineModeBanner(); }
+    if (token === sessionGeneration) { syncErrors.set(match.key, {message:String(error.message || 'Data upload failed.'),code:String(error.code || '')}); updateOfflineModeBanner(); if (typeof renderPendingSyncData === 'function') renderPendingSyncData(); }
     throw error;
   });
   fieldPushes.set(match.key, pending);
@@ -10671,10 +10744,29 @@ function pushAllFieldsNow() {
 
 async function flushPendingCloudWrites() {
   if (!FIREBASE_ENABLED || !currentSchoolId || currentStatus !== 'active') return;
+  const token = sessionGeneration, uid = currentUid, school = currentSchoolId, failures = [];
   for (const field of syncableFields()) {
-    if (dirtyIdsFor(field.key).length) await pushFieldToCloud(field);
+    if (!isCurrentSession(token, uid, school) || offlineAuthenticatedMode || currentStatus !== 'active') return;
+    if (dirtyIdsFor(field.key).length) {
+      try { await pushFieldToCloud(field); }
+      catch (error) { failures.push(error); }
+    }
   }
+  if (!isCurrentSession(token, uid, school)) return;
   updateOfflineModeBanner();
+  if (failures.length) throw failures[0];
+}
+
+async function flushAllSchoolHubWrites(skipPrimary = false) {
+  const token = sessionGeneration, uid = currentUid, school = currentSchoolId, failures = [];
+  const work = [...(skipPrimary ? [] : [() => flushPendingCloudWrites()]),
+    () => typeof window.flushPendingSchoolFeeWrites === 'function' ? window.flushPendingSchoolFeeWrites() : undefined,
+    () => typeof window.flushPendingSchoolOperationWrites === 'function' ? window.flushPendingSchoolOperationWrites() : undefined];
+  for (const run of work) {
+    if (!isCurrentSession(token, uid, school) || offlineAuthenticatedMode || currentStatus !== 'active') return;
+    try { await run(); } catch (error) { failures.push(error); }
+  }
+  if (isCurrentSession(token, uid, school) && failures.length) throw failures[0];
 }
 
 async function runSchoolHubBackgroundSync(source = 'service-worker') {
@@ -10684,14 +10776,17 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
     // If this session crossed an offline boundary, preserve the v40 safeguard:
     // revalidate membership before any queued write is allowed to leave the device.
     const token = sessionGeneration, uid = currentUid, school = currentSchoolId;
+    const refreshed = offlineAuthenticatedMode || ['app-visible','app-focus','app-resume','online','foreground-retry'].includes(source);
     if (offlineAuthenticatedMode) await revalidateAndSyncAfterReconnect();
     else if (['app-visible','app-focus','app-resume','online','foreground-retry'].includes(source)) await revalidateAndSyncAfterReconnect(source === 'online');
-    else await flushPendingCloudWrites();
     if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode || currentStatus !== 'active') return false;
-    if (typeof window.flushPendingSchoolFeeWrites === 'function') await window.flushPendingSchoolFeeWrites();
-    if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode) return false;
-    if (typeof window.flushPendingSchoolOperationWrites === 'function') await window.flushPendingSchoolOperationWrites();
-    if (hasPendingSchoolHubSync()) { await requestSchoolHubBackgroundSync(`${source}-remaining`); return false; }
+    await flushAllSchoolHubWrites(refreshed);
+    if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode || currentStatus !== 'active') return false;
+    if (hasPendingSchoolHubSync()) {
+      const needsReview = syncableFields().some(field => syncErrors.has(field.key) && dirtyIdsFor(field.key).length);
+      if (!needsReview) await requestSchoolHubBackgroundSync(`${source}-remaining`);
+      return false;
+    }
     return true;
   } catch (error) {
     console.warn('Background synchronization could not finish:', error);

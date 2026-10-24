@@ -831,6 +831,8 @@
       <button type="button" id="syncCenterCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close Sync Center" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
+    <section aria-labelledby="syncPendingHeading"><h3 id="syncPendingHeading">Pending school data</h3><pre id="syncPendingData" class="sync-diagnostics" aria-live="polite">Checking saved edits…</pre></section>
+    <section class="sync-review-tools" aria-labelledby="syncReviewHeading"><h3 id="syncReviewHeading">Review conflicting edits</h3><p class="hint">For setup, attendance, grades and remarks. Compare this device with the cloud before choosing a value.</p><label for="syncReviewSelect">Pending record</label><select id="syncReviewSelect"><option value="">No reviewable conflicts</option></select><button id="syncReviewOpenBtn" type="button" class="btn-primary" disabled>Review saved edits</button><p id="syncReviewStatus" class="hint" role="status"></p><div id="syncReviewPreview"></div></section>
     <div class="about-details diagnostic-details">
       <div><span>Accessible cloud images</span><strong id="syncCloudImages">Checking…</strong></div>
       <div><span>Cached accessible images</span><strong id="syncLocalImages">Checking…</strong></div>
@@ -1253,7 +1255,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.2</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.3</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
@@ -1290,6 +1292,7 @@
 <script src="offline-drafts.js?v=v40-private-images-1"></script>
 <script src="private-images.js?v=v40-private-images-1"></script>
 <script src="app-updates.js"></script>
+<script src="sync-review.js"></script>
 <script src="app-4.js?v=v40-private-images-1-sync-center-1"></script>
 <script src="fees.js?v=v40-private-images-1"></script>
 <script src="school-operations.js?v=v40-private-images-1"></script>

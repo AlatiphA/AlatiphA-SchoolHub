@@ -16,7 +16,7 @@ async function reconcileWorkerSyncAcks(lockKey){
       }
     }else{
       const match=syncableFields().find(x=>x.key===job.rawKey);if(!match)continue;
-      if(ack.error){syncErrors.set(job.rawKey,true);}
+      if(ack.error){syncErrors.set(job.rawKey,{message:String(ack.error),code:'background-save'});}
       else{
         const value=DB.get(job.rawKey,fieldDefault(job.field)),cleared=[],bases=syncBaseValues.get(job.rawKey)||{};
         for(const [id,sent]of Object.entries(job.sentValues)){

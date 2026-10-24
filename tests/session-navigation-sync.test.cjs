@@ -2,6 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const app=fs.readFileSync('app-4.js','utf8'),client=fs.readFileSync('sync-client.js','utf8'),fees=fs.readFileSync('fees.js','utf8');
 const nav=app.slice(app.indexOf('const NAV_VIEW_KEY'),app.indexOf('function refreshHeadTeacherSelect()'));
 const recovery=app.slice(app.indexOf('async function revalidateAndSyncAfterReconnect('),app.indexOf('function setLastSyncedNow()'));
+const allWrites=app.slice(app.indexOf('async function flushAllSchoolHubWrites('),app.indexOf('async function runSchoolHubBackgroundSync('));
 const background=app.slice(app.indexOf('async function runSchoolHubBackgroundSync('),app.indexOf("if (typeof window !== 'undefined') window.runSchoolHubBackgroundSync"));
 function fixture(){
  const writes=[],events=[],local=new Map([['arc_last_view','fees']]);
@@ -12,7 +13,7 @@ function fixture(){
  const user={uid:'u',email:'teacher@example.test',getIdToken:async()=>events.push('token')};
  let reads=0,member={status:'active',schoolId:'s',role:'headTeacher',email:user.email};
  c.firebase={auth:()=>({currentUser:user}),firestore:()=>({collection:()=>({doc:()=>({get:async()=>{reads++;return {exists:true,data:()=>member};}})})})};
- vm.createContext(c);vm.runInContext('let reconnectTask=null;'+recovery+background,c);
+ vm.createContext(c);vm.runInContext('let reconnectTask=null;'+recovery+allWrites+background,c);
  return {c,writes,events,user,local,setMember:x=>member=x,reads:()=>reads};
 }
 test('every supported view survives refresh including Fees and Billing',()=>{
