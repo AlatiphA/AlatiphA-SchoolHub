@@ -1,5 +1,12 @@
 'use strict';
 const crypto=require('node:crypto');
+// School-owned starter subjects are committed before registration returns.
+const STARTER_SUBJECTS = [
+ ['english-language','English Language'],['mathematics','Mathematics'],
+ ['science','Science'],['history','History'],
+ ['religious-moral-education','Rel. & Moral Edu. (RME)'],['creative-arts','Creative Arts'],
+ ['computing','Computing'],['ghanaian-language','Ghanaian Language']
+].map(([key,name],order)=>({id:'starter-'+key,name,order}));
 function register({onCall,HttpsError,db,admin}){
  const fail=(code,message)=>{throw new HttpsError(code,message);};
  const text=(value,label,max,required=false)=>{if(value==null&&!required)return '';if(typeof value!=='string'||value.trim().length>max||(required&&!value.trim()))fail('invalid-argument',`Enter a valid ${label}.`);return value.trim();};
@@ -15,7 +22,7 @@ function register({onCall,HttpsError,db,admin}){
   const newSchoolId=crypto.randomUUID(),newCode=crypto.randomBytes(6).toString('hex').slice(0,3).toUpperCase()+'-'+crypto.randomBytes(6).toString('hex').slice(0,3).toUpperCase();
   return db.runTransaction(async tx=>{
    const userSnap=await tx.get(userRef),receipt=await tx.get(receiptRef),u=userSnap.data()||{};
-   if(receipt.exists){const saved=receipt.data();if(saved.fingerprint!==fingerprint)fail('failed-precondition','This registration request was used with different details.');if(u.status!=='active'||u.role!=='headteacher'||u.schoolId!==saved.result.schoolId)fail('permission-denied','This registration is no longer your active school.');return saved.result;}
+   if(receipt.exists){const saved=receipt.data();if(saved.fingerprint!==fingerprint)fail('failed-precondition','This registration request was used with different details.');if(u.status!=='active'||u.role!=='headteacher'||u.schoolId!==saved.result.schoolId)fail('permission-denied','This registration is no longer your active school.');const subjects=await tx.get(db.collection('schools').doc(u.schoolId).collection('subjects'));return {...saved.result,subjects:subjects.docs.map(doc=>({...doc.data(),id:doc.id}))};}
    // A current, pending or disabled member cannot promote themselves or leave
    // their school by registering another one. Only an absent/detached profile qualifies.
    if(userSnap.exists&&(u.schoolId||!['removed','rejected'].includes(u.status)))fail('permission-denied','Leave the existing school through its Head Teacher before registering a school.');
@@ -28,16 +35,19 @@ function register({onCall,HttpsError,db,admin}){
    if(old&&(!old.joinCode||old.subscription?.plan!=='free'||old.subscription?.status!=='inactive'))fail('failed-precondition','The existing school requires owner review before recovery.');
    const joinCode=old?old.joinCode:newCode,joinRef=db.collection('joinCodes').doc(joinCode),joinSnap=await tx.get(joinRef);
    if(joinSnap.exists&&joinSnap.data().schoolId!==schoolId)fail('already-exists','Join-code collision; retry registration.');
+   // Recovering an older school must retain its chosen subjects and deletions.
+   const subjects=existing?(await tx.get(schoolRef.collection('subjects'))).docs.map(doc=>({...doc.data(),id:doc.id})):STARTER_SUBJECTS.map(subject=>({...subject}));
    const stamp=admin.firestore.FieldValue.serverTimestamp();
    const userData={schoolId,role:'headteacher',status:'active',assignedClassIds:[],assignedSubjectIds:[],email:authUser.email||'',displayName:authUser.displayName||name,createdAt:u.createdAt||stamp};
    const {createdAt,...profile}=userData;
    const result={schoolId,joinCode,userData:profile,recoveredPartial:!!existing};
    if(!existing)tx.create(schoolRef,{profile:{schoolName:name,address,email},ownerUid:r.auth.uid,subscription:{plan:'free',status:'inactive'},joinCode,createdAt:stamp});
+   if(!existing)for(const subject of subjects)tx.create(schoolRef.collection('subjects').doc(subject.id),subject);
    tx.set(userRef,userData,{merge:true});
    if(!joinSnap.exists)tx.create(joinRef,{schoolId,createdAt:stamp});
    tx.create(receiptRef,{fingerprint,result,createdAt:stamp});
-   return result;
+   return {...result,subjects};
   });
  })};
 }
-module.exports={register};
+module.exports={register,STARTER_SUBJECTS};

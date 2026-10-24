@@ -47,6 +47,7 @@ function register({onCall,HttpsError,db,admin}){
  })),
  manageTeacherLifecycle:call(async r=>db.runTransaction(async tx=>{
   const h=await member(tx,r,true),d=r.data||{},id=d.teacherUid;
+  if(d.expectedSchoolId!==undefined&&d.expectedSchoolId!==h.schoolId)fail('failed-precondition','Your school session changed. Reopen Manage Teachers.');
   if(typeof id!=='string'||!id||id.includes('/')||id===r.auth.uid)fail('invalid-argument','Select a teacher account.');
   const userRef=db.collection('users').doc(id),u=(await tx.get(userRef)).data();
   if(!u||u.schoolId!==h.schoolId||u.role!=='teacher'||!['pending','active','disabled'].includes(u.status))fail('failed-precondition','This teacher membership changed. Reload Manage Teachers.');
@@ -64,10 +65,29 @@ function register({onCall,HttpsError,db,admin}){
     if(duplicate)fail('already-exists','Another school membership already uses this email. Keep one account and remove or reject the duplicate before approving or reactivating.');
     if(identitySnap&&identitySnap.exists&&identitySnap.data().uid&&identitySnap.data().uid!==id)fail('already-exists','Another school membership already uses this email. Keep one account and remove or reject the duplicate before approving or reactivating.');
    }
-  let selected=null;
+  let selected=null;const subjectCreates=[];
   if(d.action==='save'){
    if(!Array.isArray(d.assignedClassIds)||!d.assignedClassIds.length||!Array.isArray(d.assignedSubjectIds))fail('invalid-argument','Assign at least one class.');
-   for(const [field,ids] of [['classes',d.assignedClassIds],['subjects',d.assignedSubjectIds]])for(const value of ids){if(typeof value!=='string'||!value||value.includes('/')||!(await tx.get(school.collection(field).doc(value))).exists)fail('invalid-argument','An assignment no longer exists.');}
+   const resolvedSubjectIds=[];
+   const subjectName=value=>norm(value).normalize('NFKC').replace(/\s+/g,' ');
+   let cloudSubjects=null;
+   const recovery=Array.isArray(d.localSubjects)&&d.localSubjects.length<=100?d.localSubjects:[];
+   for(const [field,ids] of [['classes',d.assignedClassIds],['subjects',d.assignedSubjectIds]])for(const value of new Set(ids)){
+    const label=field==='classes'?'class':'subject';
+    if(typeof value!=='string'||!value||value.includes('/'))fail('invalid-argument','Invalid '+label+' selection. Reopen Manage Teachers and select it again.');
+    const snap=await tx.get(school.collection(field).doc(value));
+    if(snap.exists){if(field==='subjects')resolvedSubjectIds.push(value);continue;}
+    if(field!=='subjects'||d.confirmLocalSubjects!==true)fail('failed-precondition','A selected '+label+' is not saved in this school. Sync '+field+' first, then reopen Manage Teachers and select a saved record.');
+    const local=recovery.find(item=>item&&item.id===value);
+    if(!local||typeof local.name!=='string'||!local.name.trim()||local.name.trim().length>200)fail('invalid-argument','Review the name of each local subject before saving it.');
+    if((await tx.get(school.collection('deletedRecords').doc('subjects__'+value))).exists)fail('failed-precondition','A selected subject was deleted from this school. Reopen Subjects and select or add the correct subject.');
+    if(!cloudSubjects)cloudSubjects=(await tx.get(school.collection('subjects'))).docs.map(doc=>({...doc.data(),id:doc.id}));
+    const matches=cloudSubjects.concat(subjectCreates).filter(item=>subjectName(item.name)===subjectName(local.name));
+    if(matches.length>1)fail('failed-precondition','Several saved subjects have this name. Review Subjects before approving.');
+    if(matches.length===1){resolvedSubjectIds.push(matches[0].id);continue;}
+    const subject={id:value,name:local.name.trim(),order:Number.isSafeInteger(local.order)&&local.order>=0?local.order:cloudSubjects.length+subjectCreates.length};
+    subjectCreates.push(subject);resolvedSubjectIds.push(value);
+   }
    if(d.staffId)selected=staff.find(s=>s.id===d.staffId);
    else if(matching.length===1)selected=matching[0];
    else if(matching.length>1)fail('failed-precondition','Several Staff records match. Select the correct existing Staff record.');
@@ -79,7 +99,7 @@ function register({onCall,HttpsError,db,admin}){
     if(staff.some(s=>nameKey(s.name)===nameKey(name))&&!d.confirmSimilarName)fail('failed-precondition','A similar Staff name exists. Review it before confirming a different person.');
     selected={id:crypto.randomUUID(),name,email:u.email||'',role:'Teacher',createdAt:new Date().toISOString()};
    }
-   next.staffId=selected.id;next.assignedClassIds=[...new Set(d.assignedClassIds)];next.assignedSubjectIds=[...new Set(d.assignedSubjectIds)];
+   next.staffId=selected.id;next.assignedClassIds=[...new Set(d.assignedClassIds)];next.assignedSubjectIds=[...new Set(resolvedSubjectIds)];
    // Updating assignments must not silently reactivate a disabled account.
    next.status=u.status==='pending'?'active':u.status;
   }else if(d.action==='disable'){if(u.status!=='active')fail('failed-precondition','Only approved active teachers can be disabled.');next.status='disabled';}
@@ -92,6 +112,7 @@ function register({onCall,HttpsError,db,admin}){
   }else fail('invalid-argument','Unknown teacher action.');
   const retiringIdentities=['remove','reject'].includes(d.action)?await tx.get(school.collection('identityEmails').where('uid','==',id)):null;
   // All reads have completed; membership and both relationship ends commit together.
+  for(const subject of subjectCreates)tx.create(school.collection('subjects').doc(subject.id),subject);
    if(identityRef&&(d.action==='save'||d.action==='reactivate'))tx.set(identityRef,{uid:id,email:identityEmail,status:next.status,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
    if(identityRef&&d.action==='disable'&&identitySnap&&identitySnap.exists&&identitySnap.data().uid===id)tx.set(identityRef,{uid:id,email:identityEmail,status:'disabled',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
    if(retiringIdentities)for(const identity of retiringIdentities.docs)tx.delete(school.collection('identityEmails').doc(identity.id));

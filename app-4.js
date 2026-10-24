@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.4';
+const APP_VERSION = '40.1.7';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -11097,6 +11097,21 @@ function generateUniqueJoinCode(triesLeft) {
   });
 }
 
+function cacheRegisteredSchoolSubjects(subjects) {
+  if (!Array.isArray(subjects) || !subjects.length) return;
+  const cloudIds = new Set(subjects.map(subject => subject.id));
+  const cloudNames = new Set(subjects.map(subject => subjectNameKey(subject.name)));
+  const grades = DB.get(KEYS.grades, {});
+  const pendingIds = new Set(dirtyIdsFor(KEYS.subjects));
+  const local = DB.get(KEYS.subjects, []);
+  const pending = new Map(local.filter(subject => pendingIds.has(subject.id)).map(subject => [subject.id, subject]));
+  // Replace unscored local copies of the same starters with their saved IDs.
+  // Keep custom subjects and any scored copy available for deliberate recovery.
+  const retained = local.filter(subject => !cloudIds.has(subject.id)
+    && (pendingIds.has(subject.id) || !cloudNames.has(subjectNameKey(subject.name)) || subjectHasSavedScores(subject.id, grades)));
+  DB.set(KEYS.subjects, subjects.map(subject => pending.get(subject.id) || subject).concat(retained), {skipCloudSync:true});
+}
+
 async function registerSchool(schoolName, address, email) {
   const authUser=firebase.auth().currentUser;
   if(!authUser||!currentUid||authUser.uid!==currentUid)throw new Error('Sign in before creating a school.');
@@ -11111,6 +11126,7 @@ async function registerSchool(schoolName, address, email) {
   migrateDataIntoSchool(result.schoolId);
   currentSchoolId=result.schoolId;currentRole='headteacher';currentStatus='active';
   currentAssignedClassIds=[];currentAssignedSubjectIds=[];
+  cacheRegisteredSchoolSubjects(result.subjects);
   currentUserData=result.userData;
   saveVerifiedLocalSession(authUser,result.userData);
   offlineAuthenticatedMode=false;sessionReady=true;sessionDataReady=true;
@@ -11176,6 +11192,42 @@ function teacherStaffCandidate(member) {
  return matches.length===1?matches[0]:null;
 }
 function unlinkTeacherStaff(member) {return safetyCall('manageTeacherLifecycle',{action:'unlink',teacherUid:member.uid});}
+
+// Approval depends on cloud-visible assignments and Staff records, not just local edits.
+async function prepareTeacherApproval(assignedClassIds, assignedSubjectIds, selectedStaffId) {
+  const token = sessionGeneration, user = currentUid, school = currentSchoolId;
+  const assertSession = () => {
+    if (!isCurrentSession(token, user, school) || !isHeadTeacher()) throw new Error('Your school session changed. Reopen Manage Teachers.');
+    if (offlineAuthenticatedMode || cloudHydrationInProgress || !sessionDataReady || navigator.onLine === false) throw new Error('Connect to the internet and finish loading school records before approving a teacher.');
+  };
+  assertSession();
+  const dependencies = [
+    ['classes', assignedClassIds], ['subjects', assignedSubjectIds],
+    ['staff', selectedStaffId ? [selectedStaffId] : []]
+  ];
+  for (const [field, ids] of dependencies) {
+    const key = KEYS[field];
+    // A running upload can be older than the currently selected edit. Recheck its queue.
+    for (let attempt = 0; attempt < 3 && dirtyIdsFor(key).length; attempt++) {
+      try { await pushFieldToCloud(syncableFields().find(item => item.field === field)); }
+      catch (error) { throw new Error('Could not sync ' + field + ' before teacher approval: ' + error.message); }
+      assertSession();
+    }
+    if (dirtyIdsFor(key).length) throw new Error('Changes to ' + field + ' are still pending. Finish syncing them, then approve the teacher.');
+    const rows = DB.get(key, []);
+    if (ids.some(id => !rows.some(row => row.id === id))) throw new Error('A selected ' + field + ' record changed. Reopen Manage Teachers and select it again.');
+  }
+  const localSubjects = DB.get(KEYS.subjects, []).filter(row => assignedSubjectIds.includes(row.id)).map(row => ({id:row.id,name:row.name,order:row.order}));
+  const before = JSON.stringify(localSubjects);
+  const savedSubjects = assignedSubjectIds.length ? await schoolRef().collection('subjects').get({source:'server'}) : null;
+  assertSession();
+  if (before !== JSON.stringify(DB.get(KEYS.subjects, []).filter(row => assignedSubjectIds.includes(row.id)).map(row => ({id:row.id,name:row.name,order:row.order})))) throw new Error('Subjects changed during approval. Reopen Manage Teachers to review them.');
+  const savedIds = new Set(savedSubjects ? savedSubjects.docs.map(doc => doc.id) : []);
+  const missing = localSubjects.filter(row => !savedIds.has(row.id));
+  if (missing.length && !confirm('These selected subjects are only on this device:\n\n' + missing.map(row => row.name).join('\n') + '\n\nSave them to this school and approve the teacher? Existing subjects with the same name will be reused.')) throw new Error('Approval cancelled. No teacher access was changed.');
+  assertSession();
+  return {expectedSchoolId:school,localSubjects:missing,confirmLocalSubjects:missing.length>0};
+}
 
 let editingManageTeacherUid = null;
 
@@ -11349,7 +11401,9 @@ function renderManageTeachers() {
         const similar=!selectedStaffId&&staff.some(x=>normalName(x.name)===normalName(staffName));
         if(similar&&!confirm('A Staff record has this name. Select the existing record if it is the same person. Create a record for a different person with this name?'))return;
         btn.disabled=true;
-        safetyCall('manageTeacherLifecycle',{action:'save',teacherUid:member.uid,staffId:selectedStaffId,name:staffName,assignedClassIds,assignedSubjectIds,confirmSimilarName:similar}).then(() => {
+        let teacherSaved = false;
+        prepareTeacherApproval(assignedClassIds,assignedSubjectIds,selectedStaffId).then(prepared => safetyCall('manageTeacherLifecycle',{action:'save',teacherUid:member.uid,staffId:selectedStaffId,name:staffName,assignedClassIds,assignedSubjectIds,confirmSimilarName:similar,...prepared})).then(() => {
+          teacherSaved = true;
           return Promise.resolve();
         }).then(() => {
           editingManageTeacherUid = null;
@@ -11359,7 +11413,7 @@ function renderManageTeachers() {
           renderManageTeachers();
           renderStaff();
           renderClasses();
-        }).catch(err => alert('Could not save teacher and Staff relationship: ' + err.message)).finally(()=>btn.disabled=false);
+        }).catch(err => alert((teacherSaved ? 'Teacher access was saved, but the refreshed school records could not load. Reopen Manage Teachers to check the saved result: ' : 'Could not save teacher and Staff relationship: ') + err.message)).finally(()=>btn.disabled=false);
       });
     });
 
