@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.7';
+const APP_VERSION = '40.1.9';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -3452,13 +3452,13 @@ function prepareBulkAdd(kind, text, classId, previous) {
     const [rawName, ...parts] = line.split(',');
     const name = rawName.trim();
     let gender = '', externalId;
-    if (kind === 'students') {
-      if (parts.length < 1 || parts.length > 2) { errors.push(`Line ${index + 1}: Use Full name, Sex, optional Student ID.`); return; }
+    {
+      if (parts.length < 1 || parts.length > 2 || (kind === 'staff' && parts.length !== 2)) { errors.push(`Line ${index + 1}: Use ${kind === 'staff' ? 'Full name, Sex, Staff ID' : 'Full name, Sex, optional Student ID'}.`); return; }
       const sex = parts[0].trim().toLowerCase();
       gender = sex === 'female' || sex === 'f' ? 'F' : sex === 'male' || sex === 'm' ? 'M' : '';
       if (!gender) { errors.push(`Line ${index + 1}: Sex is required. Use Female/Male or F/M.`); return; }
       externalId = (parts[1] || '').trim();
-    } else externalId = parts.join(',').trim();
+    }
     const key = externalId.toLowerCase();
     if (!name || (kind === 'staff' && !externalId)) { errors.push(`Line ${index + 1}: ${kind === 'staff' ? 'Name and Staff ID are required.' : 'Name is required.'}`); return; }
     const oldIndex = reusable.findIndex(item => item.line === line);
@@ -3466,7 +3466,7 @@ function prepareBulkAdd(kind, text, classId, previous) {
     if (key && (inputIds.has(key) || (usedIds.has(key) && usedIds.get(key) !== old?.record.id))) { errors.push(`Line ${index + 1}: ${kind === 'staff' ? 'Staff' : 'Student'} ID ${externalId} is already in use.`); return; }
     if (key) inputIds.add(key);
     const record = old?.record || (kind === 'staff'
-      ? {id:uid(), name, staffId:externalId, role:'Teacher'}
+      ? {id:uid(), name, sex:gender, staffId:externalId, role:'Teacher'}
       : {id:uid(), classId, name, gender, admissionId:externalId, parentPhone:''});
     items.push({line, record});
   });
@@ -4349,7 +4349,7 @@ function staffFieldControl(f, value) {
     const opts = legacy + (f.options || []).map(([v, label]) => `<option value="${escapeHtml(v)}" ${val === v ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('');
     return `<select class="edit-staff-${f.key}"><option value="">Select ${escapeHtml(f.label)}</option>${opts}</select>`;
   }
-  return `<input type="${f.type}" class="edit-staff-${f.key}" value="${escapeHtml(val)}" ${f.key === 'staffId' ? 'required' : ''}>`;
+  return `<input type="${f.type}" class="edit-staff-${f.key}" value="${escapeHtml(val)}" ${f.key === 'staffId' ? 'placeholder="e.g. 001234" required' : ''}>`;
 }
 
 
@@ -4554,6 +4554,19 @@ if (toggleAddStaffBtn && addStaffForm) {
     toggleAddStaffBtn.setAttribute('aria-expanded', String(open));
   });
 }
+function installStaffOnboardingToggles() {
+  for (const [buttonId, panelId, title] of [['toggleBulkStaffBtn','staffBulkAddSection','Bulk add'],['toggleStaffExcelBtn','staffExcelForm','Excel template']]) {
+    const button = document.getElementById(buttonId), panel = document.getElementById(panelId);
+    if (!button || !panel) continue;
+    button.addEventListener('click', () => {
+      const open = panel.classList.toggle('hidden') === false;
+      button.textContent = open ? 'Collapse' : 'Expand';
+      button.setAttribute('aria-expanded', String(open));
+      button.setAttribute('aria-label', (open ? 'Collapse ' : 'Expand ') + title);
+    });
+  }
+}
+installStaffOnboardingToggles();
 const staffDetailsCloseBtn = document.getElementById('staffDetailsCloseBtn');
 if (staffDetailsCloseBtn) staffDetailsCloseBtn.addEventListener('click', closeStaffDetails);
 const staffDetailsDialog = document.getElementById('staffDetailsDialog');
@@ -4618,23 +4631,44 @@ document.getElementById('addStaffBtn').addEventListener('click', async () => {
 /* ---------- Inline Help / FAQ / Privacy / Terms ---------- */
 const INLINE_DOCS = {
   faq: { title: 'Help & FAQ', templateId: 'inlineDocTemplateFaq' },
+  guide: { title: 'Complete user guide', url: 'complete-user-guide.html' },
   privacy: { title: 'Privacy Notice', templateId: 'inlineDocTemplatePrivacy' },
   terms: { title: 'Terms of Use', templateId: 'inlineDocTemplateTerms' }
 };
 
+let inlineDocReturnFocus = null;
 function openInlineDoc(name) {
   const config = INLINE_DOCS[name];
   const dialog = document.getElementById('inlineDocDialog');
   const title = document.getElementById('inlineDocTitle');
   const body = document.getElementById('inlineDocBody');
   const template = config ? document.getElementById(config.templateId) : null;
-  if (!config || !dialog || !title || !body || !template) return;
+  if (!config || !dialog || !title || !body || (!template && !config.url)) return;
+  if (dialog.classList.contains('hidden')) inlineDocReturnFocus = document.activeElement;
 
   title.textContent = config.title;
   body.innerHTML = '';
-  body.appendChild(template.content.cloneNode(true));
+  body.classList.toggle('inline-doc-guide', Boolean(config.url));
+  if (config.url) {
+    const frame = document.createElement('iframe');
+    frame.className = 'inline-guide-frame';
+    frame.title = config.title;
+    frame.src = config.url;
+    frame.addEventListener('load', () => {
+      const guideDocument = frame.contentDocument;
+      if (!guideDocument) return;
+      guideDocument.documentElement.classList.add('embedded-guide');
+      guideDocument.addEventListener('keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); closeInlineDoc(); }
+      });
+    });
+    body.appendChild(frame);
+  } else {
+    body.appendChild(template.content.cloneNode(true));
+  }
   body.scrollTop = 0;
   dialog.classList.remove('hidden');
+  document.getElementById('inlineDocCloseBtn')?.focus();
 
   const profileDropdown = document.getElementById('profileDropdown');
   if (profileDropdown) profileDropdown.classList.add('hidden');
@@ -4643,6 +4677,8 @@ function openInlineDoc(name) {
 function closeInlineDoc() {
   const dialog = document.getElementById('inlineDocDialog');
   if (dialog) dialog.classList.add('hidden');
+  if (inlineDocReturnFocus?.isConnected) inlineDocReturnFocus.focus();
+  inlineDocReturnFocus = null;
 }
 
 document.addEventListener('click', event => {
@@ -4652,7 +4688,7 @@ document.addEventListener('click', event => {
     openInlineDoc(opener.dataset.inlineDoc);
     return;
   }
-  if (event.target.id === 'inlineDocCloseBtn' || event.target.id === 'inlineDocBottomCloseBtn') {
+  if (event.target.id === 'inlineDocCloseBtn') {
     closeInlineDoc();
   }
 });
@@ -12847,6 +12883,6 @@ document.getElementById('syncStatusBtn')?.addEventListener('click', () => docume
 function closeSchoolHubAddForm(formId,toggleId){
  const form=document.getElementById(formId),toggle=document.getElementById(toggleId);
  if(!form||!toggle)return;
- form.classList.add('hidden');toggle.textContent='Expand';toggle.setAttribute('aria-expanded','false');if(toggle.getAttribute?.('aria-label'))toggle.setAttribute('aria-label','Expand '+(formId==='bulkStudentForm'?'Bulk add':formId==='studentExcelForm'?'Excel template':'Add Student'));toggle.focus();
+ form.classList.add('hidden');toggle.textContent='Expand';toggle.setAttribute('aria-expanded','false');if(toggle.getAttribute?.('aria-label'))toggle.setAttribute('aria-label','Expand '+(['bulkStudentForm','staffBulkAddSection'].includes(formId)?'Bulk add':['studentExcelForm','staffExcelForm'].includes(formId)?'Excel template':formId==='addStaffForm'?'Add Staff':'Add Student'));toggle.focus();
 }
 document.querySelectorAll('[data-close-form]').forEach(button=>button.addEventListener('click',()=>closeSchoolHubAddForm(button.dataset.closeForm,button.dataset.formToggle)));

@@ -209,7 +209,7 @@
         <button type="button" id="tourSkipBtn" class="btn-text">Skip</button>
         <button type="button" id="tourNextBtn" class="btn-primary">Next</button>
       </div>
-      <a href="complete-user-guide.html" target="_blank" rel="noopener" class="tour-complete-guide">Complete user guide <span>(opens in a new tab)</span></a>
+      <a href="complete-user-guide.html" data-inline-doc="guide" class="tour-complete-guide">Complete user guide</a>
     </div>
   </div>
 
@@ -342,12 +342,23 @@
   <!-- STAFF -->
   <section id="view-staff" class="view hidden">
     <h2>Staff</h2>
+    <div class="staff-data-toolbar">
+      <label for="staffSearch">Search staff<input id="staffSearch" type="search" placeholder="Name, Staff ID, role or other details"></label>
+      <div class="staff-data-actions">
+        <button type="button" id="exportStaffBtn" class="btn-primary">Export Excel</button>
+        <button type="button" id="printStaffBtn" class="btn-secondary">Print / Save as PDF</button>
+      </div>
+    </div>
+    <p class="hint">Excel exports include all staff details except signatures and account links. Print the current search results, then choose Save as PDF in the print dialog.</p>
+    <p id="staffTableCount" class="hint" role="status"></p>
+    <section id="staffOnboarding" class="staff-onboarding-group" aria-labelledby="staffOnboardingTitle">
+      <h3 id="staffOnboardingTitle">Onboarding</h3>
     <div class="staff-add-toolbar">
       <div>
         <strong>Add Staff</strong>
         <p class="hint">Add a staff member and their personnel details.</p>
       </div>
-      <button type="button" id="toggleAddStaffBtn" class="staff-toggle-btn" aria-expanded="false">Expand</button>
+      <button type="button" id="toggleAddStaffBtn" class="staff-toggle-btn" aria-controls="addStaffForm" aria-expanded="false">Expand</button>
     </div>
     <div id="addStaffForm" class="stack staff-add-form hidden">
       <label>Full name <span class="required-mark">*</span>
@@ -364,7 +375,7 @@
         <input type="date" id="newStaff_dob">
       </label>
       <label>Staff ID <span class="required-mark">*</span>
-        <input type="text" id="newStaff_staffId" placeholder="Staff ID" required>
+        <input type="text" id="newStaff_staffId" placeholder="e.g. 001234" required>
       </label>
       <label>Registered No.
         <input type="text" id="newStaff_registeredNo" placeholder="Registered No.">
@@ -453,30 +464,35 @@
       <button id="addStaffBtn" class="btn-primary">Add Staff</button>
       <button type="button" id="closeAddStaffBtn" data-close-form="addStaffForm" data-form-toggle="toggleAddStaffBtn" data-dismiss-ui>Close</button>
     </div>
-    <div class="staff-data-toolbar">
-      <label for="staffSearch">Search staff<input id="staffSearch" type="search" placeholder="Name, Staff ID, role or other details"></label>
-      <div class="staff-data-actions">
-        <button type="button" id="exportStaffBtn" class="btn-primary">Export Excel</button>
-        <button type="button" id="staffTemplateBtn" class="btn-secondary">Download template</button>
-        <button type="button" id="importStaffBtn" class="btn-secondary">Import staff</button>
-        <button type="button" id="printStaffBtn" class="btn-secondary">Print / Save as PDF</button>
-        <input id="staffImportFile" type="file" accept=".xlsx,.xls,.csv" hidden>
-      </div>
+    <div class="staff-add-toolbar">
+      <div><strong id="staffBulkTitle">Bulk add</strong><p class="hint">Type or paste one staff member per line.</p></div>
+      <button type="button" id="toggleBulkStaffBtn" class="staff-toggle-btn" aria-expanded="false" aria-controls="staffBulkAddSection" aria-label="Expand Bulk add">Expand</button>
     </div>
-    <p class="hint">Excel exports include all staff details except signatures and account links. Print the current search results, then choose Save as PDF in the print dialog.</p>
-    <div id="staffImportPreview" class="staff-import-preview hidden" aria-live="polite"></div>
-    <p id="staffTableCount" class="hint" role="status"></p>
-    <button type="button" id="checkStaffRecoveryBtn" class="btn-secondary">Check for missing staff</button>
-    <div id="staffRecoveryPreview" class="staff-import-preview hidden" aria-live="polite"></div>
-    <div id="staffBulkAddSection" class="stack">
-      <label>Bulk Add — one staff member per line, "Name, Staff ID"
-        <textarea id="bulkStaffInput" rows="4" placeholder="Jane Doe, 101&#10;John Smith, 102" aria-describedby="bulkStaffHint"></textarea>
+    <div id="staffBulkAddSection" class="stack staff-onboarding-panel hidden" role="region" aria-labelledby="staffBulkTitle">
+      <label>Full name, Sex, Staff ID
+        <textarea id="bulkStaffInput" rows="5" placeholder="Jane Doe, Female, 001234&#10;John Smith, Male, 001235" aria-describedby="bulkStaffHint"></textarea>
       </label>
-      <button type="button" id="bulkAddStaffBtn" class="btn-primary">Add All</button>
+      <p id="bulkStaffHint" class="hint">Name, sex and Staff ID are required. Use Female/Male or F/M. Staff IDs must be unique. New staff are added as Teachers; use Edit to update their role and other details. Larger lists are saved in smaller groups.</p>
+      <div class="staff-onboarding-actions"><button type="button" id="bulkAddStaffBtn" class="btn-primary">Add All</button><button type="button" id="closeBulkStaffBtn" data-close-form="staffBulkAddSection" data-form-toggle="toggleBulkStaffBtn" data-dismiss-ui>Close</button></div>
     </div>
-    <p id="bulkStaffHint" class="hint">Staff IDs are required and must be unique. New staff are added as Teachers; use Edit to update their role and other details. Paste the full list — larger lists are saved automatically in smaller groups.</p>
+    <div class="staff-add-toolbar">
+      <div><strong id="staffExcelTitle">Excel template</strong><p class="hint">Download, fill in and import a staff spreadsheet.</p></div>
+      <button type="button" id="toggleStaffExcelBtn" class="staff-toggle-btn" aria-expanded="false" aria-controls="staffExcelForm" aria-label="Expand Excel template">Expand</button>
+    </div>
+    <div id="staffExcelForm" class="stack staff-onboarding-panel hidden" role="region" aria-labelledby="staffExcelTitle">
+      <ol class="staff-excel-steps"><li>Download the blank staff template.</li><li>Fill in the staff details and save the file.</li><li>Import the file and review the preview before saving.</li></ol>
+      <div class="staff-onboarding-actions"><button type="button" id="staffTemplateBtn" class="btn-secondary">Download template</button><button type="button" id="importStaffBtn" class="btn-primary">Import staff</button></div>
+      <input id="staffImportFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+      <div id="staffImportPreview" class="staff-import-preview hidden" aria-live="polite"></div>
+      <button type="button" id="closeStaffExcelBtn" data-close-form="staffExcelForm" data-form-toggle="toggleStaffExcelBtn" data-dismiss-ui>Close</button>
+    </div>
+    </section>
     <div id="staffList"></div>
     <p class="hint">Assign a staff member as a Class Teacher from the Classes tab, and as Head Teacher from Setup — their uploaded signature will then appear automatically on report cards.</p>
+    <div id="staffRecoveryTools" class="staff-recovery-tools">
+      <button type="button" id="checkStaffRecoveryBtn" class="btn-secondary">Check for missing staff</button>
+      <div id="staffRecoveryPreview" class="staff-import-preview hidden" aria-live="polite"></div>
+    </div>
   </section>
 
   <!-- CLASSES -->
@@ -712,7 +728,7 @@
 </div></section>
   <section id="view-help-about" class="view hidden"><h2>Help &amp; About</h2><p class="hint">Guidance, installation and information about SchoolHub.</p><div class="account-tools-grid"><button type="button" id="profileTourBtn" class="tool-link">Show Guided Tour</button>
 <button type="button" class="tool-link" data-inline-doc="faq">Help &amp; FAQ</button>
-<a href="complete-user-guide.html" target="_blank" rel="noopener" class="tool-link complete-guide-link">Complete user guide <small>(opens in a new tab)</small></a>
+<a href="complete-user-guide.html" data-inline-doc="guide" class="tool-link complete-guide-link">Complete user guide</a>
 <button type="button" id="profileInstallBtn" class="tool-link">Install SchoolHub</button>
 <button type="button" id="profileAboutBtn" class="tool-link">About SchoolHub</button>
 <button type="button" class="tool-link" data-inline-doc="privacy">Privacy</button>
@@ -936,7 +952,6 @@
     <div id="inlineDocBody" class="inline-doc-body"></div>
     <div class="inline-doc-footer">
       <span>© All Rights Reserved · AlatiphA Multimedia</span>
-      <button type="button" id="inlineDocBottomCloseBtn" class="btn-text" data-dismiss-ui>Close</button>
     </div>
   </div>
 </div>
@@ -969,7 +984,7 @@
         <h2>Find your way around</h2>
         <details><summary>Where are Settings and Help now?</summary><div class="inline-doc-answer"><p>Open the <strong>Profile button at the top right → Settings</strong> or <strong>Profile → Help</strong>. They no longer appear as Home cards. Home keeps school-work pages such as Setup, Classes, Reports, Stores and Weekly Supervision.</p></div></details>
         <details><summary>What is inside Settings?</summary><div class="inline-doc-answer"><p><strong>Profile → Settings</strong> contains Notifications, Messages &amp; Push, Sync Center and System Health. Head Teachers also see School Setup. Billing &amp; Credits is directly in Profile, between Settings and Help. The header bell and sync indicator are shortcuts.</p></div></details>
-        <details><summary>Where is the complete user guide?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → Help → Complete user guide</strong>, or use the link below the controls in any Head Teacher, Teacher or Guest guided tour. It opens in a separate tab. The guide is included with the app and can open offline after the updated app has cached it. <a href="complete-user-guide.html" target="_blank" rel="noopener">Read the complete user guide (opens in a new tab)</a>.</p></div></details>
+        <details><summary>Where is the complete user guide?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → Help → Complete user guide</strong>, or use the link below the controls in any Head Teacher, Teacher or Guest guided tour. It opens inside SchoolHub. Close the guide to return to your current screen. The guide is included with the app and can open offline after the updated app has cached it. <a href="complete-user-guide.html" data-inline-doc="guide">Read the complete user guide</a>.</p></div></details>
         <details><summary>What is inside Help?</summary><div class="inline-doc-answer"><p><strong>Profile → Help</strong> groups Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, About SchoolHub, Privacy and Terms of Use. Replay the guided tour here; its steps match your account role.</p></div></details>
         <details><summary>Where are my personal details and login controls?</summary><div class="inline-doc-answer"><p>Teachers open <strong>Profile → My Details</strong> for their linked staff record. Active accounts use <strong>Profile → Account Security</strong> for login email/password changes. Log Out remains in Profile.</p></div></details>
         <details><summary>What should I check before closing a form?</summary><div class="inline-doc-answer"><p>Read the save result. A supported local save is pending upload; a draft still needs manual submission; a server-confirmed save has been accepted. View shows record details; Edit opens supported record forms and Update saves changes. Closing a form is not the same as saving it.</p></div></details>
@@ -1292,7 +1307,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.7</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.9</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">

@@ -37,12 +37,12 @@ test('one click adds 30 students, preserving IDs and clearing the input', async(
   assert.equal(f.ctx.document.getElementById('studentSearchInput').value,'');
 });
 test('staff bulk add handles 65 records and defaults their role to Teacher', async()=>{
-  const f=fixture('staff'); f.input.value=Array.from({length:65},(_,i)=>`Staff ${i}, 00${i}`).join('\n');
+  const f=fixture('staff'); f.input.value=Array.from({length:65},(_,i)=>`Staff ${i}, Female, 00${i}`).join('\n');
   await f.run(); assert.equal(f.data.staff.length,65); assert.ok(f.data.staff.every(s=>s.role==='Teacher'));
   assert.equal(f.cloud.size,65);
 });
 test('validates the entire list before saving missing or repeated Staff IDs',async()=>{
-  for (const text of ['Jane','Jane, 1\nJohn, 1','Jane, 1\n, 2']) {
+  for (const text of ['Jane','Jane, F, 1\nJohn, M, 1','Jane, F, 1\n, M, 2']) {
     const f=fixture('staff'); f.input.value=text; await f.run(); assert.equal(f.writes.length,0); assert.equal(f.input.value,text);
   }
 });
@@ -85,3 +85,7 @@ test('gender survives offline entry and a lost-acknowledgement retry',async()=>{
  const offline=fixture();offline.ctx.navigator.onLine=false;offline.input.value='Offline pupil, Female';await offline.run();assert.equal(offline.data.students[0].gender,'F');
  const f=fixture();f.input.value='Retry pupil, M, 001';f.ctx.failAt=1;f.ctx.loseAck=true;await f.run();assert.equal(f.data.students.length,0);f.ctx.failAt=0;await f.run();assert.equal(f.cloud.size,1);assert.equal(f.data.students[0].gender,'M');
 });
+
+test('staff bulk entry stores sex with leading-zero Staff IDs',async()=>{const f=fixture('staff');f.input.value='Jane, Female, 001\nJohn, m, 002';await f.run();assert.deepEqual(f.data.staff.map(s=>[s.sex,s.staffId]),[['F','001'],['M','002']]);assert(f.data.staff.every(s=>s.gender===undefined));});
+test('staff bulk validates sex and exact column count before writing any row',async()=>{for(const bad of ['Name, 101','Name, Other, 101','Name, , 101','Name, M','Name, F,','Name, M, 1, extra']){const f=fixture('staff');f.input.value='Valid, F, 001\n'+bad;await f.run();assert.equal(f.writes.length,0);assert.equal(f.data.staff.length,0);assert.match(f.alerts[0],/Line 2:/);}});
+test('staff sex and record IDs survive a lost-acknowledgement retry',async()=>{const f=fixture('staff');f.input.value='Retry staff, Male, 0001';f.ctx.failAt=1;f.ctx.loseAck=true;await f.run();assert.equal(f.data.staff.length,0);f.ctx.failAt=0;await f.run();assert.equal(f.cloud.size,1);assert.equal(f.data.staff[0].sex,'M');assert.equal(f.data.staff[0].staffId,'0001');});
