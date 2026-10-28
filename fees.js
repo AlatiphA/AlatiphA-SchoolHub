@@ -355,13 +355,27 @@ function feeStatementHtml(statement,categoryMap,schoolName,{print=false,settings
 
 function showFeePrintDialog({title,schoolName,subtitle='',content}){if(!isHeadTeacher())return;document.getElementById('feeReceiptDialog')?.remove();document.getElementById('feePrintDialog')?.remove();const overlay=document.createElement('div');overlay.className='about-overlay';overlay.id='feePrintDialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label',title);overlay.innerHTML=`<div class="about-box fee-print-box"><div class="fee-print-heading"><h2>${escapeHtml(schoolName||'School')}</h2><h3>${escapeHtml(title||'Financial Report')}</h3>${subtitle?`<p>${escapeHtml(subtitle)}</p>`:''}</div>${content}<div class="fee-print-actions"><button type="button" class="btn-primary" data-print>Print / Save as PDF</button><button type="button" class="btn-secondary" data-close data-dismiss-ui>Close</button></div></div>`;overlay.querySelector('[data-print]').onclick=()=>window.print();overlay.querySelector('[data-close]').onclick=()=>overlay.remove();document.body.append(overlay);overlay.querySelector('[data-close]').focus();}
 
+async function loadFeeReceiptLogo(overlay) {
+ const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
+ const settings=DB.get(KEYS.settings,{});
+ const image=overlay.querySelector('.fee-receipt-logo');
+ try {
+  const logo=isDataImage(settings.logo)?settings.logo:await getOrSyncReportImage('logo','school',settings.logoStoragePath||'',settings.logoUrl||'',`schools/${schoolId}/logos/school-logo`);
+  if(!logo||!isDataImage(logo)||!overlay.isConnected||!isCurrentSession(token,userId,schoolId)||!isHeadTeacher())return;
+  image.src=logo;
+  try { await image.decode(); } catch(e) { return; }
+  if(overlay.isConnected&&isCurrentSession(token,userId,schoolId)&&isHeadTeacher())image.hidden=false;
+ } catch(e) { console.warn('Receipt logo unavailable:',e); }
+}
+
 function showFeeReceipt(p){
  if(!isHeadTeacher())return;
  document.getElementById('feeReceiptDialog')?.remove();
  document.getElementById('feePrintDialog')?.remove();
  const esc=escapeHtml,allocations=Array.isArray(p.allocations)?p.allocations:[],overlay=document.createElement('div');overlay.className='about-overlay';overlay.id='feeReceiptDialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Fee receipt');
- overlay.innerHTML=`<div class="about-box"><h2>${esc(p.schoolName||'School')}</h2><h3>${p.isTestData===true?'TEST · ':''}${p.voided?'VOIDED RECEIPT':'PAYMENT RECEIPT'} · ${esc(p.receipt||'')}</h3><p>Date: ${esc((p.receivedAt||'').slice(0,10))}</p><p>Pupil: ${esc(p.studentName||'')}<br>Class: ${esc(p.className||'')}</p><p>Received from: ${esc(p.payer||'')}<br>Method: ${esc(p.method||'')}<br>Reference: ${esc(p.reference||'—')}</p><p><strong>Amount received: ${feeCash(p.amount)}</strong></p>${allocations.length?`<h4>Allocation</h4><div class="table-scroll fee-dialog-table-scroll"><table class="fee-receipt-allocation"><thead><tr><th>Fee item</th><th>Period</th><th>Amount</th></tr></thead><tbody>${allocations.map(a=>`<tr><td>${esc(a.itemName||'Fee')}</td><td>${esc([a.term,a.year].filter(Boolean).join(' '))}</td><td>${feeCash(a.amount)}</td></tr>`).join('')}</tbody></table></div>`:''}<p>Balance after this payment: ${feeCash(p.balanceAfter)}</p>${p.voided?`<p><strong>VOID</strong><br>Reason: ${esc(p.voidReason||'')}</p>`:''}<p>This receipt records a payment entered by the school.</p><button type="button" class="btn-primary" data-print>Print / Save as PDF</button><button type="button" class="btn-secondary" data-close data-dismiss-ui>Close</button></div>`;
- overlay.querySelector('[data-print]').onclick=()=>window.print();overlay.querySelector('[data-close]').onclick=()=>overlay.remove();document.body.append(overlay);overlay.querySelector('[data-close]').focus();
+ overlay.innerHTML=`<div class="about-box"><img class="fee-receipt-logo" alt="School logo" hidden><h2>${esc(p.schoolName||'School')}</h2><h3>${p.isTestData===true?'TEST · ':''}${p.voided?'VOIDED RECEIPT':'PAYMENT RECEIPT'} · ${esc(p.receipt||'')}</h3><p>Date: ${esc((p.receivedAt||'').slice(0,10))}</p><p>Pupil: ${esc(p.studentName||'')}<br>Class: ${esc(p.className||'')}</p><p>Received from: ${esc(p.payer||'')}<br>Method: ${esc(p.method||'')}<br>Reference: ${esc(p.reference||'—')}</p><p><strong>Amount received: ${feeCash(p.amount)}</strong></p>${allocations.length?`<h4>Allocation</h4><div class="table-scroll fee-dialog-table-scroll"><table class="fee-receipt-allocation"><thead><tr><th>Fee item</th><th>Period</th><th>Amount</th></tr></thead><tbody>${allocations.map(a=>`<tr><td>${esc(a.itemName||'Fee')}</td><td>${esc([a.term,a.year].filter(Boolean).join(' '))}</td><td>${feeCash(a.amount)}</td></tr>`).join('')}</tbody></table></div>`:''}<p>Balance after this payment: ${feeCash(p.balanceAfter)}</p>${p.voided?`<p><strong>VOID</strong><br>Reason: ${esc(p.voidReason||'')}</p>`:''}<p>This receipt records a payment entered by the school.</p><button type="button" class="btn-primary" data-print>Print / Save as PDF</button><button type="button" class="btn-secondary" data-close data-dismiss-ui>Close</button></div>`;
+ const logoReady=Promise.resolve().then(()=>loadFeeReceiptLogo(overlay));
+ overlay.querySelector('[data-print]').onclick=async()=>{await logoReady;if(overlay.isConnected&&isHeadTeacher())window.print();};overlay.querySelector('[data-close]').onclick=()=>overlay.remove();document.body.append(overlay);overlay.querySelector('[data-close]').focus();
 }
 
 new MutationObserver(()=>{if(!isHeadTeacher()||!sessionReady){document.getElementById('feeReceiptDialog')?.remove();document.getElementById('feePrintDialog')?.remove();const host=document.getElementById('feesWrap');if(host&&host.textContent)host.replaceChildren();}}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
