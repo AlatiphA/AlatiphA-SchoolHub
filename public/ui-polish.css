@@ -953,3 +953,13 @@
  #app :is(#staffOnboarding,#studentOnboarding) .student-onboarding-actions{flex-wrap:wrap;}
  #app :is(#staffOnboarding,#studentOnboarding) button[data-dismiss-ui]{width:100%!important;align-self:stretch;}
 }
+
+/* Onboarding: destination first, then one full-width action per row. */
+#app #studentOnboarding .student-destination-class{grid-column:1/-1;width:100%;min-width:0;box-sizing:border-box;}
+#app #studentOnboarding .student-destination-class select{width:100%;max-width:100%;box-sizing:border-box;}
+#app :is(#staffOnboarding,#studentOnboarding) :is(.staff-onboarding-actions,.student-onboarding-actions){display:grid;grid-template-columns:minmax(0,1fr);gap:10px;width:100%;min-width:0;grid-column:1/-1;}
+#app :is(#staffOnboarding,#studentOnboarding) :is(.staff-onboarding-actions,.student-onboarding-actions)>button,
+#app :is(#staffOnboarding,#studentOnboarding) :is(#addStaffBtn,#addStudentBtn,button[data-dismiss-ui]){
+ width:100%!important;max-width:100%!important;min-width:0;box-sizing:border-box;
+ grid-column:1/-1;justify-self:stretch;align-self:stretch;margin:0!important;
+}
