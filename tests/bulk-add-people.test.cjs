@@ -9,7 +9,7 @@ function fixture(kind = 'students') {
   const input = {value:'', disabled:false}, button = {textContent:'Add All', disabled:false};
   nodes[kind === 'staff' ? 'bulkStaffInput' : 'bulkStudentInput'] = input;
   nodes[kind === 'staff' ? 'bulkAddStaffBtn' : 'bulkAddStudentsBtn'] = button;
-  nodes.studentClassSelect = {value:'class1'}; nodes.studentSearchInput={value:'Filter'};
+  nodes.bulkStudentClassSelect = {value:'class1'}; nodes.studentSearchInput={value:'Filter'};
   const ctx = {Map, Set, JSON, FIREBASE_ENABLED:true,navigator:{onLine:true},offlineAuthenticatedMode:false,sessionReady:true,currentStatus:'active', sessionGeneration:1, currentUid:'head', currentSchoolId:'school', sessionDataReady:true, cloudHydrationInProgress:false,
     KEYS:{students:'students',staff:'staff'}, DB:{get:(key)=>data[key],set:(key,value)=>data[key]=value},
     document:{getElementById:id=>nodes[id]}, uid:()=>`id-${++sequence}`,
@@ -28,7 +28,7 @@ function fixture(kind = 'students') {
     }, recoverSyncJournal(){}, setLastSyncedNow(){}, auditAction(){}, renderStudents(){}, renderClasses(){}, renderStaff(){}, alert:message=>alerts.push(message)};
   vm.createContext(ctx);
   vm.runInContext(source.slice(source.indexOf('const bulkAddPending ='), source.indexOf("document.getElementById('bulkAddStudentsBtn').addEventListener",source.indexOf('const bulkAddPending ='))),ctx);
-  return {ctx,data,input,button,alerts,writes,cloud,run:()=>ctx.bulkAddPeople(kind)};
+  return {ctx,data,nodes,input,button,alerts,writes,cloud,run:()=>ctx.bulkAddPeople(kind)};
 }
 test('one click adds 30 students, preserving IDs and clearing the input', async()=>{
   const f=fixture(); f.input.value=Array.from({length:30},(_,i)=>`Student ${i}, Female, 00${i}`).join('\n');
@@ -89,3 +89,5 @@ test('gender survives offline entry and a lost-acknowledgement retry',async()=>{
 test('staff bulk entry stores sex with leading-zero Staff IDs',async()=>{const f=fixture('staff');f.input.value='Jane, Female, 001\nJohn, m, 002';await f.run();assert.deepEqual(f.data.staff.map(s=>[s.sex,s.staffId]),[['F','001'],['M','002']]);assert(f.data.staff.every(s=>s.gender===undefined));});
 test('staff bulk validates sex and exact column count before writing any row',async()=>{for(const bad of ['Name, 101','Name, Other, 101','Name, , 101','Name, M','Name, F,','Name, M, 1, extra']){const f=fixture('staff');f.input.value='Valid, F, 001\n'+bad;await f.run();assert.equal(f.writes.length,0);assert.equal(f.data.staff.length,0);assert.match(f.alerts[0],/Line 2:/);}});
 test('staff sex and record IDs survive a lost-acknowledgement retry',async()=>{const f=fixture('staff');f.input.value='Retry staff, Male, 0001';f.ctx.failAt=1;f.ctx.loseAck=true;await f.run();assert.equal(f.data.staff.length,0);f.ctx.failAt=0;await f.run();assert.equal(f.cloud.size,1);assert.equal(f.data.staff[0].sex,'M');assert.equal(f.data.staff[0].staffId,'0001');});
+
+test('bulk destination ignores search class',async()=>{const f=fixture();f.nodes.studentClassSelect={value:'other'};f.input.value='Ama, F';await f.ctx.bulkAddPeople('students');assert.equal(f.data.students[0].classId,'class1');});

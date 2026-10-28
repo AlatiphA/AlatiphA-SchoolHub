@@ -541,6 +541,7 @@
       <button type="button" id="toggleAddStudentBtn" class="student-toggle-btn" aria-controls="addStudentForm" aria-expanded="false">Expand</button>
     </div>
     <div id="addStudentForm" class="stack student-add-form hidden">
+      <label>Destination class <span class="required-mark">*</span><select id="newStudentClassSelect" required><option value="">Select destination class</option></select></label>
       <label>Full name <span class="required-mark">*</span>
         <input type="text" id="newStudentName" placeholder="Full name" required>
       </label>
@@ -573,6 +574,7 @@
       <button type="button" id="toggleBulkStudentsBtn" class="student-toggle-btn" aria-expanded="false" aria-controls="bulkStudentForm" aria-label="Expand Bulk add">Expand</button>
     </div>
     <div id="bulkStudentForm" class="stack student-onboarding-panel hidden" role="region" aria-labelledby="studentBulkTitle">
+      <label>Destination class <span class="required-mark">*</span><select id="bulkStudentClassSelect" required><option value="">Select destination class</option></select></label>
       <label>Full name, Sex, optional Student ID
         <textarea id="bulkStudentInput" rows="5" placeholder="Jane Doe, Female, 001&#10;John Smith, Male" aria-describedby="bulkStudentFormatHint"></textarea>
       </label>
@@ -584,8 +586,9 @@
       <button type="button" id="toggleStudentExcelBtn" class="student-toggle-btn" aria-expanded="false" aria-controls="studentExcelForm" aria-label="Expand Excel template">Expand</button>
     </div>
     <div id="studentExcelForm" class="stack student-onboarding-panel hidden" role="region" aria-labelledby="studentExcelTitle">
+      <label>Destination class <span class="required-mark">*</span><select id="studentImportClassSelect" required><option value="">Select destination class</option></select></label>
       <ol class="student-excel-steps"><li>Download the blank Excel template.</li><li>Fill in the Students sheet, then import it below.</li><li>Review the preview before saving the imported students.</li></ol>
-      <p class="hint">Excel requires Full Name, Student ID, Sex, Date of Birth and Class. Class names must match an existing SchoolHub class.</p>
+      <p class="hint">Excel requires Full Name, Student ID, Sex, Date of Birth and Class. Class names must match the destination class selected here. Import one destination class at a time.</p>
       <div class="student-onboarding-actions"><button type="button" id="studentTemplateBtn">Download Template</button><button type="button" id="importStudentsBtn" class="btn-primary">Import Students</button></div>
       <input type="file" id="studentImportInput" accept=".xlsx,.xls,.csv" hidden>
       <div id="studentImportPreview" class="hidden" aria-live="polite"></div>
@@ -1307,7 +1310,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.9</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.10</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">

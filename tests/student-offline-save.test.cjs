@@ -5,11 +5,11 @@ const handlerCode=source.slice(source.indexOf("  list.querySelectorAll('.save-st
 function fixture(values=new Map(),opts={}){
  if(!values.has('students'))values.set('students',JSON.stringify([{id:'test',classId:'c4',name:'Original',dob:'2015-01-01',gender:'Male'},{id:'real',classId:'c4',name:'Real pupil'}]));
  let callback,renders=0,cloudCalls=0,scheduled=0;
- const fields={'.edit-student-name':'Offline name','.edit-student-dob':'2015-01-01','.edit-student-gender':'Male','.edit-student-id':'','.edit-student-phone':'','.edit-student-disability':'','.edit-student-guardian':'','.edit-student-house-gps':''};
+ const fields={'.edit-student-class':'c4','.edit-student-name':'Offline name','.edit-student-dob':'2015-01-01','.edit-student-gender':'Male','.edit-student-id':'','.edit-student-phone':'','.edit-student-disability':'','.edit-student-guardian':'','.edit-student-house-gps':''};
  const btn={dataset:{id:'test'},disabled:false,textContent:'Update',closest:()=>({querySelector:s=>({value:fields[s]})}),addEventListener:(_,fn)=>callback=fn};
  const c={console:{warn(){},error(){}},navigator:{onLine:false},localStorage:{getItem:k=>values.get(k)||null,setItem(k,v){if(k===opts.failKey)throw Error('storage full');values.set(k,v);},removeItem:k=>values.delete(k)},stripImagesForLocalStorage:(_,v)=>v,restoreLocalImagesForDbKey:(_,v)=>v,stableSyncJson:JSON.stringify,updateOfflineModeBanner(){},scheduleCloudPush(){scheduled++;},
  alert:m=>c.messages.push(m),messages:[],KEYS:{students:'students'},FIREBASE_ENABLED:true,currentUid:'teacher',currentSchoolId:'school',currentStatus:'active',sessionGeneration:1,sessionReady:true,sessionDataReady:true,cloudHydrationInProgress:false,editingStudentId:'test',
- requireClassAccess:id=>id==='c4'&&!opts.denied,isCurrentSession:(g,u,s)=>g===c.sessionGeneration&&u===c.currentUid&&s===c.currentSchoolId,
+ getAccessibleClasses:()=>[{id:'c4'},{id:'c5'}],requireClassAccess:id=>id==='c4'&&!opts.denied,isCurrentSession:(g,u,s)=>g===c.sessionGeneration&&u===c.currentUid&&s===c.currentSchoolId,
  schoolRef(){cloudCalls++;throw Error('Form must not send direct cloud writes');},auditAction(){if(opts.auditFails)throw Error('audit failed');},renderStudents(){renders++;},renderClasses(){},list:{querySelectorAll:s=>s==='.save-student'?[btn]:[]}};
  vm.createContext(c);vm.runInContext(storageCode+'\nglobalThis.db=DB;',c);vm.runInContext(handlerCode,c);
  return {c,btn,fields,values,click:()=>callback(),get:()=>c.db.get('students',[]),renders:()=>renders,cloudCalls:()=>cloudCalls,scheduled:()=>scheduled};
@@ -36,3 +36,6 @@ test('duplicate admission ID and disappeared pupil keep the entered form instead
 test('an audit failure after local persistence never reports the pupil edit as unsaved',async()=>{
  const f=fixture(new Map(),{auditFails:true});await f.click();assert.equal(f.get()[0].name,'Offline name');assert(f.c.messages.some(x=>x.includes('saved on this device')));assert(!f.c.messages.some(x=>x.includes('NOT saved')));assert.equal(f.btn.disabled,false);
 });
+
+test('class move keeps learner identity and queues an offline update',async()=>{const f=fixture();f.fields['.edit-student-class']='c5';f.c.requireClassAccess=id=>['c4','c5'].includes(id);await f.click();assert.equal(f.get()[0].classId,'c5');assert.equal(f.get()[0].id,'test');assert.deepEqual(JSON.parse(f.values.get('arc_sync_outbox_v1')).dirty.students,['test']);});
+test('injected destination outside assignment cannot save',async()=>{const f=fixture();f.fields['.edit-student-class']='forbidden';await f.click();assert.equal(f.get()[0].classId,'c4');assert(!f.values.has('arc_sync_outbox_v1'));});

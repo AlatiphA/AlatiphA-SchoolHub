@@ -4,7 +4,7 @@
  let active=null;
  const config={
   class:{title:'Edit class',list:'classList',key:()=>KEYS.classes,get:()=>editingClassId,set:v=>editingClassId=v,render:renderClasses,allowed:()=>isHeadTeacher()||isActiveGuest(),fields:['name','classTeacherId']},
-  student:{title:'Edit student',list:'studentList',key:()=>KEYS.students,get:()=>editingStudentId,set:v=>editingStudentId=v,render:renderStudents,allowed:r=>canAccessClass(r.classId),fields:['name','gender','dob','admissionId','parentPhone','disability','guardianName','houseGps']},
+  student:{title:'Edit student',list:'studentList',key:()=>KEYS.students,get:()=>editingStudentId,set:v=>editingStudentId=v,render:renderStudents,allowed:r=>canAccessClass(r.classId),fields:['classId','name','gender','dob','admissionId','parentPhone','disability','guardianName','houseGps']},
   staff:{title:'Edit staff',list:'staffList',key:()=>KEYS.staff,get:()=>editingStaffId,set:v=>editingStaffId=v,render:renderStaff,allowed:()=>isHeadTeacher()||isActiveGuest(),fields:['name','role',...STAFF_FIELDS.map(f=>f.key)]},
   subject:{title:'Edit subject',list:'subjectList',key:()=>KEYS.subjects,get:()=>editingSubjectId,set:v=>editingSubjectId=v,render:renderSubjects,allowed:()=>isHeadTeacher()||isActiveGuest(),fields:['name']}
  };

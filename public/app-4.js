@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.9';
+const APP_VERSION = '40.1.10';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -3070,7 +3070,19 @@ document.getElementById('addClassBtn').addEventListener('click', () => {
 function renderStudentClassSelect() {
   const sel = document.getElementById('studentClassSelect');
   fillClassSelect(sel);
+  fillStudentOnboardingClasses();
   renderStudents();
+}
+
+function fillStudentOnboardingClasses() {
+  const classes = getAccessibleClasses();
+  for (const id of ['newStudentClassSelect','bulkStudentClassSelect','studentImportClassSelect']) {
+    const sel = document.getElementById(id);
+    if (!sel) continue;
+    const previous = sel.value;
+    sel.innerHTML = '<option value="">Select destination class</option>' + classes.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join('');
+    sel.value = classes.some(c => c.id === previous) ? previous : '';
+  }
 }
 
 function studentClassSelectionKey() {
@@ -3202,6 +3214,7 @@ function renderStudents() {
             <input type="text" class="edit-student-age" value="${escapeHtml(calculateStudentAge(st.dob))}" placeholder="Auto" readonly>
           </label>
         </div>
+        <label>Class<select class="edit-student-class">${getAccessibleClasses().map(c => `<option value="${escapeHtml(c.id)}" ${c.id === st.classId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></label>
         <input type="text" class="edit-student-id" value="${st.admissionId ? escapeHtml(st.admissionId) : ''}" placeholder="Student ID (optional)">
         <input type="tel" class="edit-student-phone" value="${st.parentPhone ? escapeHtml(st.parentPhone) : ''}" placeholder="Parent phone (optional, for WhatsApp)">
         <label>Disability
@@ -3370,8 +3383,10 @@ function renderStudents() {
       if(!name||!gender||!dob){const missing=[];if(!name)missing.push('Full name');if(!gender)missing.push('Sex');if(!dob)missing.push('Date of Birth');alert(missing.join(', ')+(missing.length===1?' is required.':' are required.'));return;}
       const admissionId=li.querySelector('.edit-student-id').value.trim(),students=DB.get(KEYS.students,[]),current=students.find(x=>x.id===btn.dataset.id);
       if(!current||!requireClassAccess(current.classId))return;
+      const classId=li.querySelector('.edit-student-class').value;
+      if(!classId||!getAccessibleClasses().some(c=>c.id===classId)||!requireClassAccess(classId))return;
       if(admissionId&&students.some(x=>x.id!==current.id&&String(x.admissionId||'').trim().toLowerCase()===admissionId.toLowerCase())){alert('Another student already uses this Student ID. Student IDs must be unique.');return;}
-      const updated=Object.assign({},current,{name,dob,gender,admissionId,parentPhone:li.querySelector('.edit-student-phone').value.trim(),disability:li.querySelector('.edit-student-disability')?.value||'',guardianName:li.querySelector('.edit-student-guardian')?.value.trim()||'',houseGps:li.querySelector('.edit-student-house-gps')?.value.trim()||''});
+      const updated=Object.assign({},current,{name,dob,gender,admissionId,classId,parentPhone:li.querySelector('.edit-student-phone').value.trim(),disability:li.querySelector('.edit-student-disability')?.value||'',guardianName:li.querySelector('.edit-student-guardian')?.value.trim()||'',houseGps:li.querySelector('.edit-student-house-gps')?.value.trim()||''});
       const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId,oldText=btn.textContent;btn.disabled=true;btn.textContent='Saving…';
       let savedLocally=false;
       try {
@@ -3379,7 +3394,7 @@ function renderStudents() {
         if(!isCurrentSession(token,userId,schoolId))return;
         const latest=DB.get(KEYS.students,[]),pos=latest.findIndex(x=>x.id===updated.id);
         if(pos<0)throw new Error('Student details changed while saving. Please reopen the student.');
-        if(!requireClassAccess(latest[pos].classId))return;
+        if(!requireClassAccess(latest[pos].classId)||!requireClassAccess(updated.classId))return;
         // Persist the edit and its durable outbox together. Cloud confirmation
         // happens through the existing verified queue, never inside this form.
         const next=latest.slice();next[pos]=Object.assign({},latest[pos],updated);
@@ -3425,7 +3440,7 @@ if (newStudentDob && newStudentAge) {
 
 const studentCreatePending = new Map();
 document.getElementById('addStudentBtn').addEventListener('click', async () => {
-  const classId=document.getElementById('studentClassSelect').value;if(!classId){alert('Add a class first.');return;}if(classId==='__all__'){alert('Select one class before adding students.');return;}if(!requireClassAccess(classId))return;
+  const classId=document.getElementById('newStudentClassSelect').value;if(!classId){alert('Select a destination class.');return;}if(classId==='__all__'){alert('Select one class before adding students.');return;}if(!requireClassAccess(classId))return;
   const nameInput=document.getElementById('newStudentName'),dobInput=document.getElementById('newStudentDob'),validation=document.getElementById('addStudentValidation'),name=nameInput.value.trim(),dob=dobInput.value.trim();
   if(!name||!dob){validation.textContent=!name&&!dob?'Full name and Date of Birth are required before the student can be added.':(!name?'Full name is required before the student can be added.':'Date of Birth is required before the student can be added.');validation.classList.add('show');return;}
   validation.classList.remove('show');const gender=document.getElementById('newStudentGender').value;if(!gender){validation.textContent='Sex is required before the student can be added.';validation.classList.add('show');return;}
@@ -3475,9 +3490,9 @@ function prepareBulkAdd(kind, text, classId, previous) {
 
 async function bulkAddPeople(kind) {
   const staff = kind === 'staff';
-  const classId = staff ? '' : document.getElementById('studentClassSelect').value;
+  const classId = staff ? '' : document.getElementById('bulkStudentClassSelect').value;
   if (staff) { if (!requireHeadTeacher('manage staff')) return; }
-  else { if (!classId) { alert('Add a class first.'); return; } if (classId === '__all__') { alert('Select one class before adding students.'); return; } if (!requireClassAccess(classId)) return; }
+  else { if (!classId) { alert('Select a destination class.'); return; } if (classId === '__all__') { alert('Select one class before adding students.'); return; } if (!requireClassAccess(classId)) return; }
   const textarea = document.getElementById(staff ? 'bulkStaffInput' : 'bulkStudentInput');
   const button = document.getElementById(staff ? 'bulkAddStaffBtn' : 'bulkAddStudentsBtn');
   if (button.disabled) return;
@@ -4108,7 +4123,8 @@ function readStudentWorkbook(book) {
   });
 }
 
-function planStudentImport(rows) {
+function planStudentImport(rows, destinationClassId) {
+  if (destinationClassId !== undefined && !getAccessibleClasses().some(c => c.id === destinationClassId)) return {errors:['Select an accessible destination class.'], changes:[]};
   const existing = DB.get(KEYS.students, []);
   const admissionGroups = new Map();
   existing.forEach(st => {
@@ -4126,7 +4142,8 @@ function planStudentImport(rows) {
     if (!v.name || !sid || !v.gender || !v.dob || !v.className) { errors.push(`Row ${item.row}: Full Name, Student ID, Sex, Date of Birth and Class are required.`); return; }
     if (seen.has(key)) { errors.push(`Row ${item.row}: duplicate Student ID ${sid}.`); return; }
     seen.add(key);
-    const classId = studentClassIdByName(v.className);
+    const classId = destinationClassId === undefined ? studentClassIdByName(v.className) : destinationClassId;
+    if (destinationClassId !== undefined && studentClassIdByName(v.className) !== destinationClassId) { errors.push(`Row ${item.row}: spreadsheet Class must match the selected destination class.`); return; }
     if (!classId) { errors.push(`Row ${item.row}: class "${v.className}" does not exist in SchoolHub.`); return; }
     const g = v.gender.toLowerCase();
     const gender = g === 'male' || g === 'm' ? 'M' : (g === 'female' || g === 'f' ? 'F' : '');
@@ -4144,6 +4161,7 @@ function planStudentImport(rows) {
     const duplicates = admissionGroups.get(key) || [];
     if (duplicates.length > 1) { errors.push(`Row ${item.row}: Student ID ${sid} matches multiple existing students. Correct those records first.`); return; }
     const current = byAdmission.get(key);
+    if (current && !canAccessClass(current.classId)) { errors.push(`Row ${item.row}: you cannot update this student's current class.`); return; }
     const merged = current ? Object.assign({}, current) : {id:uid()};
     merged.name = v.name; merged.admissionId = sid; merged.gender = gender; merged.dob = v.dob; merged.classId = classId;
     ['guardianName','parentPhone','houseGps'].forEach(k => { if (v[k]) merged[k] = v[k]; });
@@ -4155,13 +4173,15 @@ function planStudentImport(rows) {
 
 function showStudentImportPreview(rows) {
   const host = document.getElementById('studentImportPreview');
-  const plan = planStudentImport(rows);
+  const destinationClassId = document.getElementById('studentImportClassSelect').value;
+  pendingStudentImport = null;
+  const plan = planStudentImport(rows, destinationClassId);
   if (plan.errors.length) {
     host.classList.remove('hidden');
     host.innerHTML = '<h3>Student import needs attention</h3><ul>' + plan.errors.slice(0,30).map(e => '<li>' + escapeHtml(e) + '</li>').join('') + '</ul>';
     return;
   }
-  pendingStudentImport = {rows, snapshot:JSON.stringify(DB.get(KEYS.students, [])), token:sessionGeneration, uid:currentUid, schoolId:currentSchoolId};
+  pendingStudentImport = {rows, destinationClassId, snapshot:JSON.stringify(DB.get(KEYS.students, [])), token:sessionGeneration, uid:currentUid, schoolId:currentSchoolId};
   const added = plan.changes.filter(x => x.mode === 'Add').length;
   host.classList.remove('hidden');
   host.innerHTML = `<h3>Students import preview</h3><p>${added} to add · ${plan.changes.length-added} to update · ${plan.changes.length} total</p>
@@ -4184,7 +4204,8 @@ async function saveStudentImport() {
   if (!p || !isCurrentSession(p.token,p.uid,p.schoolId)) { clearStudentImport(); return; }
   const latest = DB.get(KEYS.students, []);
   if (JSON.stringify(latest) !== p.snapshot) { alert('Student details changed while this preview was open. Review the import again.'); showStudentImportPreview(p.rows); return; }
-  const plan = planStudentImport(p.rows);
+  if (document.getElementById('studentImportClassSelect').value !== p.destinationClassId) { alert('Destination class changed. Review the import again.'); showStudentImportPreview(p.rows); return; }
+  const plan = planStudentImport(p.rows, p.destinationClassId);
   if (plan.errors.length) { showStudentImportPreview(p.rows); return; }
   const map = new Map(latest.map(st => [String(st.id), st]));
   plan.changes.forEach(x => map.set(String(x.record.id), x.record));
