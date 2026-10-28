@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.13';
+const APP_VERSION = '40.1.14';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -370,13 +370,21 @@ async function resolveSchoolHubStartup(user, token) {
 
 async function schoolAccountForStartup(user) {
   const cached = loadVerifiedLocalSession(user);
-  // A restored Firebase identity may open its existing, unexpired school cache
-  // immediately offline. Uploads remain blocked until online verification.
-  if (navigator.onLine === false && cached) return { cached };
+  // Open the matching, unexpired verified cache without waiting for a network
+  // round trip. Uploads remain blocked until background account verification.
+  if (cached) return { cached };
   const snapshot = await withSessionVerificationDeadline(
     firebase.firestore().collection('users').doc(user.uid).get({source:'server'})
   );
   return { snapshot };
+}
+
+function verifyCachedStartupInBackground(token, userId, schoolId) {
+  // Give the cached screen a chance to appear before starting network recovery.
+  setTimeout(() => {
+    if (navigator.onLine === false || !isCurrentSession(token, userId, schoolId) || !sessionReady) return;
+    runSchoolHubBackgroundSync('cached-startup').catch(error => console.warn('Saved session remains available; verification will retry:', error));
+  }, 0);
 }
 
 function pendingFeeSyncState() {
@@ -12187,6 +12195,7 @@ function initAuth() {
         if (startup.cached) {
           startCachedAuthenticatedSession(user, startup.cached);
           appStarted = true;
+          verifyCachedStartupInBackground(token, user.uid, startup.cached.schoolId);
           return;
         }
         const userDoc = startup.snapshot;
