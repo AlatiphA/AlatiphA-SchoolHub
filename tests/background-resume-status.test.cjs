@@ -5,7 +5,7 @@ function fixture(online,paused,checking,wasOffline,pending=0){
  const badge=el(),banner=el(),title=el(),detail=el();banner.querySelector=s=>s==='.offline-mode-title'?title:detail;
  const c={document:{getElementById:id=>id==='offlineModeBanner'?banner:badge},navigator:{onLine:online},offlineAuthenticatedMode:paused,offlineReconnectInProgress:checking,performReconnectRecovery:{startedOffline:wasOffline},pendingSyncCountForCurrentSchool:()=>pending,currentSchoolId:'s',currentStatus:'active',sessionDataReady:true,syncableFields:()=>[],syncErrors:new Map(),cloudHydrationStatusError:''};vm.createContext(c);vm.runInContext(code,c);c.updateOfflineModeBanner();return {badge,banner,title,detail};
 }
-test('healthy wake checks account without falsely showing offline or reconnecting',()=>{const f=fixture(true,true,true,false);assert.equal(f.badge.textContent,'Checking…');assert.equal(f.badge.dataset.state,'pending');assert(f.banner.classes.has('hidden'));assert(!f.banner.classes.has('is-reconnecting'));assert.match(f.badge.title,/Checking your account/);});
+test('healthy wake checks account without falsely showing offline or reconnecting',()=>{const f=fixture(true,true,true,false);assert.equal(f.badge.textContent,'Saved on device');assert.equal(f.badge.dataset.state,'saved');assert(f.banner.classes.has('hidden'));assert(!f.banner.classes.has('is-reconnecting'));assert.match(f.badge.title,/routine connection check/);});
 test('pending writes stay visible with routine-check wording',()=>{const f=fixture(true,true,true,false,2);assert(!f.banner.classes.has('hidden'));assert.equal(f.title.textContent,'Checking saved changes…');});
 test('actual offline recovery keeps reconnecting banner',()=>{const f=fixture(true,true,true,true);assert(!f.banner.classes.has('hidden'));assert.equal(f.title.textContent,'Reconnecting…');assert(f.banner.classes.has('is-reconnecting'));assert.equal(f.badge.textContent,'Checking…');});
 test('network loss during check immediately shows offline',()=>{const f=fixture(false,true,true,true);assert.equal(f.badge.textContent,'Offline');assert.equal(f.title.textContent,'Offline Mode');assert(!f.banner.classes.has('is-reconnecting'));});
@@ -14,3 +14,7 @@ test('completed check shows up to date',()=>{const f=fixture(true,false,false,fa
 
 test('online unverified session without pending edits is waiting, never up to date',()=>{const f=fixture(true,true,false,false);assert.equal(f.badge.textContent,'Waiting to reconnect');assert.equal(f.badge.dataset.state,'pending');assert.equal(f.title.textContent,'Waiting to reconnect');assert(!f.banner.classes.has('hidden'));assert.match(f.badge.title,/10 seconds/);});
 test('network offline pending changes keep offline wording and their pending count',()=>{const f=fixture(false,true,false,true,2);assert.equal(f.badge.textContent,'2 pending');assert.equal(f.title.textContent,'Offline Mode');assert.match(f.detail.textContent,/2 pending changes/);});
+
+test('routine wake checks do not hide pending changes or sync errors',()=>{
+ const pending=fixture(true,true,true,false,2);assert.equal(pending.badge.textContent,'Checking…');assert.equal(pending.badge.dataset.state,'pending');
+});

@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.12';
+const APP_VERSION = '40.1.13';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -415,14 +415,18 @@ function updateOfflineModeBanner(message) {
     const hydrationErrorText = typeof cloudHydrationStatusError === 'string' ? cloudHydrationStatusError : '';
     const hydrationFailed = !!hydrationErrorText;
     const failed = writeFailed || hydrationFailed;
+    const quietCheck = checking && !reconnecting && !pending && !failed && sessionDataReady;
     statusButton.classList.toggle('hidden', !currentSchoolId || currentStatus !== 'active');
-    statusButton.dataset.state = waiting ? 'pending' : offline ? 'offline' : checking ? 'pending' : failed ? 'error' : pending ? 'pending' : 'saved';
+    statusButton.dataset.state = waiting ? 'pending' : offline ? 'offline' : failed ? 'error' : quietCheck ? 'saved' : checking ? 'pending' : pending ? 'pending' : 'saved';
     statusButton.textContent = waiting ? 'Waiting to reconnect' : offline ? (pending ? pending + ' pending' : 'Offline')
+      : hydrationFailed ? 'Sync issue'
+      : writeFailed ? pending + ' unsynced'
+      : quietCheck ? 'Saved on device'
       : checking ? 'Checking…'
       : !sessionDataReady ? 'Checking…'
       : hydrationFailed ? 'Sync issue'
       : writeFailed ? pending + ' unsynced' : pending ? pending + ' syncing' : 'Up to date';
-    statusButton.title = waiting ? 'A network connection is detected, but SchoolHub has not verified your account and cloud connection. Retrying about every 10 seconds while open; changes remain saved on this device. Open Sync Center.' : checking ? 'Checking your account and refreshing school data. Changes remain saved on this device until verified. Open Sync Center.' : hydrationFailed ? `Core school data check ended with an error: ${hydrationErrorText}. Open Sync Center to retry.`
+    statusButton.title = waiting ? 'A network connection is detected, but SchoolHub has not verified your account and cloud connection. Retrying about every 10 seconds while open; changes remain saved on this device. Open Sync Center.' : quietCheck ? 'No pending changes on this device. A routine connection check is running in the background. Open Sync Center.' : checking ? 'Checking your account and refreshing school data. Changes remain saved on this device until verified. Open Sync Center.' : hydrationFailed ? `Core school data check ended with an error: ${hydrationErrorText}. Open Sync Center to retry.`
       : pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
       : offline ? 'Offline. No pending record changes. Open Sync Center.' : 'No pending record changes on this device. Open Sync Center.';
     statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
