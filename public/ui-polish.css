@@ -966,3 +966,23 @@
 
 #feeReceiptDialog .fee-receipt-logo{display:block;width:80px;height:80px;max-width:100%;object-fit:contain;margin:0 auto 12px;}
 #feeReceiptDialog .fee-receipt-logo[hidden]{display:none;}
+
+/* Receipts fit their paper width instead of printing a clipped scroll viewport. */
+#feeReceiptDialog .about-box{width:min(640px,100%);max-width:640px;min-width:0;}
+#feeReceiptDialog .fee-receipt-heading{text-align:center;margin-bottom:18px;overflow-wrap:anywhere;}
+#feeReceiptDialog .fee-receipt-heading h2{margin:0 0 8px;text-align:center;}
+#feeReceiptDialog .fee-receipt-heading p{margin:3px 0;line-height:1.4;}
+#feeReceiptDialog .fee-dialog-table-scroll{overflow:visible;min-width:0;}
+#feeReceiptDialog .fee-dialog-table-scroll>table{width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;}
+#feeReceiptDialog .fee-dialog-table-scroll :is(th,td){white-space:normal;overflow-wrap:anywhere;min-width:0;padding:8px 5px;}
+#feeReceiptDialog .fee-dialog-table-scroll :is(th,td):first-child{position:static;width:42%;box-shadow:none;}
+#feeReceiptDialog .fee-dialog-table-scroll :is(th,td):nth-child(2){width:30%;}
+#feeReceiptDialog .fee-dialog-table-scroll :is(th,td):last-child{width:28%;text-align:right!important;font-variant-numeric:tabular-nums;}
+@media print{
+ #feeReceiptDialog{position:static!important;width:100%!important;padding:0!important;}
+ #feeReceiptDialog .about-box{width:100%!important;max-width:170mm!important;box-sizing:border-box;margin:0 auto!important;padding:0!important;border:0!important;}
+ #feeReceiptDialog .fee-dialog-table-scroll{overflow:visible!important;}
+ #feeReceiptDialog .fee-receipt-allocation{width:100%!important;min-width:0!important;table-layout:fixed!important;}
+ #feeReceiptDialog tr{break-inside:avoid;}
+ #feeReceiptDialog thead{display:table-header-group;}
+}

@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.14';
+const APP_VERSION = '40.1.15';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -2018,6 +2018,7 @@ function loadSettingsForm() {
   document.getElementById('schoolName').value = s.schoolName || '';
   document.getElementById('schoolAddress').value = s.address || '';
   document.getElementById('schoolEmail').value = s.email || '';
+  document.getElementById('schoolPhone').value = s.phone || '';
   document.getElementById('currentTerm').value = s.currentTerm || 'Term 1';
   document.getElementById('currentYear').value = s.currentYear || '';
   const activeTermKey = termYearKey(s.currentTerm || 'Term 1', s.currentYear || '');
@@ -2057,7 +2058,7 @@ document.getElementById('recoverSetupBtn')?.addEventListener('click',async()=>{
     button.type='button';button.className='btn-secondary';button.textContent='Load this Setup for review';
     button.onclick=()=>{
       if(!isCurrentSession(token,user,school))return;
-      const fields={schoolName:'schoolName',registeredEmisNumber:'schoolRegistrationNumber',address:'schoolAddress',email:'schoolEmail',currentYear:'currentYear',currentTerm:'currentTerm',nextTermBegins:'nextTermBegins',reportLayout:'reportLayout',reportTheme:'reportThemeSelect',headTeacherId:'headTeacherSelect'};
+      const fields={schoolName:'schoolName',registeredEmisNumber:'schoolRegistrationNumber',address:'schoolAddress',phone:'schoolPhone',email:'schoolEmail',currentYear:'currentYear',currentTerm:'currentTerm',nextTermBegins:'nextTermBegins',reportLayout:'reportLayout',reportTheme:'reportThemeSelect',headTeacherId:'headTeacherSelect'};
       Object.entries(fields).forEach(([key,id])=>{const input=document.getElementById(id);if(input&&profile[key]!==undefined)input.value=profile[key];});
       const dates=profile.termDates?.[termYearKey(profile.currentTerm,profile.currentYear)]||{};
       document.getElementById('termStartDate').value=dates.start||profile.termStartDate||'';
@@ -2140,6 +2141,7 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   if(!s.schoolName){alert('Enter the school name before saving Setup. No settings were changed.');return;}
   s.address = document.getElementById('schoolAddress').value.trim();
   s.email = document.getElementById('schoolEmail').value.trim();
+  s.phone = document.getElementById('schoolPhone').value.trim();
   s.currentTerm = document.getElementById('currentTerm').value;
   s.currentYear = document.getElementById('currentYear').value.trim();
   s.termDates = (s.termDates && typeof s.termDates === 'object') ? s.termDates : {};
