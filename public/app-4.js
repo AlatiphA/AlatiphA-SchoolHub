@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.15';
+const APP_VERSION = '40.1.16';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */

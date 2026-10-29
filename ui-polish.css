@@ -986,3 +986,7 @@
  #feeReceiptDialog tr{break-inside:avoid;}
  #feeReceiptDialog thead{display:table-header-group;}
 }
+
+/* Center the About logo within its scrollable content on every screen size. */
+#aboutDialog .about-seal-wrap{display:flex;justify-content:center;width:100%;}
+#aboutDialog .about-seal{display:block;flex:0 0 auto;}
