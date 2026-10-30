@@ -990,3 +990,21 @@
 /* Center the About logo within its scrollable content on every screen size. */
 #aboutDialog .about-seal-wrap{display:flex;justify-content:center;width:100%;}
 #aboutDialog .about-seal{display:block;flex:0 0 auto;}
+
+/* Account rows follow the GES Pasco icon, label and trailing arrow layout. */
+.profile-dropdown{width:min(360px,calc(100vw - 32px));box-sizing:border-box;}
+#profileDropdown .profile-menu-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:18px;}
+#profileCloseBtn{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;min-height:44px;margin:0;padding:0;border:1px solid var(--rule);border-radius:50%;background:var(--surface-alt);color:var(--paper);font:400 26px/1 sans-serif;}
+#profileDropdown .profile-link:not(.profile-logout){display:grid;grid-template-columns:22px minmax(0,1fr) 18px;align-items:center;gap:12px;min-height:52px;width:100%;margin:0;padding:13px 12px;border:0;border-top:1px solid var(--rule);border-radius:0;background:transparent;color:var(--paper);text-align:left;font:inherit;font-size:14px;box-sizing:border-box;}
+#profileDropdown .profile-link.hidden{display:none;}
+#profileDropdown .profile-row-icon{width:22px;height:22px;}
+#profileDropdown .profile-row-arrow{width:18px;height:18px;justify-self:end;color:var(--muted);}
+#profileDropdown .profile-link:hover{background:var(--surface-alt);}
+#profileDropdown .profile-logout{display:block;width:100%;min-height:44px;margin:16px 0 0;padding:12px;border:1px solid var(--rule);border-radius:10px;background:var(--surface-alt);color:var(--paper);text-align:center;font:inherit;font-size:14px;}
+#profileDropdown .profile-logout.hidden{display:none;}
+#aboutDialog .about-updates-card{margin-top:18px;padding:16px;border:1px solid var(--rule);border-radius:12px;background:var(--surface-alt);}
+#aboutDialog .about-updates-card h3{margin:0 0 8px;font-family:inherit;font-size:16px;}
+#aboutDialog .about-updates-card .about-actions{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0 0;}
+#aboutDialog .about-updates-card button{flex:1 1 160px;width:auto;min-height:44px;margin:0;}
+#aboutDialog #aboutCheckUpdateBtn{border-radius:10px;border:1px solid var(--rule);background:var(--surface);color:var(--paper);}
+#aboutDialog #aboutInstallUpdateBtn[hidden]{display:none!important;}

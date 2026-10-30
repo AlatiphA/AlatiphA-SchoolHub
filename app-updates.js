@@ -6,7 +6,7 @@
     const status=element('aboutUpdateStatus'),check=element('aboutCheckUpdateBtn'),install=element('aboutInstallUpdateBtn');
     if(status)status.textContent=message;
     if(check)check.disabled=checking||installing;
-    if(install){install.disabled=!ready||checking||installing;install.textContent=installing?'Installing…':ready?'Install update':'Installed';}
+    if(install){install.hidden=!ready&&!installing;install.disabled=!ready||checking||installing;install.textContent=installing?'Installing…':'Install update';}
   }
   function versionOf(worker){
     if(!worker||typeof root.MessageChannel!=='function')return Promise.resolve('');

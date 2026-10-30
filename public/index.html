@@ -174,16 +174,17 @@
         <svg class="chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       <div id="profileDropdown" class="profile-dropdown hidden">
+        <div class="profile-menu-heading"><strong>Account</strong><button id="profileCloseBtn" type="button" aria-label="Close account menu">&times;</button></div>
         <div id="profileSchoolName" class="profile-school-name">—</div>
         <div id="profileTermYear" class="profile-term-year">—</div>
         <div id="profileAccountLine" class="profile-account-line">—</div>
-        <button type="button" id="profileMyDetailsBtn" class="profile-link hidden">My Details</button>
-        <button type="button" id="profileAccountSecurityBtn" class="profile-link hidden">Account Security</button>
-        <button type="button" id="profileSettingsBtn" class="profile-link">Settings</button>
-        <button type="button" id="profileBillingBtn" class="profile-link hidden">Billing &amp; Credits</button>
-        <button type="button" id="profileHelpBtn" class="profile-link">Help</button>
-        <button type="button" id="profileLoginBtn" class="profile-link hidden">Log In</button>
-        <button type="button" id="logoutBtn" class="profile-link profile-link-danger hidden">Log Out</button>
+        <button type="button" id="profileMyDetailsBtn" class="profile-link hidden"><svg class="profile-row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg><span>My Details</span><svg class="profile-row-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button type="button" id="profileAccountSecurityBtn" class="profile-link hidden"><svg class="profile-row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 7v5c0 5 8 9 8 9s8-4 8-9V7z"/><path d="m8 12 3 3 5-6"/></svg><span>Account Security</span><svg class="profile-row-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button type="button" id="profileSettingsBtn" class="profile-link"><svg class="profile-row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="3"/><circle cx="16" cy="17" r="3"/></svg><span>Settings</span><svg class="profile-row-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button type="button" id="profileBillingBtn" class="profile-link hidden"><svg class="profile-row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/></svg><span>Billing &amp; Credits</span><svg class="profile-row-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button type="button" id="profileHelpBtn" class="profile-link"><svg class="profile-row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4M12 17h.01"/></svg><span>Help</span><svg class="profile-row-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button type="button" id="profileLoginBtn" class="profile-link hidden"><svg class="profile-row-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3h6v18h-6M3 12h12m-4-4 4 4-4 4"/></svg><span>Log In</span><svg class="profile-row-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
+        <button type="button" id="logoutBtn" class="profile-link profile-logout hidden">Log out</button>
       </div>
     </div>
   </div>
@@ -971,7 +972,7 @@
         <details><summary>Where do I start?</summary><div class="inline-doc-answer"><p>With internet available, open <a href="https://alatipha-schoolhub.web.app/">SchoolHub</a> in a supported browser. You can use it in the browser or install it as an app. Installing does not create a school or account; sign in, create an account or use the Guest trial in the next step.</p></div></details>
         <details><summary>How do I install SchoolHub?</summary><div class="inline-doc-answer"><ol><li>Open SchoolHub online on the device you want to use.</li><li>Use the available <strong>Install SchoolHub</strong> banner or your browser’s install/Add to Home Screen option. If you are already inside the workspace, use <strong>Profile → Help → Install SchoolHub</strong>.</li><li>Follow the device prompt and open SchoolHub from its app icon.</li></ol><p>Installation availability depends on the browser/device. If an install option is unavailable, continue in the browser. Installed SchoolHub still needs the correct account and permissions; first sign-in and loading an uncached school require internet.</p></div></details>
         <details><summary>The app looks outdated. What should I do?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → Help → About SchoolHub</strong> while online. Use <strong>Check for updates</strong>, wait for the download, then choose <strong>Install update</strong>. If a check fails or you are offline, reconnect and retry. Use <strong>Settings → System Health</strong> for diagnostics. Keep pending records and drafts; do not clear app data to force an update.</p></div></details>
-        <details><summary>How are service-worker updates handled?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → Help → About SchoolHub → Check for updates</strong>. Wait while a release downloads. <strong>Install update</strong> becomes available when ready; <strong>Installed</strong> indicates no ready update. Save open form entries before installing because the app reloads. Saved records and queued uploads remain on this device. The release number advances when changed app content is prepared for deployment.</p></div></details>
+        <details><summary>How are service-worker updates handled?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → Help → About SchoolHub → Check for updates</strong>. Wait while a release downloads. <strong>Install update</strong> becomes available when ready; The status message confirms when you are up to date; the Install update button appears only when an update is ready. Save open form entries before installing because the app reloads. Saved records and queued uploads remain on this device. The release number advances when changed app content is prepared for deployment.</p></div></details>
       </section>
 
       <section class="inline-doc-section">
@@ -1313,7 +1314,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.16</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.19</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
@@ -1323,11 +1324,13 @@
       <div><span>Browser</span><strong id="aboutBrowserStatus">Checking…</strong></div>
       <div><span>Service worker</span><strong id="aboutSwStatus">Checking…</strong></div>
     </div>
+    <section class="about-updates-card" aria-labelledby="aboutUpdatesTitle"><h3 id="aboutUpdatesTitle">App updates</h3>
     <p id="aboutUpdateStatus" class="hint about-status" role="status" aria-live="polite">Check for the latest SchoolHub release.</p>
     <div class="about-actions">
-      <button type="button" id="aboutCheckUpdateBtn" class="btn-primary">Check for updates</button>
-      <button type="button" id="aboutInstallUpdateBtn" class="btn-primary" disabled>Installed</button>
+      <button type="button" id="aboutCheckUpdateBtn" class="btn-secondary">Check for updates</button>
+      <button type="button" id="aboutInstallUpdateBtn" class="btn-primary" disabled hidden>Install update</button>
     </div>
+    </section>
     <p class="hint">Installing reloads SchoolHub. Save open form entries first. Saved records and queued changes stay on this device.</p>
     <p class="about-copyright">© All Rights Reserved · AlatiphA Multimedia</p>
     </div>

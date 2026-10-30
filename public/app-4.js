@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.16';
+const APP_VERSION = '40.1.19';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -2008,6 +2008,10 @@ document.addEventListener('click', e => {
   }
 });
 
+document.getElementById('profileCloseBtn').addEventListener('click',()=>{
+  document.getElementById('profileDropdown').classList.add('hidden');
+  document.getElementById('profileBtn').focus();
+});
 const accountMenuButton=document.getElementById('profileBtn'),accountMenuDropdown=document.getElementById('profileDropdown');
 new MutationObserver(()=>accountMenuButton.setAttribute('aria-expanded',String(!accountMenuDropdown.classList.contains('hidden')))).observe(accountMenuDropdown,{attributes:true,attributeFilter:['class']});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!accountMenuDropdown.classList.contains('hidden')){accountMenuDropdown.classList.add('hidden');accountMenuButton.focus();}});
