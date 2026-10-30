@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.20';
+const APP_VERSION = '40.1.22';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -417,33 +417,48 @@ function updateOfflineModeBanner(message) {
   const waiting = navigator.onLine !== false && offlineAuthenticatedMode && !checking;
   const offline = navigator.onLine === false || (offlineAuthenticatedMode && !checking);
   const pending = pendingSyncCountForCurrentSchool();
+  const writeFailed = pending > 0 && (syncableFields().some(field => syncErrors.has(field.key)) || (typeof operationsHasErrors === 'function' && operationsHasErrors()) || (typeof pendingFeeSyncState === 'function' && !!pendingFeeSyncState().error));
+  const hydrationErrorText = typeof cloudHydrationStatusError === 'string' ? cloudHydrationStatusError : '';
+  const hydrationFailed = !!hydrationErrorText;
+  const failed = writeFailed || hydrationFailed;
+  const recovering = navigator.onLine !== false && (checking || waiting) && sessionDataReady;
+  const context = JSON.stringify([typeof sessionGeneration === 'undefined' ? null : sessionGeneration,typeof currentUid === 'undefined' ? null : currentUid,currentSchoolId]);
+  let recovery = updateOfflineModeBanner.recovery;
+  if (!recovering || recovery?.context !== context) {
+    if (recovery?.timer) clearTimeout(recovery.timer);
+    updateOfflineModeBanner.recovery = recovery = recovering ? {context,since:Date.now(),timer:null} : null;
+  }
+  if (recovery && !recovery.timer && Date.now()-recovery.since < 30000) {
+    recovery.timer=setTimeout(()=>{recovery.timer=null;if(updateOfflineModeBanner.recovery===recovery)updateOfflineModeBanner();},30000-(Date.now()-recovery.since));
+  }
+  const prolonged = !!recovery && Date.now()-recovery.since >= 30000;
+  const quietRecovery = recovering && !pending && !failed && !prolonged;
   const statusButton = document.getElementById('syncStatusBtn');
   if (statusButton) {
-    const writeFailed = pending > 0 && (syncableFields().some(field => syncErrors.has(field.key)) || (typeof operationsHasErrors === 'function' && operationsHasErrors()) || (typeof pendingFeeSyncState === 'function' && !!pendingFeeSyncState().error));
-    const hydrationErrorText = typeof cloudHydrationStatusError === 'string' ? cloudHydrationStatusError : '';
-    const hydrationFailed = !!hydrationErrorText;
-    const failed = writeFailed || hydrationFailed;
-    const quietCheck = checking && !reconnecting && !pending && !failed && sessionDataReady;
     statusButton.classList.toggle('hidden', !currentSchoolId || currentStatus !== 'active');
-    statusButton.dataset.state = waiting ? 'pending' : offline ? 'offline' : failed ? 'error' : quietCheck ? 'saved' : checking ? 'pending' : pending ? 'pending' : 'saved';
-    statusButton.textContent = waiting ? 'Waiting to reconnect' : offline ? (pending ? pending + ' pending' : 'Offline')
-      : hydrationFailed ? 'Sync issue'
-      : writeFailed ? pending + ' unsynced'
-      : quietCheck ? 'Saved on device'
-      : checking ? 'Checking…'
-      : !sessionDataReady ? 'Checking…'
-      : hydrationFailed ? 'Sync issue'
-      : writeFailed ? pending + ' unsynced' : pending ? pending + ' syncing' : 'Up to date';
-    statusButton.title = waiting ? 'A network connection is detected, but SchoolHub has not verified your account and cloud connection. Retrying about every 10 seconds while open; changes remain saved on this device. Open Sync Center.' : quietCheck ? 'No pending changes on this device. A routine connection check is running in the background. Open Sync Center.' : checking ? 'Checking your account and refreshing school data. Changes remain saved on this device until verified. Open Sync Center.' : hydrationFailed ? `Core school data check ended with an error: ${hydrationErrorText}. Open Sync Center to retry.`
+    statusButton.dataset.state = failed ? 'error' : quietRecovery ? 'saved' : waiting ? 'pending' : offline ? 'offline' : checking || pending ? 'pending' : 'saved';
+    statusButton.textContent = navigator.onLine === false ? (pending ? pending + ' pending' : 'Offline')
+      : failed ? (hydrationFailed ? 'Sync issue' : pending + ' unsynced')
+      : quietRecovery ? 'Saved on device'
+      : waiting ? 'Waiting to reconnect' : offline ? (pending ? pending + ' pending' : 'Offline')
+      : checking || !sessionDataReady ? 'Checking…'
+      : pending ? pending + ' syncing' : 'Up to date';
+    statusButton.title = failed ? 'Synchronization needs attention. Changes remain saved on this device. Open Sync Center.'
+      : quietRecovery ? 'Saved data is available. A routine connection check is running in the background; cloud access will resume after verification. Open Sync Center.'
+      : waiting ? 'SchoolHub is retrying account and cloud verification about every 10 seconds while open. Changes remain saved on this device. Open Sync Center.'
+      : checking ? 'Checking your account and safely syncing saved changes. Open Sync Center.'
       : pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
       : offline ? 'Offline. No pending record changes. Open Sync Center.' : 'No pending record changes on this device. Open Sync Center.';
     statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
   }
-  banner.classList.toggle('hidden', !offline && !pending && !reconnecting);
-  banner.classList.toggle('is-reconnecting', reconnecting);
+  banner.classList.toggle('hidden', quietRecovery || (!offline && !pending && !reconnecting && !prolonged && !failed));
+  banner.classList.toggle('is-reconnecting', reconnecting && !quietRecovery);
   const title = banner.querySelector('.offline-mode-title');
   const detail = banner.querySelector('.offline-mode-detail');
-  if (checking) {
+  if (failed) {
+    if (title) title.textContent = 'Sync needs attention';
+    if (detail) detail.textContent = hydrationErrorText || 'Changes remain saved on this device. Open Sync Center to review and retry.';
+  } else if (checking) {
     if (title) title.textContent = reconnecting ? 'Reconnecting…' : 'Checking saved changes…';
     if (detail) detail.textContent = message || 'Checking your account and safely syncing pending changes.';
   } else if (waiting) {
