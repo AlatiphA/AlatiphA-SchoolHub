@@ -1008,3 +1008,10 @@
 #aboutDialog .about-updates-card button{flex:1 1 160px;width:auto;min-height:44px;margin:0;}
 #aboutDialog #aboutCheckUpdateBtn{border-radius:10px;border:1px solid var(--rule);background:var(--surface);color:var(--paper);}
 #aboutDialog #aboutInstallUpdateBtn[hidden]{display:none!important;}
+
+/* Long billing references must wrap within flex cards on small screens. */
+#view-billing :is(.billing-section,.billing-pending,.billing-note){min-width:0;max-width:100%;box-sizing:border-box;}
+#view-billing .billing-pending>span{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:normal;white-space:normal;flex:1 1 100%;line-height:1.5;}
+#view-billing .billing-pending>button{max-width:100%;box-sizing:border-box;white-space:normal;}
+#view-billing .billing-note>span{min-width:0;overflow-wrap:anywhere;}
+@media(max-width:600px){#view-billing .billing-pending>button{width:100%;}#view-billing .billing-note{flex-direction:column;}}
