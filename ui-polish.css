@@ -1015,3 +1015,10 @@
 #view-billing .billing-pending>button{max-width:100%;box-sizing:border-box;white-space:normal;}
 #view-billing .billing-note>span{min-width:0;overflow-wrap:anywhere;}
 @media(max-width:600px){#view-billing .billing-pending>button{width:100%;}#view-billing .billing-note{flex-direction:column;}}
+
+/* Header controls share the notification bell's neutral appearance. */
+.topbar :is(.theme-toggle,.profile-btn,.sync-status-badge,.notification-btn){
+ background:var(--surface);color:var(--paper);border:1px solid color-mix(in srgb,var(--paper) 20%,transparent);box-shadow:none;
+}
+.topbar :is(.theme-toggle,.profile-btn,.sync-status-badge,.notification-btn):is(:hover,:active){background:color-mix(in srgb,var(--paper) 6%,var(--surface));}
+.topbar :is(.theme-toggle,.profile-btn,.sync-status-badge,.notification-btn):focus-visible{outline:2px solid var(--paper);outline-offset:3px;}
