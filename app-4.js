@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.23';
+const APP_VERSION = '40.1.24';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -1687,7 +1687,8 @@ function renderPendingSyncData() {
   }
   const fees = pendingFeeSyncState();
   if (fees.count) lines.push('School fees: ' + fees.count + ' pending.' + (fees.error ? '\n  Last error: ' + fees.error : ''));
-  el.textContent = lines.length ? lines.join('\n') + '\nSaved edits are retained. A conflict needs review; retrying does not replace the cloud record.' : 'No pending school data edits on this device.';
+  if(fees.error)lines.push('Open Fees & Receipts to review rejected fee requests. A missing fee-edit reason can be corrected and resubmitted there. Fee requests are separate from the conflicting-edits list below.');
+  el.textContent = lines.length ? lines.join('\n') + '\nSaved edits are retained. Pending uploads are not necessarily conflicts. Review each error in its own section; retrying does not overwrite conflicting cloud records.' : 'No pending school data edits on this device.';
   if (typeof window !== 'undefined') window.SchoolHubConflictReview?.refresh();
 }
 

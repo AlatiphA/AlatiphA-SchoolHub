@@ -109,6 +109,22 @@ function register({onCall,HttpsError,db}){
     const itemId=key('fee-item',requestId),item={categoryId,categoryName:cat.name,name,term,year,amount,scopeType,classIds,studentId,targetCount:targets.length,active:true,cancelled:false,revision:0,isTestData,createdAt:stamp,createdBy:actor};tx.set(col(school,'feeItems').doc(itemId),item);
     for(const pupil of targets){const p=pupil.data(),chargeId=key('charge',itemId,pupil.id);tx.set(col(school,'pupilCharges').doc(chargeId),{studentId:pupil.id,studentName:p.name||'',classId:p.classId||'',className:classMap.get(p.classId)?.name||'',feeItemId:itemId,categoryId,categoryName:cat.name,itemName:name,term,year,baseAmount:amount,adjustment:0,paid:0,cancelled:false,revision:0,isTestData,createdAt:stamp,createdBy:actor});}
     result={saved:true,itemId,created:targets.length};details={itemId,categoryId,name,term,year,amount,scopeType,classIds,studentId,isTestData};
+   }else if(action==='applyExistingFee'){
+    const itemId=str(d.itemId,'Fee item',80),ref=col(school,'feeItems').doc(itemId),itemSnap=await tx.get(ref);
+    if(!itemSnap.exists)fail('not-found','Fee item not found.');const item=itemSnap.data();
+    if(item.cancelled||item.active===false||item.isLegacy)fail('failed-precondition','Choose an active, non-migrated fee item.');
+    if(d.revision!==item.revision)fail('aborted','This fee item changed. Refresh and review the amount and learners again.');
+    const ids=Array.isArray(d.studentIds)?[...new Set(d.studentIds.map(x=>str(x,'Pupil',100)))]:[];
+    if(!ids.length||ids.length>100)fail('invalid-argument','Select between 1 and 100 learners.');
+    const students=(await tx.get(col(school,'students'))).docs,classes=(await tx.get(col(school,'classes'))).docs,classMap=new Map(classes.map(x=>[x.id,x.data()]));
+    const targets=ids.map(id=>{const doc=students.find(x=>x.id===id),p=doc?.data();if(!p||p.isActive===false)fail('failed-precondition','A selected learner is no longer active. Refresh and review again.');
+     const allowed=item.scopeType==='allClasses'||item.scopeType==='pupil'&&item.studentId===id||['class','classes'].includes(item.scopeType)&&(item.classIds||[]).includes(p.classId);
+     if(!allowed)fail('permission-denied','A selected learner is outside this fee item’s original scope.');return {id,p};});
+    const existing=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot),charged=new Set(existing.filter(x=>x.feeItemId===itemId).map(x=>x.studentId));
+    const missing=targets.filter(x=>!charged.has(x.id));
+    for(const {id,p} of missing){const chargeId=key('charge',itemId,id);tx.set(col(school,'pupilCharges').doc(chargeId),{studentId:id,studentName:p.name||'',classId:p.classId||'',className:classMap.get(p.classId)?.name||'',feeItemId:itemId,categoryId:item.categoryId,categoryName:item.categoryName||'',itemName:item.name,term:item.term,year:item.year,baseAmount:money(item.amount,{positive:true}),adjustment:0,paid:0,cancelled:false,revision:0,isTestData:item.isTestData===true,createdAt:stamp,createdBy:actor});}
+    if(missing.length)tx.set(ref,{...item,targetCount:existing.filter(x=>x.feeItemId===itemId).length+missing.length,revision:Number(item.revision||0)+1,updatedAt:stamp,updatedBy:actor});
+    result={saved:true,created:missing.length,skipped:targets.length-missing.length};details={itemId,studentIds:missing.map(x=>x.id),created:missing.length,skipped:result.skipped,isTestData:item.isTestData===true};
    }else if(action==='editFeeItem'){
     const itemId=str(d.itemId,'Fee item',80),ref=col(school,'feeItems').doc(itemId),itemSnap=await tx.get(ref);if(!itemSnap.exists)fail('not-found','Fee item not found.');const item=itemSnap.data();if(d.revision!==item.revision)fail('aborted','This fee item changed. Refresh before editing.');if(item.cancelled)fail('failed-precondition','A cancelled fee item cannot be edited.');if(item.isLegacy)fail('failed-precondition','Migrated v40 fee items are historical. Adjust individual pupil charges instead.');
     const categoryId=str(d.categoryId||item.categoryId,'Fee category',80),catSnap=await tx.get(col(school,'feeCategories').doc(categoryId));if(!catSnap.exists||catSnap.data().active===false||catSnap.data().isSystem)fail('failed-precondition','Choose an active reusable fee category.');const cat=catSnap.data();

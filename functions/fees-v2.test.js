@@ -103,3 +103,26 @@ test('all v2 financial mutations require the active Head Teacher',async()=>{
   await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'createCategory',requestId:rid(uid==='teacher'?1:2),name:'Nope'},uid)),e=>e.code==='permission-denied');
  }
 });
+test('existing fee applies only to selected uncharged learners and preserves paid, discounted and cancelled charges',async()=>{
+ const f=fixture(),categoryId=await category(f),created=await item(f,{categoryId});
+ f.records.set('schools/s/students/new',{name:'New learner',classId:'c1',isActive:true});
+ const before=collection(f.records,'pupilCharges');const first=before[0];f.records.set('schools/s/pupilCharges/'+first.id,{...first,paid:1000,adjustment:-200,cancelled:true});
+ const original=structuredClone(collection(f.records,'pupilCharges'));
+ const request={action:'applyExistingFee',requestId:rid(80),itemId:created.itemId,revision:0,studentIds:['new','new','p1','p2']};
+ const r=await f.handlers.updateSchoolFees(f.req(request));assert.equal(r.created,1);assert.equal(r.skipped,2);
+ const newCharge=collection(f.records,'pupilCharges').find(x=>x.studentId==='new');assert.equal(newCharge.baseAmount,30000);assert.equal(newCharge.feeItemId,created.itemId);assert.equal(newCharge.paid,0);
+ assert.deepEqual(collection(f.records,'pupilCharges').filter(x=>x.studentId!=='new'),original);
+ assert.deepEqual(await f.handlers.updateSchoolFees(f.req(request)),r);assert.equal(collection(f.records,'pupilCharges').length,3);
+ const retry=await f.handlers.updateSchoolFees(f.req({...request,requestId:rid(81),revision:1,studentIds:['new']}));assert.equal(retry.created,0);assert.equal(retry.skipped,1);
+});
+test('existing fee rejects stale revisions, out-of-scope pupils and unauthorized users without writes',async()=>{
+ const f=fixture(),categoryId=await category(f),created=await item(f,{categoryId});const original=structuredClone([...f.records]);
+ for(const [change,uid,code] of [[{revision:5},'head','aborted'],[{studentIds:['p3']},'head','permission-denied'],[{studentIds:['p4']},'head','failed-precondition'],[{},'teacher','permission-denied'],[{studentIds:[]},'head','invalid-argument']]){
+ await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'applyExistingFee',requestId:rid(90),itemId:created.itemId,revision:0,studentIds:['p1'],...change},uid)),e=>e.code===code);assert.deepEqual([...f.records],original);
+ }
+});
+test('cancelled and migrated fee items cannot be extended; failed commit is atomic',async()=>{
+ const f=fixture(),categoryId=await category(f),created=await item(f,{categoryId});const path='schools/s/feeItems/'+created.itemId,original=f.records.get(path);
+ for(const flag of [{cancelled:true},{isLegacy:true}]){f.records.set(path,{...original,...flag});await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'applyExistingFee',requestId:rid(95),itemId:created.itemId,revision:0,studentIds:['p1']})),e=>e.code==='failed-precondition');}
+ f.records.set(path,original);f.records.set('schools/s/students/new',{name:'New',classId:'c1'});const before=structuredClone([...f.records]);f.setFail();await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'applyExistingFee',requestId:rid(96),itemId:created.itemId,revision:0,studentIds:['new']})));assert.deepEqual([...f.records],before);
+});
