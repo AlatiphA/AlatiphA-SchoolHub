@@ -27,3 +27,17 @@ test('reminder recipients expose only the relevant selector and retain previous 
  for(const scope of ['single','class','all','selected','single']){controls.feeReminderScope.value=scope;c.feeReminderRecipientFields(host);for(const [id,visible] of [['feeReminderPupil',scope==='single'],['feeReminderClass',scope==='class']]){assert.equal(labels[id].hidden,!visible);assert.equal(controls[id].disabled,!visible);}}
  assert.equal(controls.feeReminderPupil.value,'pupil-1');assert.equal(controls.feeReminderClass.value,'class-1');
 });
+test('statement recipients support single, class, all and selected without stale selector leakage',()=>{
+ const c={};vm.createContext(c);vm.runInContext(source.slice(source.indexOf('function feeStatementRecipients('),source.indexOf('function feeParentHeader(')),c);
+ const students=[{id:'a',name:'Amy',classId:'1'},{id:'b',name:'Ben',classId:'2'},{id:'c',name:'Inactive',active:false,classId:'1'}];
+ const ids=options=>Array.from(c.feeStatementRecipients(students,options),s=>s.id);
+ assert.deepEqual(ids({scope:'single',studentId:'b',classId:'1'}),['b']);
+ assert.deepEqual(ids({scope:'class',classId:'1',studentId:'b'}),['a']);
+ assert.deepEqual(ids({scope:'class'}),[]);assert.deepEqual(ids({scope:'all',classId:'1',studentId:'b'}),['a','b']);
+ assert.deepEqual(ids({scope:'selected',selected:new Set(['b','c'])}),['b']);
+ assert.deepEqual(ids({scope:'selected'}),[]);
+ const controls={feeStatementScope:{value:'single'},feeStatementPupil:{value:'b',label:{},closest(){return this.label;}},feeStatementClass:{value:'1',label:{},closest(){return this.label;}},feeStatementCsv:{},feeStatementPrint:{},feeStatementBatchPrint:{},feeStatementView:{}};
+ const host={querySelector:id=>controls[id.slice(1)]};
+ for(const scope of ['single','class','all','selected','single']){controls.feeStatementScope.value=scope;c.feeStatementRecipientFields(host);assert.equal(controls.feeStatementPupil.label.hidden,scope!=='single');assert.equal(controls.feeStatementClass.label.hidden,scope!=='class');assert.equal(controls.feeStatementCsv.hidden,scope!=='single');assert.equal(controls.feeStatementBatchPrint.hidden,scope==='single');}
+ assert.equal(controls.feeStatementClass.value,'1');assert.equal(controls.feeStatementPupil.value,'b');
+});

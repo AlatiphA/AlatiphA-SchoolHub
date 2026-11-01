@@ -1073,3 +1073,5 @@
 }
 
 #app #view-fees #feesWrap label[hidden]{display:none!important;}
+
+#app #view-fees :is(#feeStatementCsv,#feeStatementPrint,#feeStatementBatchPrint)[hidden]{display:none!important;}
