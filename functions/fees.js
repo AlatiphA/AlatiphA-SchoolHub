@@ -131,6 +131,18 @@ function register({onCall,HttpsError,db}){
     const linked=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot).filter(x=>x.feeItemId===itemId),name=str(d.name,'Fee item name',100),amount=money(d.amount,{positive:true}),reason=str(d.reason,'Reason for fee edit',200);if(linked.length>450)fail('failed-precondition','This fee item is too large to edit safely in one transaction.');
     for(const a of linked)if(!a.cancelled&&amount+Number(a.adjustment||0)<Number(a.paid||0))fail('failed-precondition',`The new charge for ${a.studentName||'a pupil'} would be below payments already received. Void incorrect payments or adjust the pupil first.`);
     tx.set(ref,{...item,name,amount,categoryId,categoryName:cat.name,revision:Number(item.revision||0)+1,updatedAt:stamp,updatedBy:actor});for(const a of linked)tx.set(col(school,'pupilCharges').doc(a.id),{...a,itemName:name,categoryId,categoryName:cat.name,baseAmount:amount,revision:Number(a.revision||0)+1});details={itemId,name,amount,categoryId,previousAmount:item.amount,reason,isTestData:item.isTestData===true};result={saved:true,updated:linked.length};
+   }else if(action==='deleteFeeItem'){
+    const itemId=str(d.itemId,'Fee item',80),reason=str(d.reason,'Deletion reason',200),ref=col(school,'feeItems').doc(itemId),itemSnap=await tx.get(ref);
+    if(!itemSnap.exists)fail('not-found','Fee item not found.');const item=itemSnap.data();
+    if(item.isLegacy||item.isSystem)fail('failed-precondition','Migrated or system fee items cannot be permanently deleted.');
+    if(d.revision!==item.revision)fail('aborted','This fee item changed. Refresh and review before deleting.');
+    const linked=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot).filter(x=>x.feeItemId===itemId),ids=new Set(linked.map(x=>x.id));
+    const payments=(await tx.get(col(school,'feePayments'))).docs.map(snapshot);
+    const hasReceipt=payments.some(p=>p.feeItemId===itemId||ids.has(p.chargeId)||ids.has(p.accountId)||(p.allocations||[]).some(a=>a.feeItemId===itemId||ids.has(a.chargeId)||ids.has(a.accountId)));
+    if(hasReceipt||linked.some(x=>Number(x.paid||0)!==0||x.isLegacy||x.legacyAccountId))fail('failed-precondition','This fee item has payment, receipt or migrated financial history and cannot be deleted. Use Cancel where permitted. Voided receipts still count as history.');
+    if(linked.length>450)fail('failed-precondition','This fee item is too large to delete safely in one transaction.');
+    for(const charge of linked)tx.delete(col(school,'pupilCharges').doc(charge.id));tx.delete(ref);
+    result={saved:true,deleted:linked.length,itemDeleted:true};details={itemId,name:item.name,term:item.term,year:item.year,amount:item.amount,reason,deleted:linked.length,isTestData:item.isTestData===true};
    }else if(action==='cancelFeeItem'){
     const itemId=str(d.itemId,'Fee item',80),reason=str(d.reason,'Cancellation reason',200),ref=col(school,'feeItems').doc(itemId),itemSnap=await tx.get(ref);if(!itemSnap.exists)fail('not-found','Fee item not found.');const item=itemSnap.data();if(d.revision!==item.revision)fail('aborted','This fee item changed. Refresh before cancelling.');if(item.cancelled)fail('failed-precondition','This fee item is already cancelled.');if(item.isLegacy)fail('failed-precondition','Migrated v40 fee items cannot be cancelled in bulk. Review their pupil charges individually.');
     const linked=(await tx.get(col(school,'pupilCharges'))).docs.map(snapshot).filter(x=>x.feeItemId===itemId&&!x.cancelled);if(linked.length>450)fail('failed-precondition','This fee item is too large to cancel safely in one transaction.');if(linked.some(x=>Number(x.paid||0)>0))fail('failed-precondition','Void payments allocated to this fee item before cancelling it.');

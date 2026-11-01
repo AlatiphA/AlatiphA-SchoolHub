@@ -126,3 +126,23 @@ test('cancelled and migrated fee items cannot be extended; failed commit is atom
  for(const flag of [{cancelled:true},{isLegacy:true}]){f.records.set(path,{...original,...flag});await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'applyExistingFee',requestId:rid(95),itemId:created.itemId,revision:0,studentIds:['p1']})),e=>e.code==='failed-precondition');}
  f.records.set(path,original);f.records.set('schools/s/students/new',{name:'New',classId:'c1'});const before=structuredClone([...f.records]);f.setFail();await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'applyExistingFee',requestId:rid(96),itemId:created.itemId,revision:0,studentIds:['new']})));assert.deepEqual([...f.records],before);
 });
+test('permanent fee deletion removes only its unpaid charges and retains an idempotent audit result',async()=>{
+ const f=fixture(),categoryId=await category(f),one=await item(f,{categoryId}),two=await item(f,{categoryId,name:'Other fee',n:3});
+ const other=collection(f.records,'pupilCharges').filter(x=>x.feeItemId===two.itemId),request={action:'deleteFeeItem',itemId:one.itemId,revision:0,reason:'Duplicate item',requestId:rid(110)};
+ const result=await f.handlers.updateSchoolFees(f.req(request));assert.equal(result.deleted,2);assert(!f.records.has('schools/s/feeItems/'+one.itemId));assert.deepEqual(collection(f.records,'pupilCharges'),other);assert(f.records.has('schools/s/students/p1'));assert(f.records.has('schools/s/feeItems/'+two.itemId));
+ const event=f.records.get('schools/s/feeEvents/'+request.requestId);assert.equal(event.action,'deleteFeeItem');assert.equal(event.reason,'Duplicate item');assert.deepEqual(await f.handlers.updateSchoolFees(f.req(request)),result);
+});
+test('any linked receipt, even voided or legacy allocations, prevents permanent fee deletion',async()=>{
+ for(const kind of ['paid','direct-item','allocation-item','allocation-charge','legacy-account','voided']){
+  const f=fixture(),categoryId=await category(f),one=await item(f,{categoryId}),charge=collection(f.records,'pupilCharges')[0];
+  if(kind==='paid')f.records.set('schools/s/pupilCharges/'+charge.id,{...charge,paid:1});
+  else {const payment=kind==='direct-item'?{feeItemId:one.itemId}:kind==='allocation-item'?{allocations:[{feeItemId:one.itemId}]}:kind==='legacy-account'?{accountId:charge.id}:kind==='voided'?{voided:true,allocations:[{chargeId:charge.id}]}:{allocations:[{chargeId:charge.id}]};f.records.set('schools/s/feePayments/receipt',payment);}
+  const before=structuredClone([...f.records]);await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'deleteFeeItem',itemId:one.itemId,revision:0,reason:'Duplicate',requestId:rid(111)})),e=>e.code==='failed-precondition');assert.deepEqual([...f.records],before);
+ }
+});
+test('permanent deletion enforces role, school, revision, reason and migrated-item safeguards',async()=>{
+ const f=fixture(),categoryId=await category(f),one=await item(f,{categoryId}),base={action:'deleteFeeItem',itemId:one.itemId,revision:0,reason:'Duplicate',requestId:rid(112)};
+ for(const [changes,uid,code]of [[{},'teacher','permission-denied'],[{expectedSchoolId:'other'},'head','failed-precondition'],[{revision:4},'head','aborted'],[{reason:''},'head','invalid-argument'],[{reason:'x'.repeat(201)},'head','invalid-argument']]){const before=structuredClone([...f.records]);await assert.rejects(f.handlers.updateSchoolFees(f.req({...base,...changes},uid)),e=>e.code===code);assert.deepEqual([...f.records],before);}
+ const path='schools/s/feeItems/'+one.itemId;f.records.set(path,{...f.records.get(path),isLegacy:true});await assert.rejects(f.handlers.updateSchoolFees(f.req(base)),e=>e.code==='failed-precondition');
+});
+test('failed permanent deletion commits nothing',async()=>{const f=fixture(),categoryId=await category(f),one=await item(f,{categoryId}),before=structuredClone([...f.records]);f.setFail();await assert.rejects(f.handlers.updateSchoolFees(f.req({action:'deleteFeeItem',itemId:one.itemId,revision:0,reason:'Duplicate',requestId:rid(113)})));assert.deepEqual([...f.records],before);});
