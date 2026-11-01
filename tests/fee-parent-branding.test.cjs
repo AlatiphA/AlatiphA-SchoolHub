@@ -13,3 +13,10 @@ test('statements and every reminder have branding and footer; print waits for al
  assert.ok(source.includes('parentDocument:true'));assert.ok(source.includes("querySelectorAll('.fee-parent-logo')"));
  const css=fs.readFileSync('ui-polish.css','utf8');assert.ok(css.includes('overflow-wrap:anywhere;padding:8px 4px'));assert.ok(css.includes('display:table-header-group'));
 });
+test('batch recipients filter current class and inactive learners without changing source order',()=>{
+ const c={};vm.createContext(c);vm.runInContext(source.slice(source.indexOf('function feeParentBatchStudents('),source.indexOf('function feeParentHeader(')),c);
+ const students=[{id:'b',name:'Zoe',classId:'1'},{id:'a',name:'Amy',classId:'2'},{id:'c',classId:'1',active:false},{id:'d',classId:'1',deleted:true}];
+ assert.deepEqual(Array.from(c.feeParentBatchStudents(students),s=>s.id),['a','b']);
+ assert.deepEqual(Array.from(c.feeParentBatchStudents(students,'1'),s=>s.id),['b']);assert.equal(students[0].id,'b');
+ assert.ok(source.includes('buildStatement(student.id,false)'));assert.ok(source.includes("if(scope==='all')return all"));
+});

@@ -1049,3 +1049,25 @@
  #feePrintDialog .fee-reminder-notice{break-inside:auto;}
  #feePrintDialog .fee-parent-footer{color:#444!important;}
 }
+
+/* Compact parent copies: one new learner per page, with natural continuation for long histories. */
+@media print{
+ #feePrintDialog .fee-print-box{padding:0!important;font-size:9pt!important;line-height:1.2!important;}
+ #feePrintDialog :is(.fee-statement,.fee-reminder-notice){margin:0!important;padding:0!important;border:0!important;line-height:1.2!important;border-radius:0;}
+ #feePrintDialog .fee-statement+.fee-statement,#feePrintDialog .fee-reminder-notice+.fee-reminder-notice{break-before:page;}
+ #feePrintDialog .fee-statement-head{padding:0 0 6px;margin:0 0 8px;}
+ #feePrintDialog .fee-parent-logo{width:48px;height:48px;margin:0 auto 4px;}
+ #feePrintDialog .fee-statement-head h3{font-size:13pt;margin:2px 0;}
+ #feePrintDialog .fee-statement-head p{margin:1px 0;font-size:9pt;}
+ #feePrintDialog .fee-document-title{margin:6px 0 8px;}
+ #feePrintDialog .fee-document-title h4{font-size:11pt;margin:0 0 2px;}
+ #feePrintDialog .fee-parent-details{grid-template-columns:1fr 1fr;gap:3px 12px;margin:8px 0;}
+ #feePrintDialog .fee-kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:8px 0;}
+ #feePrintDialog .fee-kpis>div{padding:5px;border-radius:0;}
+ #feePrintDialog :is(.fee-statement,.fee-reminder-notice)>p{margin:6px 0;}
+ #feePrintDialog :is(.fee-statement,.fee-reminder-notice)>h4{font-size:10pt;margin:8px 0 4px;break-after:avoid;}
+ #feePrintDialog .fee-summary-table{font-size:8pt;margin:4px 0 8px;}
+ #feePrintDialog .fee-summary-table :is(th,td){padding:4px 3px;line-height:1.2;}
+ #feePrintDialog .fee-parent-footer{margin-top:10px;padding-top:5px;font-size:8pt;}
+ #feePrintDialog .fee-statement-note{font-size:8pt;margin:6px 0;}
+}
