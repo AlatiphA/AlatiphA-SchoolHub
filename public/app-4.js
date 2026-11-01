@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.31';
+const APP_VERSION = '40.1.32';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -10371,7 +10371,7 @@ function mergeCloudCollection(field, cloudItems, authoritative) {
   DB.set(KEYS[field], merged, {skipCloudSync:true});
 }
 
-function pullCloudData(sessionToken) {
+function pullCloudData(sessionToken, { background = false } = {}) {
   if (!FIREBASE_ENABLED || !currentSchoolId) return Promise.resolve();
   const token = sessionToken == null ? sessionGeneration : sessionToken;
   const uid = currentUid;
@@ -10382,7 +10382,9 @@ function pullCloudData(sessionToken) {
   let duplicateRepair = null;
   if (!valid()) return Promise.resolve();
   cloudHydrationInProgress = true;
-  sessionDataReady = false;
+  // A verified workspace stays navigable during routine refresh. The hydration
+  // barrier still blocks cloud writes; only initial session loading hides data.
+  if (!background) sessionDataReady = false;
   cloudHydrationStatusError = '';
   updateOfflineModeBanner();
   const hydrationWatchdog = setTimeout(() => {
@@ -10897,7 +10899,7 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
     const token = sessionGeneration, uid = currentUid, school = currentSchoolId;
     const refreshed = offlineAuthenticatedMode || ['app-visible','app-focus','app-resume','online','foreground-retry'].includes(source);
     if (offlineAuthenticatedMode) await revalidateAndSyncAfterReconnect();
-    else if (['app-visible','app-focus','app-resume','online','foreground-retry'].includes(source)) await revalidateAndSyncAfterReconnect(source === 'online');
+    else if (['app-visible','app-focus','app-resume','online','foreground-retry','auth-session-recheck'].includes(source)) await revalidateAndSyncAfterReconnect(source === 'online' || source === 'auth-session-recheck');
     if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode || currentStatus !== 'active') return false;
     await flushAllSchoolHubWrites(refreshed);
     if (!isCurrentSession(token, uid, school) || !sessionReady || offlineAuthenticatedMode || currentStatus !== 'active') return false;
@@ -10949,6 +10951,12 @@ async function withSessionVerificationDeadline(promise) {
       }, 15000);
     })]);
   } finally { clearTimeout(timer); }
+}
+
+function resumeExistingSchoolHubSession(user) {
+  if (!user || user.uid !== currentUid || !currentSchoolId || currentStatus !== 'active' || !sessionReady || !sessionDataReady) return false;
+  runSchoolHubBackgroundSync('auth-session-recheck').catch(error => console.warn('Account recheck pending:', error));
+  return true;
 }
 
 function refreshAfterReconnectWhenMenuCloses(refresh) {
@@ -11041,7 +11049,7 @@ async function performReconnectRecovery() {
     await flushPendingCloudWrites();
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
 
-    await pullCloudData(token);
+    await pullCloudData(token, { background: true });
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
 
     // Routine recovery must not rebuild the page underneath an open account menu.
@@ -12221,6 +12229,9 @@ function initAuth() {
     // user state re-enter the authentication loading path. The sign-out
     // handler has already shown a clean login form immediately.
     if (manualSignOutInProgress && user) return;
+    // Repeated notification of the already-open account is a recheck, not a
+    // new login. Keep its current page, account menu and session generation.
+    if (resumeExistingSchoolHubSession(user)) return;
 
     const token = ++sessionGeneration;
 
