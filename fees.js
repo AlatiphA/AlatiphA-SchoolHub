@@ -184,7 +184,7 @@ async function renderSchoolFees(options={}){
  const host=document.getElementById('feesWrap'),generation=++feeViewGeneration,school=currentSchoolId,user=currentUid,session=sessionGeneration;
  const active=()=>generation===feeViewGeneration&&isCurrentSession(session,user,school)&&isHeadTeacher();
  if(!host)return;if(!isHeadTeacher()||!FIREBASE_ENABLED){host.textContent='Sign in as Head Teacher to manage fees.';return;}
- const silent=options.silent===true&&host.children.length>0,viewState=silent?feeCaptureViewState(host):null;
+ const silent=options.silent===true&&host.children.length>0;let viewState=silent?feeCaptureViewState(host):null;
  const pendingKey='schoolhub_fee_queue_'+school+'_'+user,cacheKey='schoolhub_fee_cache_'+school+'_'+user,legacyKey='schoolhub_fee_pending_'+school+'_'+user;
  const cachedData=feeReadCompatibleCache(cacheKey),cacheFirst=options.cacheFirst===true&&!silent&&!!cachedData;
  const legacyPending=localStorage.getItem(legacyKey);if(legacyPending){await feeWithLock(pendingKey,()=>{const q=feeQueueRead(pendingKey),request=JSON.parse(legacyPending);if(!q.some(x=>x.request.requestId===request.requestId))q.push({request,label:'Pending v40 fee operation'});localStorage.setItem(pendingKey,JSON.stringify(q));localStorage.removeItem(legacyKey);});}
@@ -207,12 +207,14 @@ async function renderSchoolFees(options={}){
   const pupilOptions=[...students].sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(s=>`<option value="${esc(s.id)}">${esc(s.name||'Unnamed pupil')} · ${esc(classes.find(c=>c.id===s.classId)?.name||'')}</option>`).join('');
   const categoryOptions=activeCategories.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   const queue=feeQueueRead(pendingKey);
+  // Capture the latest choices after the network wait, including sections closed during refresh.
+  if(silent)viewState=feeCaptureViewState(host);
   host.innerHTML=`
    <p>Manage reusable fee categories, term fee items, pupil charges, payments and receipts. This page records school transactions only; it does not collect or transfer money.</p>
    <div id="feeMessage" role="status"></div>
    <div class="fee-actions"><button id="feeRefresh" type="button" class="btn-secondary">Refresh balances</button><button id="feeExport" type="button" class="btn-secondary">Export fees backup (JSON)</button></div>
 
-   <details open><summary>Financial dashboard & reports</summary>
+   <details><summary>Financial dashboard & reports</summary>
     <p>Read-only financial analytics from the confirmed FIS ledger. Filters never change fee records.</p>
     <div class="fee-report-filters fee-form-grid">
      <label>Academic year<select id="feeReportYear"></select></label><label>Term<select id="feeReportTerm"><option value="">All terms</option><option>Term 1</option><option>Term 2</option><option>Term 3</option></select></label><label>Class<select id="feeReportClass"><option value="">All classes</option>${classOptions}</select></label><label>Category<select id="feeReportCategory"><option value="">All categories</option>${categories.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><label>Balance status<select id="feeReportStatus"><option value="all">All charges</option><option value="outstanding">Outstanding</option><option value="settled">Paid in full</option><option value="cancelled">Cancelled</option></select></label><label>Data<select id="feeReportDataMode"><option value="production">Production only</option><option value="all">Include test data</option><option value="test">Test data only</option></select></label>
@@ -222,7 +224,7 @@ async function renderSchoolFees(options={}){
     <div class="fee-report-grid"><article class="fee-report-panel"><h4>By category</h4><div id="feeReportByCategory"></div></article><article class="fee-report-panel"><h4>By class</h4><div id="feeReportByClass"></div></article><article class="fee-report-panel"><h4>By period</h4><div id="feeReportByPeriod"></div></article><article class="fee-report-panel"><h4>Payments by method</h4><div id="feeReportByMethod"></div></article></div>
    </details>
 
-   <details open><summary>Arrears management</summary>
+   <details><summary>Arrears management</summary>
     <p>Review unpaid balances due before or through the current school period. Future charges are excluded, and production records are shown by default.</p>
     <div class="fee-form-grid"><label>Class<select id="feeArrearsClass"><option value="">All classes</option>${classOptions}</select></label><label>Category<select id="feeArrearsCategory"><option value="">All categories</option>${categories.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'')).map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select></label><label>View<select id="feeArrearsMode"><option value="arrears">Previous-period arrears only</option><option value="due">Arrears + current term outstanding</option></select></label><label>Data<select id="feeArrearsDataMode"><option value="production">Production only</option><option value="all">Include test data</option><option value="test">Test data only</option></select></label></div>
     <label>Search pupil, guardian, phone, class, category or fee item<input id="feeArrearsSearch" type="search" placeholder="Search arrears"></label>
@@ -244,14 +246,14 @@ async function renderSchoolFees(options={}){
     <div class="fee-actions"><button id="feeReminderPreviewBtn" type="button" class="btn-primary">Preview reminder</button><button id="feeReminderCopy" type="button" class="btn-secondary">Copy message</button><button id="feeReminderWhatsApp" type="button" class="btn-secondary">Open WhatsApp</button><button id="feeReminderPrint" type="button" class="btn-secondary">Print / Save reminder PDF</button></div><div id="feeReminderPreview"></div>
    </details>
 
-   <details open><summary>Fee categories</summary>
+   <details><summary>Fee categories</summary>
     <p>Create reusable categories such as Tuition, PTA, Feeding, ICT, Transport or Examination Fees. A category already used by a fee item can be deactivated, but not renamed.</p>
     <div class="fee-form-grid"><label>Category name<input id="feeCategoryName" maxlength="80" placeholder="e.g. PTA"></label><label>Description<input id="feeCategoryDescription" maxlength="240" placeholder="Optional description"></label></div>
     <label class="fee-inline-check"><input id="feeCategoryTest" type="checkbox"> Mark as test data, eligible for Test Data Cleanup</label>
     <button id="feeCategoryAdd" type="button" class="btn-primary">Add category</button><div id="feeCategoryList" class="fee-card-grid"></div><div id="feeCategoryEditor"></div>
    </details>
 
-   <details open><summary>Create fee item</summary>
+   <details><summary>Create fee item</summary>
     <p>Each fee item creates a separate pupil charge, so one term can contain several fees without overwriting another.</p>
     <div class="fee-form-grid"><label>Category<select id="feeItemCategory">${categoryOptions||'<option value="">Create a category first</option>'}</select></label><label>Fee item name<input id="feeItemName" maxlength="100" placeholder="e.g. Term 1 PTA levy"></label><label>Term<select id="feeItemTerm">${['Term 1','Term 2','Term 3'].map(t=>`<option ${t===settings.currentTerm?'selected':''}>${t}</option>`).join('')}</select></label><label>Academic year<input id="feeItemYear" value="${esc(settings.currentYear||'')}" placeholder="2026/2027"></label><label>Amount per pupil (GH₵)<input id="feeItemAmount" type="number" min="0.01" step="0.01"></label><label>Apply to<select id="feeItemScope"><option value="class">One class</option><option value="classes">Multiple classes</option><option value="allClasses">All classes</option><option value="pupil">Individual pupil</option></select></label></div>
     <div id="feeScopeFields"></div><label class="fee-inline-check"><input id="feeItemTest" type="checkbox"> Mark this fee item and its pupil charges as test data</label><button id="feeItemCreate" type="button" class="btn-primary" ${activeCategories.length?'':'disabled'}>Create fee item</button>
