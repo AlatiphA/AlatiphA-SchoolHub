@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.27';
+const APP_VERSION = '40.1.28';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -10951,6 +10951,23 @@ async function withSessionVerificationDeadline(promise) {
   } finally { clearTimeout(timer); }
 }
 
+function refreshAfterReconnectWhenMenuCloses(refresh) {
+  const menu = document.getElementById('profileDropdown');
+  // Replace an older deferred refresh rather than accumulating reconnect work.
+  refreshAfterReconnectWhenMenuCloses.observer?.disconnect();
+  refreshAfterReconnectWhenMenuCloses.observer = null;
+  if (!menu || menu.classList.contains('hidden')) { refresh(); return; }
+  const observer = new MutationObserver(() => {
+    if (!menu.classList.contains('hidden')) return;
+    observer.disconnect();
+    refreshAfterReconnectWhenMenuCloses.observer = null;
+    // Finish the menu action first (including its navigation or dialog launch).
+    setTimeout(refresh, 0);
+  });
+  refreshAfterReconnectWhenMenuCloses.observer = observer;
+  observer.observe(menu, {attributes:true,attributeFilter:['class']});
+}
+
 async function performReconnectRecovery() {
   if (navigator.onLine === false || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active' || !sessionReady || !sessionDataReady || cloudHydrationInProgress) {
     updateOfflineModeBanner();
@@ -11027,12 +11044,24 @@ async function performReconnectRecovery() {
     await pullCloudData(token);
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
 
-    loadSettingsForm();
-    refreshProfileMenu();
-    renderHome(); renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
-    const restored = getSavedNavigation();
-    if (restored.view === 'attendance') { showView('attendance'); setAttendanceMode(restored.attendanceTab); }
-    else if (restored.view !== 'grades' || typeof preserveLiveGradeSheetAfterRecovery !== 'function' || !preserveLiveGradeSheetAfterRecovery()) showView(restored.view);
+    // Routine recovery must not rebuild the page underneath an open account menu.
+    // Read navigation when the refresh runs so a choice made during sync wins.
+    refreshAfterReconnectWhenMenuCloses(() => {
+      if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
+      const scrollX = window.scrollX, scrollY = window.scrollY;
+      loadSettingsForm();
+      refreshProfileMenu();
+      renderHome(); renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList();
+      // This is an existing workspace, not a navigation or session restoration.
+      // Keep the user's current view, open dialogs and scroll position intact.
+      const view = currentVisibleViewName();
+      if (isTeacher() && ['setup','staff','classes','subjects','billing','fees','manage-teachers'].includes(view)) {
+        showView('home'); // A changed role still removes access immediately.
+      } else {
+        if (view === 'grades' && (typeof preserveLiveGradeSheetAfterRecovery !== 'function' || !preserveLiveGradeSheetAfterRecovery())) renderGradesClassSelect();
+        window.scrollTo(scrollX, scrollY);
+      }
+    });
     startBackgroundImageSync(token, uidBefore, schoolBefore);
   } catch (error) {
     console.warn('Reconnect synchronization failed:', error);
