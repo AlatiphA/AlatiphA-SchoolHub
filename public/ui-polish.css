@@ -1071,3 +1071,5 @@
  #feePrintDialog .fee-parent-footer{margin-top:10px;padding-top:5px;font-size:8pt;}
  #feePrintDialog .fee-statement-note{font-size:8pt;margin:6px 0;}
 }
+
+#app #view-fees #feesWrap label[hidden]{display:none!important;}
