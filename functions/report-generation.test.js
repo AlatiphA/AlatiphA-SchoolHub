@@ -34,9 +34,10 @@ test('premium and batch reports are paid; Black & White singles request the serv
   await bw.context.generateSinglePDF(bw.student);
   assert.deepEqual(bw.deductions, []);
   assert.deepEqual(bw.requests, [{n:1, reportType:'bw-single'}]);
-  await bw.context.generateBatchPDF([bw.student, bw.student, { entries: [] }], {}, 3, {}, {});
+  await bw.context.generateBatchPDF([bw.student, bw.student, { entries: [] }], {}, 3, {name:'JHS 1'}, {});
   assert.deepEqual(bw.deductions, [2]);
   assert.equal(bw.downloads.length, 2);
+  assert.equal(bw.downloads[1], 'JHS_1_report_cards.pdf');
 });
 for (const option of ['failDraw', 'failOutput']) test(`${option} does not deduct or download`, async () => {
   const f = fixture({ [option]: true });

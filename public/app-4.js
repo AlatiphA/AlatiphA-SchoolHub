@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.33';
+const APP_VERSION = '40.1.34';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -8908,7 +8908,8 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   const Pdf = reportPdfConstructor();
   const doc = new Pdf();
   prepared.forEach((item,index)=>{if(index>0)doc.addPage();drawReportPage(doc,item.result,settings,positions,numOnRoll,classInfo,remarksAll[item.result.student.id]||{},item.assets);});
-  await downloadGeneratedReport(doc, 'class_report_cards.pdf', usable.length, 'paid', classInfo?.id||usable[0].student.classId);
+  const classFilename = String(classInfo?.name || 'class').trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/\s+/g, '_').replace(/[. ]+$/g, '').slice(0,120) || 'class';
+  await downloadGeneratedReport(doc, `${classFilename}_report_cards.pdf`, usable.length, 'paid', classInfo?.id||usable[0].student.classId);
   } finally { reportGenerationBusy = false; }
 }
 
