@@ -68,6 +68,8 @@ function register({onCall,HttpsError,db,admin}){
   let selected=null;const subjectCreates=[];
   if(d.action==='save'){
    if(!Array.isArray(d.assignedClassIds)||!d.assignedClassIds.length||!Array.isArray(d.assignedSubjectIds))fail('invalid-argument','Assign at least one class.');
+   const formClassIds=d.formClassIds===undefined?(u.formClassIds||[]).filter(id=>d.assignedClassIds.includes(id)):d.formClassIds;
+   if(!Array.isArray(formClassIds)||formClassIds.length>100||formClassIds.some(id=>typeof id!=='string'||!d.assignedClassIds.includes(id)))fail('invalid-argument','Form teacher classes must also be assigned classes.');
    const resolvedSubjectIds=[];
    const subjectName=value=>norm(value).normalize('NFKC').replace(/\s+/g,' ');
    let cloudSubjects=null;
@@ -99,7 +101,7 @@ function register({onCall,HttpsError,db,admin}){
     if(staff.some(s=>nameKey(s.name)===nameKey(name))&&!d.confirmSimilarName)fail('failed-precondition','A similar Staff name exists. Review it before confirming a different person.');
     selected={id:crypto.randomUUID(),name,email:u.email||'',role:'Teacher',createdAt:new Date().toISOString()};
    }
-   next.staffId=selected.id;next.assignedClassIds=[...new Set(d.assignedClassIds)];next.assignedSubjectIds=[...new Set(resolvedSubjectIds)];
+   next.formClassIds=[...new Set(formClassIds)];next.staffId=selected.id;next.assignedClassIds=[...new Set(d.assignedClassIds)];next.assignedSubjectIds=[...new Set(resolvedSubjectIds)];
    // Updating assignments must not silently reactivate a disabled account.
    next.status=u.status==='pending'?'active':u.status;
   }else if(d.action==='disable'){if(u.status!=='active')fail('failed-precondition','Only approved active teachers can be disabled.');next.status='disabled';}
@@ -108,7 +110,7 @@ function register({onCall,HttpsError,db,admin}){
    if(d.action==='reject'&&u.status!=='pending')fail('failed-precondition','Only pending requests can be rejected.');
    if(d.action==='remove'&&u.status==='pending')fail('failed-precondition','Reject pending requests instead.');
    delete next.staffId;delete next.staffLinkedAt;
-   if(d.action!=='unlink'){delete next.schoolId;delete next.role;next.assignedClassIds=[];next.assignedSubjectIds=[];next.status=d.action==='remove'?'removed':'rejected';}
+   if(d.action!=='unlink'){delete next.schoolId;delete next.role;next.assignedClassIds=[];next.assignedSubjectIds=[];next.formClassIds=[];next.status=d.action==='remove'?'removed':'rejected';}
   }else fail('invalid-argument','Unknown teacher action.');
   const retiringIdentities=['remove','reject'].includes(d.action)?await tx.get(school.collection('identityEmails').where('uid','==',id)):null;
   // All reads have completed; membership and both relationship ends commit together.

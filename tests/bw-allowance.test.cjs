@@ -26,11 +26,11 @@ const context=vm.createContext({exports:{},require:name=>{
 vm.runInContext(fs.readFileSync('functions/index.js','utf8'),context);
 const consume=context.exports.consumeReportCredits;
 records.set('users/head',{role:'headteacher',status:'active',schoolId:'school'});
-records.set('users/teacher',{role:'teacher',status:'active',schoolId:'school'});
+records.set('users/teacher',{role:'teacher',status:'active',schoolId:'school',assignedClassIds:['c1'],formClassIds:['c1']});
 records.set('schools/school',{profile:{currentTerm:'Term 1',currentYear:'2026/2027'}});
 const bill='schools/school/billing/account';
 records.set(bill,{testBalance:4});
-const req=(id,uid='head',reportType='bw-single',count=1)=>({auth:{uid},data:{requestId:id.padEnd(16,'_'),mode:'test',reportType,count}});
+const req=(id,uid='head',reportType='bw-single',count=1)=>({auth:{uid},data:{requestId:id.padEnd(16,'_'),mode:'test',reportType,count,classId:'c1'}});
 (async()=>{
   const results=await Promise.all(Array.from({length:11},(_,i)=>consume(req(`generation${i}`,i%2?'teacher':'head'))));
   assert.equal(results.filter(r=>r.consumed===0).length,10);

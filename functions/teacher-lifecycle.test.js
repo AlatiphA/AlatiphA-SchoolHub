@@ -88,3 +88,17 @@ test('matching saved subject names reuse the authoritative ID without duplicates
 test('ambiguous saved subject names fail closed without any writes',async()=>{const f=fixture();f.records.delete('schools/s/subjects/math');for(const id of ['one','two'])f.records.set('schools/s/subjects/'+id,{name:'Mathematics'});const before=structuredClone([...f.records]);await assert.rejects(f.handlers.manageTeacherLifecycle(f.req(recoverMath)),/Several saved subjects/);assert.deepEqual([...f.records],before);});
 test('subject recovery retains atomic rollback and does not run for a different school or teacher caller',async()=>{for(const mode of ['commit','school','role']){const f=fixture();f.records.delete('schools/s/subjects/math');const before=structuredClone([...f.records]);if(mode==='commit')f.setFail();await assert.rejects(f.handlers.manageTeacherLifecycle(f.req({...recoverMath,...(mode==='school'?{expectedSchoolId:'other'}:{})},mode==='role'?'teacher':'head')));assert.deepEqual([...f.records],before);}});
 test('recovery saves only selected subjects and preserves existing subject fields',async()=>{const f=fixture();f.records.delete('schools/s/subjects/math');await f.handlers.manageTeacherLifecycle(f.req({...recoverMath,localSubjects:[...recoverMath.localSubjects,{id:'extra',name:'Extra'}]}));assert(!f.records.has('schools/s/subjects/extra'));const before=structuredClone(f.records.get('schools/s/subjects/math'));await f.handlers.manageTeacherLifecycle(f.req({...recoverMath,localSubjects:[{id:'math',name:'Wrong name'}]}));assert.deepEqual(f.records.get('schools/s/subjects/math'),before);});
+
+test('form teacher assignment is explicit and never expands subject editing assignments',async()=>{
+ const f=fixture();await f.handlers.manageTeacherLifecycle(f.req({...save,formClassIds:['c1']}));
+ let u=f.records.get('users/teacher');assert.deepEqual(u.formClassIds,['c1']);assert.deepEqual(u.assignedSubjectIds,['math']);
+ // Old clients preserve a valid assignment, but removing a class removes its form responsibility.
+ await f.handlers.manageTeacherLifecycle(f.req(save));assert.deepEqual(f.records.get('users/teacher').formClassIds,['c1']);
+ await f.handlers.manageTeacherLifecycle(f.req({...save,assignedClassIds:['c2']}));assert.deepEqual(f.records.get('users/teacher').formClassIds,[]);
+ await f.handlers.manageTeacherLifecycle(f.req({...save,formClassIds:[]}));assert.deepEqual(f.records.get('users/teacher').formClassIds,[]);
+});
+test('invalid or unauthorized form assignments are atomic and removals clear report access',async()=>{
+ for(const formClassIds of [['c2'],['foreign'],['c1',5],'c1']){const f=fixture(),before=structuredClone([...f.records]);await assert.rejects(f.handlers.manageTeacherLifecycle(f.req({...save,formClassIds})),e=>e.code==='invalid-argument');assert.deepEqual([...f.records],before);}
+ const f=fixture();await assert.rejects(f.handlers.manageTeacherLifecycle(f.req({...save,formClassIds:['c1']},'teacher')),e=>e.code==='permission-denied');
+ await f.handlers.manageTeacherLifecycle(f.req({...save,formClassIds:['c1']}));await f.handlers.manageTeacherLifecycle(f.req({action:'remove',teacherUid:'teacher'}));assert.deepEqual(f.records.get('users/teacher').formClassIds,[]);
+});

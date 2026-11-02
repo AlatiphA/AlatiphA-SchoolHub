@@ -87,7 +87,7 @@ test('signed-in teachers cannot initialize or verify purchases', async () => {
 });
 
 function deductionRequest(count = 1, requestId = 'test-generation-0001') {
-  return { auth: { uid: 'head' }, data: { count, requestId, mode: 'test' } };
+  return { auth: { uid: 'head' }, data: { count, requestId, mode: 'test', classId:'c1' } };
 }
 test('single and batch deductions use only test credits and retries are idempotent', async () => {
   const f = fixture();
@@ -118,9 +118,9 @@ test('deductions validate identity, active role, count, mode and request ID', as
   f.records.get('users/head').status = 'disabled';
   await assert.rejects(f.exports.consumeReportCredits(deductionRequest()), { code: 'permission-denied' });
 });
-test('active teachers can consume test credits', async () => {
+test('assigned form teachers can consume test credits', async () => {
   const f = fixture();
-  f.records.get('users/head').role = 'teacher';
+  Object.assign(f.records.get('users/head'),{role:'teacher',assignedClassIds:['c1'],formClassIds:['c1']});
   f.records.get('schools/school/billing/account').testBalance = 1;
   assert.equal((await f.exports.consumeReportCredits(deductionRequest())).balance, 0);
 });
@@ -136,7 +136,7 @@ test('lifetime verification is school-owned, idempotent and does not mint credit
   assert.equal(account.lifetimeLicence,undefined);
   assert.equal(account.testBalance,0);
   f.records.set('users/new-head',{role:'headteacher',status:'active',schoolId:'school'});
-  f.records.set('users/teacher',{role:'teacher',status:'active',schoolId:'school'});
+  f.records.set('users/teacher',{role:'teacher',status:'active',schoolId:'school',assignedClassIds:['c1'],formClassIds:['c1']});
   for(const uid of ['new-head','teacher']) {
     const req=deductionRequest(30,'generation-'+uid+'-0001'); req.auth.uid=uid;
     assert.equal((await f.exports.consumeReportCredits(req)).consumed,0);
@@ -217,4 +217,12 @@ test('calendar expiry handles leap day and exact boundary',()=>{
  const a={testSchoolLicence:{active:true,schoolId:'s',expiresAt:'2029-10-14T12:00:00.000Z'}};
  const end=Date.parse(a.testSchoolLicence.expiresAt);
  assert.equal(context.activeSchoolLicence(a,'s','test',end-1),true);assert.equal(context.activeSchoolLicence(a,'s','test',end),false);
+});
+
+test('subject-only or foreign-class teachers cannot consume school report credits',async()=>{
+ const f=fixture();Object.assign(f.records.get('users/head'),{role:'teacher',assignedClassIds:['c1'],formClassIds:[]});
+ const balance=f.records.get('schools/school/billing/account').testBalance;
+ await assert.rejects(f.exports.consumeReportCredits(deductionRequest()),e=>e.code==='permission-denied');
+ f.records.get('users/head').formClassIds=['c2'];await assert.rejects(f.exports.consumeReportCredits(deductionRequest()),e=>e.code==='permission-denied');
+ assert.equal(f.records.get('schools/school/billing/account').testBalance,balance);
 });

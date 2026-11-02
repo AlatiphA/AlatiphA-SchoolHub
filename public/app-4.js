@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.32';
+const APP_VERSION = '40.1.33';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -259,6 +259,7 @@ function saveVerifiedLocalSession(user, data) {
     status: 'active',
     assignedClassIds: Array.isArray(data.assignedClassIds) ? data.assignedClassIds.map(String) : [],
     assignedSubjectIds: Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds.map(String) : [],
+    formClassIds: Array.isArray(data.formClassIds) ? data.formClassIds.map(String) : [],
     email: String(data.email || user.email || ''),
     displayName: String(data.displayName || user.displayName || ''),
     verifiedAt: Date.now()
@@ -813,6 +814,23 @@ function canAccessClass(classId) {
   return accessibleClassIds().indexOf(classId) !== -1;
 }
 
+function canPrintClassReports(classId){
+  return isHeadTeacher()||isActiveGuest()||(isTeacher()&&currentStatus==='active'&&canAccessClass(classId)&&Array.isArray(currentUserData?.formClassIds)&&currentUserData.formClassIds.includes(classId));
+}
+function reportSubjectsForClass(classId){return canPrintClassReports(classId)?sortSubjectsByOrder(DB.get(KEYS.subjects,[])):getAccessibleSubjects();}
+function confirmParentReportCompleteness(results){
+ const incomplete=results.filter(r=>r.entries.length<Number(r.subjectCount||0));
+ if(!incomplete.length)return true;
+ return confirm(`${incomplete.length} learner(s) have incomplete subject results. Check that all subject teachers have saved and synced their scores. Print these reports anyway?`);
+}
+async function requireParentReportAccess(classId){
+  if(!canPrintClassReports(classId)){alert('Only the Head Teacher or assigned class/form teacher can print complete parent report cards. Export your subject results from Grades instead.');return false;}
+  if(isActiveGuest())return true;
+  if(navigator.onLine===false||offlineAuthenticatedMode)return true; // Previously verified access; existing offline assets/fees safeguards still apply.
+  const token=sessionGeneration,uid=currentUid,school=currentSchoolId;
+  await safetyCall('authorizeParentReports',{classId,expectedSchoolId:school});
+  return isCurrentSession(token,uid,school)&&canPrintClassReports(classId);
+}
 function canAccessSubject(subjectId) {
   if (isHeadTeacher() || isActiveGuest()) return true;
   return Array.isArray(currentAssignedSubjectIds) && currentAssignedSubjectIds.indexOf(subjectId) !== -1;
@@ -1296,7 +1314,7 @@ function tourSlidesForTeacher() {
   },
   {
     "title": "6. Grades, remarks and reports",
-    "body": "Use assigned subjects to enter scores and save. Add remarks and prepare available reports. Fewer than six complete subject results produce an aggregate dash; check missing results before issuing the report."
+    "body": "Use assigned teaching subjects to enter scores and save. Export your subject results from Grades. Only the Head Teacher and assigned class/form teachers add class remarks and print complete parent reports. Fewer than six complete subject results produce an aggregate dash; check missing results before issuing the report."
   },
   {
     "title": "7. My Details and account security",
@@ -6854,7 +6872,7 @@ document.getElementById('exportGradesXlsxBtn').addEventListener('click', () => {
   }
   const simple = settings.reportLayout === 'simple';
   const students = getAccessibleStudents().filter(s => s.classId === classId);
-  const subjects = DB.get(KEYS.subjects, []);
+  const subjects = getAccessibleSubjects();
   if (!students.length || !subjects.length) { alert('Add students and subjects first.'); return; }
   const key = gradeKey(classId, settings.currentTerm, settings.currentYear);
   const classGrades = DB.get(KEYS.grades, {})[key] || {};
@@ -6923,7 +6941,7 @@ document.getElementById('importGradesXlsxInput').addEventListener('change', e =>
       return;
     }
 
-    const subjects = DB.get(KEYS.subjects, []);
+    const subjects = getAccessibleSubjects();
     const subjectCols = subjects.map(sub => simple
       ? { subject: sub, eIdx: header.indexOf(`${sub.name} - Exam (100)`) }
       : {
@@ -6939,12 +6957,12 @@ document.getElementById('importGradesXlsxInput').addEventListener('change', e =>
       byName[s.name.trim().toLowerCase()] = s;
     });
 
-    const ok = confirm(`This will replace all scores for this class, ${settings.currentTerm} ${settings.currentYear}, with what's in the file. Continue?`);
+    const ok = confirm(`This will replace scores for your assigned subjects for matched pupils in this class, ${settings.currentTerm} ${settings.currentYear}, with what's in the file. Continue?`);
     if (!ok) { e.target.value = ''; return; }
 
     const key = gradeKey(classId, settings.currentTerm, settings.currentYear);
     const allGrades = DB.get(KEYS.grades, {});
-    const classGrades = {};
+    const classGrades = JSON.parse(JSON.stringify(allGrades[key]||{}));
     let matched = 0, skipped = 0;
 
     for (let i = 1; i < rows.length; i++) {
@@ -6956,7 +6974,8 @@ document.getElementById('importGradesXlsxInput').addEventListener('change', e =>
       const student = (rowId && byId[rowId]) || byName[rowName];
       if (!student) { skipped++; continue; }
       matched++;
-      classGrades[student.id] = {};
+      classGrades[student.id] = {...(classGrades[student.id]||{})};
+      subjects.forEach(sub=>delete classGrades[student.id][sub.id]);
       subjectCols.forEach(sc => {
         const entry = {};
         if (!simple && sc.cIdx !== -1) {
@@ -7063,6 +7082,7 @@ function updateRemarksStudentSelect() {
 function renderRemarksClassSelect() {
   const sel = document.getElementById('remarksClassSelect');
   fillClassSelect(sel);
+  [...sel.options].forEach(option=>{if(option.value&&!canPrintClassReports(option.value))option.remove();});
   const savedClass = sel.value;
   remarksState.classId = savedClass || '';
   remarksState.index = 0;
@@ -7083,7 +7103,7 @@ function renderRemarksForm() {
   const saveBtn = document.getElementById('saveRemarksBtn');
   const saveNextBtn = document.getElementById('saveNextRemarksBtn');
 
-  if (classId && !canAccessClass(classId)) {
+  if (classId && !canPrintClassReports(classId)) {
     remarksState.students = [];
     wrap.innerHTML = '<p class="empty">You do not have access to this class.</p>';
     if (toolbar) toolbar.classList.add('hidden');
@@ -7091,7 +7111,7 @@ function renderRemarksForm() {
   }
   if (!classId) {
     remarksState.students = [];
-    wrap.innerHTML = '<p class="empty">Add a class first.</p>';
+    wrap.innerHTML = '<p class="empty">Select an assigned form class. Ask the Head Teacher to assign class/form teacher responsibilities in Manage Teachers.</p>';
     if (toolbar) toolbar.classList.add('hidden');
     return;
   }
@@ -7183,7 +7203,7 @@ function saveCurrentRemarks(showAlert = true) {
   const card = document.querySelector('.remarks-card-single');
   const student = remarksCurrentStudent();
   if (!classId || !card || !student) return false;
-  if (!requireClassAccess(classId)) return false;
+  if (!requireClassAccess(classId) || !canPrintClassReports(classId)) return false;
 
   const settings = DB.get(KEYS.settings, {});
   if (!settings.currentTerm || !settings.currentYear) {
@@ -7250,7 +7270,7 @@ function computeAggregate(entries) {
 /* ---------- Results computation ---------- */
 function computeClassResults(classId, term, year) {
   const students = studentsForClassYear(classId, year);
-  const subjects = getAccessibleSubjects();
+  const subjects = reportSubjectsForClass(classId);
   const listedSubjects = DB.get(KEYS.subjects, subjects);
   const subjectCount = Math.max(subjects.length, Array.isArray(listedSubjects) ? listedSubjects.length : 0);
   const key = gradeKey(classId, term, year);
@@ -7317,7 +7337,7 @@ function computeClassResults(classId, term, year) {
 // Per-subject class-wide position: e.g. "8th in Mathematics" for this class/term.
 function computeSubjectPositions(classId, term, year) {
   const students = studentsForClassYear(classId, year);
-  const subjects = getAccessibleSubjects();
+  const subjects = reportSubjectsForClass(classId);
   const key = gradeKey(classId, term, year);
   const classGrades = DB.get(KEYS.grades, {})[key] || {};
   const settings = DB.get(KEYS.settings, {});
@@ -7381,6 +7401,7 @@ document.getElementById('reportThemesBtn')?.addEventListener('click', () => {
 function renderReportsClassSelect() {
   const sel = document.getElementById('reportsClassSelect');
   fillClassSelect(sel);
+  [...sel.options].forEach(option=>{if(option.value&&!canPrintClassReports(option.value))option.remove();});
   renderReportsStudentList();
   renderClassStatistics();
 }
@@ -7411,6 +7432,10 @@ function renderReportsStudentList() {
   if (classId && !canAccessClass(classId)) { document.getElementById('reportsStudentList').innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
   const list = document.getElementById('reportsStudentList');
   list.innerHTML = '';
+  const allowed=!!classId&&canPrintClassReports(classId);
+  document.getElementById('generateAllBtn').hidden=!allowed;
+  document.getElementById('generateAllBtn').classList.toggle('hidden',!allowed);
+  if(!allowed){list.innerHTML='<li class="empty">Complete parent reports are available to the Head Teacher and assigned class/form teachers. Subject teachers can export their results from Grades.</li>';return;}
   if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; return; }
   const settings = DB.get(KEYS.settings, {});
   const results = computeClassResults(classId, settings.currentTerm, settings.currentYear);
@@ -7419,7 +7444,7 @@ function renderReportsStudentList() {
     const li = document.createElement('li');
     li.className = 'report-student-row';
     li.innerHTML = `<div class="report-student-info"><strong>${escapeHtml(r.student.name)}</strong>
-        <div class="meta">${r.entries.length} subject(s) · Avg ${r.avg.toFixed(1)}</div></div>
+        <div class="meta">${r.entries.length} of ${r.subjectCount||r.entries.length} subject(s) · Avg ${r.avg.toFixed(1)}${r.entries.length<r.subjectCount?' · Incomplete results':''}</div></div>
       <div class="actions report-student-actions">
         <button class="gen" data-id="${r.student.id}">Generate PDF</button>
         <button class="share" data-id="${r.student.id}">Share</button>
@@ -7475,7 +7500,7 @@ function shareResultViaWhatsApp(result, classInfo, settings) {
 // Grade 1-6 (score 50+) is a pass, Grade 7-9 (score below 50) is a fail.
 function computeClassStatistics(classId, term, year) {
   const results = computeClassResults(classId, term, year);
-  const subjects = getAccessibleSubjects();
+  const subjects = reportSubjectsForClass(classId);
 
   const subjectStats = subjects.map(sub => {
     const scores = [];
@@ -7713,6 +7738,7 @@ function renderHistoryBody() {
     return;
   }
   const { classId, term, year } = sel;
+  const historyPrint=document.getElementById('historyGenerateAllBtn');if(historyPrint)historyPrint.classList.toggle('hidden',!canPrintClassReports(classId));
   const results = computeClassResults(classId, term, year);
   if (!results.length) {
     statsWrap.innerHTML = '';
@@ -7731,8 +7757,8 @@ function renderHistoryBody() {
   results.forEach(r => {
     const li = document.createElement('li');
     li.innerHTML = `<div><strong>${escapeHtml(r.student.name)}</strong>
-        <div class="meta">${r.entries.length} subject(s) · Avg ${r.avg.toFixed(1)} · Position ${r.position ? ordinal(r.position) : '-'}</div></div>
-      <div class="actions"><button class="gen" data-id="${r.student.id}">PDF</button></div>`;
+        <div class="meta">${r.entries.length} of ${r.subjectCount||r.entries.length} subject(s) · Avg ${r.avg.toFixed(1)}${r.entries.length<r.subjectCount?' · Incomplete results':''} · Position ${r.position ? ordinal(r.position) : '-'}</div></div>
+      ${canPrintClassReports(classId)?`<div class="actions"><button class="gen" data-id="${r.student.id}">PDF</button></div>`:''}`;
     list.appendChild(li);
   });
   list.querySelectorAll('.gen').forEach(btn => {
@@ -7959,7 +7985,7 @@ async function ensureCreditsAvailable(count = 1, actionText = 'continue') {
   alert(`This action requires ${count} report credit${count === 1 ? '' : 's'}. Your school currently has ${displayedBillingBalance()} credit${displayedBillingBalance() === 1 ? '' : 's'}. The Head Teacher can buy more from Billing & Credits.`);
   return false;
 }
-async function consumeReportCredits(count, requestId = crypto.randomUUID(), reportType = 'paid') {
+async function consumeReportCredits(count, requestId = crypto.randomUUID(), reportType = 'paid', classId) {
   if (!Number.isInteger(count) || count < 1) throw new Error('Invalid report credit count.');
   if (reportBillingIsFree()) return { balance: displayedBillingBalance(), suspended: true };
   if (!requireSchoolAccountForPaidFeature('generating report cards')) throw new Error('School account required.');
@@ -7969,7 +7995,7 @@ async function consumeReportCredits(count, requestId = crypto.randomUUID(), repo
   const deductionUid = currentUid;
   let result;
   for (let attempt = 0; attempt < 2; attempt++) {
-    try { result = await fn({ count, requestId, mode: 'test', reportType }); break; }
+    try { result = await fn({ count, requestId, mode: 'test', reportType, ...(classId?{classId}:{}) }); break; }
     catch (error) {
       if (attempt || !['functions/unavailable', 'functions/deadline-exceeded', 'functions/internal'].includes(error.code)) throw error;
     }
@@ -8800,7 +8826,7 @@ function showPreparedReport(url, filename) {
   download.click();
 }
 
-async function downloadGeneratedReport(doc, filename, count, reportType = 'paid') {
+async function downloadGeneratedReport(doc, filename, count, reportType = 'paid', classId) {
   if (!enforceGuestTrial()) return;
   // Serialize before deducting, then download the same prepared PDF.
   const url = URL.createObjectURL(doc.output('blob'));
@@ -8814,7 +8840,7 @@ async function downloadGeneratedReport(doc, filename, count, reportType = 'paid'
       localStorage.setItem(GUEST_BW_USAGE_KEY, String(BW_FREE_REPORT_LIMIT - bwFreeRemaining() + 1));
       renderReportCreditStatus();
     } else if (count) {
-      try { await consumeReportCredits(count, crypto.randomUUID(), reportType); }
+      try { await consumeReportCredits(count, crypto.randomUUID(), reportType, classId); }
       catch (error) { alert(error.message || 'Test credits could not be deducted. The report was not downloaded.'); return; }
     }
     showPreparedReport(url, filename);
@@ -8828,7 +8854,9 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   if (!enforceGuestTrial() || reportGenerationBusy) return;
   reportGenerationBusy = true;
   try {
+  if (!await requireParentReportAccess(classInfo?.id||result.student.classId)) return;
   if (!result.entries.length) { alert('No grades entered for this student yet.'); return; }
+  if(!confirmParentReportCompleteness([result]))return;
   const Pdf = reportPdfConstructor();
   const doc = new Pdf();
   const settings = settingsOverride || DB.get(KEYS.settings, {});
@@ -8845,7 +8873,7 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const assetIssues = typeof reportAssetIssuesForPrepared === 'function' ? reportAssetIssuesForPrepared(result, assets) : [];
   if (typeof confirmReportAssetIssues === 'function' && !confirmReportAssetIssues(assetIssues)) return;
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
-  await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, 1, reportUsesCredits(settings) ? 'paid' : 'bw-single');
+  await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, 1, reportUsesCredits(settings) ? 'paid' : 'bw-single', classInfo?.id||result.student.classId);
   } finally { reportGenerationBusy = false; }
 }
 
@@ -8853,8 +8881,10 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   if (!enforceGuestTrial() || reportGenerationBusy) return;
   reportGenerationBusy = true;
   try {
+  if (!await requireParentReportAccess(classInfo?.id||results[0]?.student.classId)) return;
   const usable = results.filter(r => r.entries.length > 0);
   if (!usable.length) { alert('No grades entered for this class yet.'); return; }
+  if(!confirmParentReportCompleteness(results))return;
   const settings = settingsOverride || DB.get(KEYS.settings, {});
 
   // Batch report generation is always a paid feature. This applies to every
@@ -8878,7 +8908,7 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   const Pdf = reportPdfConstructor();
   const doc = new Pdf();
   prepared.forEach((item,index)=>{if(index>0)doc.addPage();drawReportPage(doc,item.result,settings,positions,numOnRoll,classInfo,remarksAll[item.result.student.id]||{},item.assets);});
-  await downloadGeneratedReport(doc, 'class_report_cards.pdf', usable.length);
+  await downloadGeneratedReport(doc, 'class_report_cards.pdf', usable.length, 'paid', classInfo?.id||usable[0].student.classId);
   } finally { reportGenerationBusy = false; }
 }
 
@@ -10416,7 +10446,7 @@ function pullCloudData(sessionToken, { background = false } = {}) {
     if (!hydrationValid()) return;
     const all = isHeadTeacher();
     const classIds = all ? null : classIdsForCloudSync();
-    const subjectIds = all ? null : new Set(currentAssignedSubjectIds || []);
+    const subjectIds = all || (currentUserData?.formClassIds||[]).some(id=>canAccessClass(id)) ? null : new Set(currentAssignedSubjectIds || []);
 
     return Promise.all([
       schoolRef().get(),
@@ -11395,6 +11425,7 @@ function renderManageTeachers() {
       const li = document.createElement('li');
       const assignedClasses = Array.isArray(m.assignedClassIds) ? m.assignedClassIds : [];
       const assignedSubjects = Array.isArray(m.assignedSubjectIds) ? m.assignedSubjectIds : [];
+      const formClasses = Array.isArray(m.formClassIds) ? m.formClassIds : [];
       const linkedStaff = m.staffId ? getStaffById(m.staffId) : getStaffForUserUid(m.uid);
       const suggestedStaff = linkedStaff || teacherStaffCandidate(m);
       const statusText = m.status === 'pending' ? ' · Pending approval' : m.status === 'disabled' ? ' · Disabled' : ' · Active';
@@ -11412,6 +11443,7 @@ function renderManageTeachers() {
         `<label class="checkbox-row"><input type="checkbox" class="assign-class-cb" value="${escapeHtml(c.id)}" ${assignedClasses.indexOf(c.id) !== -1 ? 'checked' : ''}> ${escapeHtml(c.name)}</label>`
       ).join('') || '<p class="hint">Create classes first.</p>';
 
+      const formChecks=classes.map(c=>`<label class="checkbox-row"><input type="checkbox" class="assign-form-cb" value="${escapeHtml(c.id)}" ${formClasses.includes(c.id)?'checked':''}> ${escapeHtml(c.name)}</label>`).join('');
       const subjectChecks = subjects.map(sub =>
         `<label class="checkbox-row"><input type="checkbox" class="assign-subject-cb" value="${escapeHtml(sub.id)}" ${assignedSubjects.indexOf(sub.id) !== -1 ? 'checked' : ''}> ${escapeHtml(sub.name)}</label>`
       ).join('') || '<p class="hint">Create subjects first.</p>';
@@ -11441,7 +11473,7 @@ function renderManageTeachers() {
           <strong>Classes</strong>
           <div class="teacher-assignment-list">${classChecks}</div>
           <strong>Subjects</strong>
-          <div class="teacher-assignment-list">${subjectChecks}</div>
+          <div class="teacher-assignment-list">${subjectChecks}</div><fieldset><legend>Class / Form teacher responsibilities</legend><p class="hint">Select classes whose complete reports and class remarks this teacher manages. Also tick these classes under class access. Score editing stays limited to teaching subjects.</p><div class="teacher-assignment-list">${formChecks}</div></fieldset>
           <div class="edit-actions">
             <button class="save-btn save-teacher-assignment" data-uid="${m.uid}">${actionLabel}</button>
             ${m.status !== 'pending' ? '<button class="cancel-btn cancel-teacher-edit" data-uid="' + m.uid + '" data-dismiss-ui>Cancel</button>' : ''}
@@ -11458,7 +11490,7 @@ function renderManageTeachers() {
             <div class="meta">Teacher${statusText}${linkedStaff ? ' · Staff: ' + escapeHtml(linkedStaff.name) : ' · No Staff record linked'}</div>
             <div class="meta">Account UID: ${escapeHtml(m.uid)}</div>
             ${duplicateIdentity ? `<div class="hint"><strong>Duplicate email warning:</strong> Another account in this school already uses ${escapeHtml(displayEmail)}.</div>` : ''}
-            <div class="teacher-assignment-summary">${classCount} class${classCount === 1 ? '' : 'es'} · ${subjectCount} subject${subjectCount === 1 ? '' : 's'}</div>
+            <div class="teacher-assignment-summary">${classCount} class${classCount === 1 ? '' : 'es'} · ${subjectCount} subject${subjectCount === 1 ? '' : 's'} · ${formClasses.length} form class(es)</div>
           </div>
           <div class="teacher-summary-actions">
             <button class="edit-teacher-btn" data-uid="${m.uid}">Edit</button>
@@ -11512,6 +11544,8 @@ function renderManageTeachers() {
         }
         const assignedClassIds = Array.from(li.querySelectorAll('.assign-class-cb:checked')).map(cb => cb.value);
         const assignedSubjectIds = Array.from(li.querySelectorAll('.assign-subject-cb:checked')).map(cb => cb.value);
+        const formClassIds = Array.from(li.querySelectorAll('.assign-form-cb:checked')).map(cb=>cb.value);
+        if(formClassIds.some(id=>!assignedClassIds.includes(id))){alert('Also select each form teacher class under class access.');return;}
         const staffSelect = li.querySelector('.teacher-staff-select');
         const staffName = li.querySelector('.teacher-staff-name').value.trim();
         const selectedStaffId = staffSelect.value;
@@ -11530,7 +11564,7 @@ function renderManageTeachers() {
         if(similar&&!confirm('A Staff record has this name. Select the existing record if it is the same person. Create a record for a different person with this name?'))return;
         btn.disabled=true;
         let teacherSaved = false;
-        prepareTeacherApproval(assignedClassIds,assignedSubjectIds,selectedStaffId).then(prepared => safetyCall('manageTeacherLifecycle',{action:'save',teacherUid:member.uid,staffId:selectedStaffId,name:staffName,assignedClassIds,assignedSubjectIds,confirmSimilarName:similar,...prepared})).then(() => {
+        prepareTeacherApproval(assignedClassIds,assignedSubjectIds,selectedStaffId).then(prepared => safetyCall('manageTeacherLifecycle',{action:'save',teacherUid:member.uid,staffId:selectedStaffId,name:staffName,assignedClassIds,assignedSubjectIds,formClassIds,confirmSimilarName:similar,...prepared})).then(() => {
           teacherSaved = true;
           return Promise.resolve();
         }).then(() => {

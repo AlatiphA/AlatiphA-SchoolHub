@@ -322,3 +322,22 @@ test('closed cleanup keeps class permissions and atomic failure behavior',async(
  await assert.rejects(f.handlers.saveSchoolRecord(f.req(input,'teacher')),e=>e.code==='permission-denied');
  f.setFail();await assert.rejects(f.handlers.saveSchoolRecord(f.req(input)),/injected/);assert.deepEqual(f.records.get(path),base);
 });
+
+test('complete parent reports require Head Teacher or explicit current class/form assignment',async()=>{
+ const f=fixture();await assert.rejects(f.handlers.authorizeParentReports(f.req({classId:'c1'},'teacher')),e=>e.code==='permission-denied');
+ Object.assign(f.records.get('users/teacher'),{formClassIds:['c1']});
+ assert.equal((await f.handlers.authorizeParentReports(f.req({classId:'c1'},'teacher'))).authorized,true);
+ for(const classId of ['c2','foreign'])await assert.rejects(f.handlers.authorizeParentReports(f.req({classId},'teacher')),e=>e.code==='permission-denied');
+ await assert.rejects(f.handlers.authorizeParentReports(f.req({classId:'c1',expectedSchoolId:'other'},'teacher')),e=>e.code==='failed-precondition');
+ assert.equal((await f.handlers.authorizeParentReports(f.req({classId:'c2'}))).authorized,true);
+ f.records.get('users/teacher').assignedClassIds=[];await assert.rejects(f.handlers.authorizeParentReports(f.req({classId:'c1'},'teacher')),e=>e.code==='permission-denied');
+ await assert.rejects(f.handlers.authorizeParentReports(f.req({classId:'c1'},'disabled')),e=>e.code==='permission-denied');
+});
+test('form teachers save class remarks but cannot change another subject score',async()=>{
+ const f=fixture(),key='c1__Term 1__2026/2027',remarks={field:'remarks',key,base:{},value:{p1:{comment:'Keep improving'}}};
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req(remarks,'teacher')),e=>e.code==='permission-denied');
+ f.records.get('users/teacher').formClassIds=['c1'];await f.handlers.saveSchoolRecord(f.req(remarks,'teacher'));
+ assert.equal(f.records.get('schools/s/remarks/'+encodeURIComponent(key)).entries.p1.comment,'Keep improving');
+ await assert.rejects(f.handlers.saveSchoolRecord(f.req({field:'grades',key,base:{},value:{p1:{science:{e:90}}}},'teacher')),e=>e.code==='permission-denied');
+ await f.handlers.saveSchoolRecord(f.req({field:'grades',key,base:{},value:{p1:{math:{e:90}}}},'teacher'));
+});

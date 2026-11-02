@@ -5,7 +5,7 @@ function fixture(simple=false){
  const subjects=Array.from({length:8},(_,i)=>({id:'s'+i}));
  const grades={};const students=[{id:'five',name:'Five subjects'},{id:'six',name:'Six subjects'},{id:'seven',name:'Seven subjects'}];
  for(const [id,count,score]of [['five',5,100],['six',6,80],['seven',7,70]]){grades[id]={};for(let i=0;i<count;i++)grades[id]['s'+i]={c:score,e:score};}
- const c={studentsForClassYear:()=>students,getAccessibleSubjects:()=>subjects,gradeKey:()=> 'class',KEYS:{grades:'grades',settings:'settings'},DB:{get:k=>k==='grades'?{class:grades}:{reportLayout:simple?'simple':'standard'}},getGradeFor:n=>n>=90?1:n>=80?2:3,getRemarkFor:()=> 'remark',scaleClass:n=>n*.3,scaleExam:n=>n*.7};
+ const c={studentsForClassYear:()=>students,getAccessibleSubjects:()=>subjects,reportSubjectsForClass:()=>subjects,gradeKey:()=> 'class',KEYS:{grades:'grades',settings:'settings'},DB:{get:k=>k==='grades'?{class:grades}:{reportLayout:simple?'simple':'standard'}},getGradeFor:n=>n>=90?1:n>=80?2:3,getRemarkFor:()=> 'remark',scaleClass:n=>n*.3,scaleExam:n=>n*.7};
  vm.createContext(c);vm.runInContext(computation,c);return {c,grades,subjects};
 }
 test('zero through five completed subjects have no aggregate',()=>{

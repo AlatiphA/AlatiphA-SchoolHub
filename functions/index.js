@@ -242,6 +242,8 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
   if (!['headteacher', 'teacher'].includes(user.role) || user.status !== 'active' || !user.schoolId) {
     throw new HttpsError('permission-denied', 'Active school users only.');
   }
+  const reportClassId=request.data?.classId;
+  if(user.role==='teacher'&&(!(user.formClassIds||[]).includes(reportClassId)||!(user.assignedClassIds||[]).includes(reportClassId)))throw new HttpsError('permission-denied','Only assigned class/form teachers can generate parent reports.');
   const schoolId = user.schoolId;
   const count = Number(request.data?.count || 0);
   if (!Number.isInteger(count) || count < 1 || count > 5000) throw new HttpsError('invalid-argument', 'Invalid credit count.');
@@ -260,6 +262,9 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
   let allowanceKey = null;
   let lifetime = false;
   await db.runTransaction(async t => {
+    const currentMember=(await t.get(db.collection('users').doc(request.auth.uid))).data()||{};
+    if(currentMember.status!=='active'||currentMember.schoolId!==schoolId||!['headteacher','teacher'].includes(currentMember.role))throw new HttpsError('permission-denied','School access changed.');
+    if(currentMember.role==='teacher'&&(!(currentMember.formClassIds||[]).includes(reportClassId)||!(currentMember.assignedClassIds||[]).includes(reportClassId)))throw new HttpsError('permission-denied','Form teacher report access changed.');
     const billSnap = await t.get(billRef);
     const usageSnap = await t.get(usageRef);
     const account = billSnap.data() || {};

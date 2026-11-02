@@ -82,6 +82,13 @@ function register({onCall,HttpsError,db,admin}) {
   const next={...data,schemaVersion:4};arrays.concat(keyed).forEach(name=>delete next[name]);
   tx.set(school,next);return {migrated:true};
  }));
+ exports.authorizeParentReports=callable(async request=>db.runTransaction(async tx=>{
+  const u=await member(tx,request),classId=request.data?.classId;
+  if(typeof classId!=='string'||!classId||classId.includes('/'))fail('invalid-argument','Select a report class.');
+  if(u.role!=='headteacher'&&(!(u.formClassIds||[]).includes(classId)||!(u.assignedClassIds||[]).includes(classId)))fail('permission-denied','Only the Head Teacher or assigned class/form teacher can print complete parent reports.');
+  if(!(await tx.get(db.collection('schools').doc(u.schoolId).collection('classes').doc(classId))).exists)fail('not-found','This class no longer exists.');
+  return {authorized:true,classId};
+ }));
  exports.getSchoolReportStaff=callable(async request=>db.runTransaction(async tx=>{
   const u=await member(tx,request);const snap=await tx.get(db.collection('schools').doc(u.schoolId).collection('staff'));
   return {staff:snap.docs.map(d=>reportStaff(d.data(),d.id))};
@@ -154,6 +161,7 @@ function register({onCall,HttpsError,db,admin}) {
   return db.runTransaction(async tx=>{
    const u=await member(tx,request);const school=db.collection('schools').doc(u.schoolId);const id=encodeURIComponent(key);
    if(u.role!=='headteacher'&&(field==='teacherAttendance'||!(u.assignedClassIds||[]).includes(classId)))fail('permission-denied','Class access required.');
+   if(field==='remarks'&&u.role!=='headteacher'&&!(u.formClassIds||[]).includes(classId))fail('permission-denied','Class remarks require a class/form teacher assignment.');
    const ref=school.collection(field).doc(id);
    if(field!=='teacherAttendance'&&!(await tx.get(school.collection('classes').doc(classId))).exists)fail('failed-precondition','This class no longer exists. Reload the school records.');
    const [existing,tombstone]=await Promise.all([tx.get(ref),tx.get(school.collection('deletedRecords').doc(field+'__'+id))]);

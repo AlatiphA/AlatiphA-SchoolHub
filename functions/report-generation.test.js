@@ -11,7 +11,7 @@ function fixture({ theme = 'premium', failDraw = false, failOutput = false, enou
     getReportTheme: () => ({ id: theme }),
     ensureCreditsAvailable: async () => enough,
     consumeReportCredits: async (n, id, reportType) => { requests.push({ n, reportType }); if (reportType !== 'bw-single') deductions.push(n); },
-    crypto: {randomUUID: () => 'test-generation-id'}, enforceGuestTrial: () => true, isActiveGuest: () => false,
+    crypto: {randomUUID: () => 'test-generation-id'}, enforceGuestTrial: () => true, requireParentReportAccess:async()=>true,confirmParentReportCompleteness:()=>true, isActiveGuest: () => false,
     loadReportFeeBalances: async () => ({balances:{one:12345}}),
     prepareReportAssets: async () => ({}),
     drawReportPage: () => { if (failDraw) throw Error('render failed'); },
@@ -100,5 +100,16 @@ test('unavailable confirmed fee balances block printing before any credit deduct
  const f=fixture();f.context.loadReportFeeBalances=async()=>{throw Error('Fee service unavailable');};
  await assert.rejects(f.context.generateSinglePDF(f.student),/Fee service unavailable/);
  await assert.rejects(f.context.generateBatchPDF([f.student],{},1,{},{}),/Fee service unavailable/);
+ assert.deepEqual(f.deductions,[]);assert.deepEqual(f.downloads,[]);
+});
+
+test('subject-only report actions stop before drawing or deducting school credits',async()=>{
+ const f=fixture();f.context.requireParentReportAccess=async()=>false;
+ await f.context.generateSinglePDF(f.student);await f.context.generateBatchPDF([f.student],{},1,{},{});
+ assert.deepEqual(f.deductions,[]);assert.deepEqual(f.downloads,[]);
+});
+test('declining incomplete reports stops single and batch before school credits are deducted',async()=>{
+ const f=fixture();f.context.confirmParentReportCompleteness=()=>false;
+ await f.context.generateSinglePDF(f.student);await f.context.generateBatchPDF([f.student],{},1,{},{});
  assert.deepEqual(f.deductions,[]);assert.deepEqual(f.downloads,[]);
 });

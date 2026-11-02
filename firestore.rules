@@ -186,7 +186,8 @@ service cloud.firestore {
       }
 
       match /subjects/{subjectId} {
-        allow read: if isHeadTeacher(schoolId) || hasSubject(schoolId, subjectId);
+        allow read: if isHeadTeacher(schoolId) || hasSubject(schoolId, subjectId)
+          || (isActiveTeacher(schoolId) && myUser().get('formClassIds', []).size() > 0); // Read-only subject catalog for complete class reports.
         allow create: if isHeadTeacher(schoolId) && notDeleted(schoolId, 'subjects', subjectId);
         allow update, delete: if isHeadTeacher(schoolId);
       }
