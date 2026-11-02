@@ -9,7 +9,7 @@ test('parent document header escapes school contacts and shares the receipt logo
 });
 test('statements and every reminder have branding and footer; print waits for all logos',()=>{
  for(const name of ['feeReminderHtml','feeStatementHtml']){const start=source.indexOf('function '+name+'('),end=source.indexOf('\nfunction ',start+1);const body=source.slice(start,end);assert.ok(body.includes('feeParentHeader('));assert.ok(body.includes('feeParentFooter()'));}
- assert.ok(source.includes('await logoReady;if(overlay.isConnected&&isHeadTeacher())window.print()'));
+ assert.ok(source.includes('bindFeePrintButton(overlay,logoReady)'));assert.ok(source.includes('await logoReady;if(overlay.isConnected&&isCurrentSession(token,userId,schoolId)&&isHeadTeacher())'));
  assert.ok(source.includes('parentDocument:true'));assert.ok(source.includes("querySelectorAll('.fee-parent-logo')"));
  const css=fs.readFileSync('ui-polish.css','utf8');assert.ok(css.includes('overflow-wrap:anywhere;padding:8px 4px'));assert.ok(css.includes('display:table-header-group'));
 });

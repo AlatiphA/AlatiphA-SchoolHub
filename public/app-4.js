@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.37';
+const APP_VERSION = '40.1.38';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -508,6 +508,7 @@ function startCachedAuthenticatedSession(user, cached) {
 }
 
 function resetWorkspaceState() {
+  if(typeof optimizeReportImage==='function')optimizeReportImage.cache=null;
   if (typeof stopLiveClassSync === 'function') stopLiveClassSync();
   if (typeof stopLiveStudentSync === 'function') stopLiveStudentSync();
   if (typeof stopLiveGradeSync === 'function') stopLiveGradeSync();
@@ -8668,7 +8669,22 @@ async function resolveReportStaffForClass(settings, classInfo, fallbackClassId) 
   return { classId, classTeacher, headTeacher };
 }
 
-async function optimizeReportImage(dataUrl,{maxWidth=512,maxHeight=512,photo=false}={}){
+async function optimizeReportImage(dataUrl,options={}){
+  if(!isDataImage(dataUrl))return '';
+  const context=JSON.stringify([typeof sessionGeneration==='undefined'?null:sessionGeneration,typeof currentUid==='undefined'?null:currentUid,typeof currentSchoolId==='undefined'?null:currentSchoolId]);
+  let cache=optimizeReportImage.cache;
+  if(!cache||cache.context!==context)optimizeReportImage.cache=cache={context,entries:[]};
+  const variant=JSON.stringify([options.maxWidth||512,options.maxHeight||512,!!options.photo]);
+  const found=cache.entries.find(item=>item.source===dataUrl&&item.variant===variant);
+  if(found){cache.entries.splice(cache.entries.indexOf(found),1);cache.entries.push(found);return found.promise;}
+  const entry={source:dataUrl,variant,promise:null};
+  entry.promise=encodeReportImage(dataUrl,options).catch(error=>{cache.entries=cache.entries.filter(item=>item!==entry);throw error;});
+  // Session-local LRU: cap original-image references as well as entry count.
+  if(dataUrl.length<=8000000){cache.entries.push(entry);while(cache.entries.length>8||cache.entries.reduce((sum,item)=>sum+item.source.length,0)>12000000)cache.entries.shift();}
+  return entry.promise;
+}
+
+async function encodeReportImage(dataUrl,{maxWidth=512,maxHeight=512,photo=false}={}){
   if(!isDataImage(dataUrl))return '';
   return new Promise((resolve,reject)=>{
     const image=new Image();image.onload=()=>{
@@ -8687,36 +8703,24 @@ async function optimizeReportImage(dataUrl,{maxWidth=512,maxHeight=512,photo=fal
   });
 }
 
-async function prepareReportAssets(result, settings, classInfo) {
-  const studentList = DB.get(KEYS.students, []);
-  const fallbackClassId = result && result.student ? result.student.classId : '';
-  const resolvedStaff = await resolveReportStaffForClass(settings, classInfo, fallbackClassId);
-  const classId = resolvedStaff.classId;
-  const classTeacher = resolvedStaff.classTeacher;
-  const headTeacher = resolvedStaff.headTeacher;
+async function prepareSharedReportAssets(settings,classInfo,fallbackClassId){
+  const {classTeacher,headTeacher}=await resolveReportStaffForClass(settings,classInfo,fallbackClassId);
+  const safeImage=async(read,options)=>{try{return await optimizeReportImage(await read(),options);}catch(error){console.warn('Report image preparation failed:',error);return '';}};
+  const signature=staff=>safeImage(async()=>staff?(isDataImage(staff.signature)?staff.signature:await getOrSyncReportImage('staff',staff.id,staff.signatureStoragePath||'',staff.signatureUrl||'',`schools/${currentSchoolId}/signatures/${staff.id}`)):'',{maxWidth:640,maxHeight:240});
+  const classSignature=signature(classTeacher);
+  const [logo,classTeacherSignature,headTeacherSignature]=await Promise.all([
+    safeImage(async()=>settings?(isDataImage(settings.logo)?settings.logo:await getOrSyncReportImage('logo','school',settings.logoStoragePath||'',settings.logoUrl||'',`schools/${currentSchoolId}/logos/school-logo`)):'',{maxWidth:384,maxHeight:384}),
+    classSignature,classTeacher&&headTeacher&&classTeacher.id===headTeacher.id?classSignature:signature(headTeacher)
+  ]);
+  return {logo,classTeacherSignature,headTeacherSignature,classTeacherName:classTeacher?.name||'',headTeacherName:headTeacher?.name||''};
+}
 
-  // Never trust the stale student object captured by an earlier render.
-  // Resolve the current local record by ID immediately before printing.
-  const studentId = result && result.student ? result.student.id : '';
-  const student = studentList.find(s => s.id === studentId) || (result && result.student ? result.student : null);
-
-  const logo = settings ? (isDataImage(settings.logo) ? settings.logo : await getOrSyncReportImage('logo', 'school', settings.logoStoragePath || '', settings.logoUrl || '', `schools/${currentSchoolId}/logos/school-logo`)) : '';
-  const photo = student ? (isDataImage(student.photo) ? student.photo : await getOrSyncReportImage('student', student.id, student.photoStoragePath || '', student.photoUrl || '', student.classId ? `schools/${currentSchoolId}/student-photos/${student.classId}/${student.id}` : '')) : '';
-  const classTeacherSignature = classTeacher ? (isDataImage(classTeacher.signature) ? classTeacher.signature : await getOrSyncReportImage('staff', classTeacher.id, classTeacher.signatureStoragePath || '', classTeacher.signatureUrl || '', `schools/${currentSchoolId}/signatures/${classTeacher.id}`)) : '';
-  const headTeacherSignature = headTeacher ? (isDataImage(headTeacher.signature) ? headTeacher.signature : await getOrSyncReportImage('staff', headTeacher.id, headTeacher.signatureStoragePath || '', headTeacher.signatureUrl || '', `schools/${currentSchoolId}/signatures/${headTeacher.id}`)) : '';
-
-  // PDF-only copies: keep school records, offline caches and cloud originals intact.
-  const optimized=await Promise.all([
-    [logo,{maxWidth:384,maxHeight:384}],
-    [photo,{maxWidth:480,maxHeight:560,photo:true}],
-    [classTeacherSignature,{maxWidth:640,maxHeight:240}],
-    [headTeacherSignature,{maxWidth:640,maxHeight:240}]
-  ].map(async([image,options])=>{try{return await optimizeReportImage(image,options);}catch(error){console.warn('Report image optimization failed:',error);return '';}}));
-  return {
-    logo:optimized[0],photo:optimized[1],classTeacherSignature:optimized[2],headTeacherSignature:optimized[3],
-    classTeacherName: classTeacher ? classTeacher.name : '',
-    headTeacherName: headTeacher ? headTeacher.name : ''
-  };
+async function prepareReportAssets(result,settings,classInfo,sharedAssets){
+  // Resolve the current pupil record, preserving the existing offline image lookup.
+  const student=DB.get(KEYS.students,[]).find(s=>s.id===result?.student?.id)||result?.student;
+  const photoPromise=(async()=>{try{const source=student?(isDataImage(student.photo)?student.photo:await getOrSyncReportImage('student',student.id,student.photoStoragePath||'',student.photoUrl||'',student.classId?`schools/${currentSchoolId}/student-photos/${student.classId}/${student.id}`:'')):'';return await optimizeReportImage(source,{maxWidth:480,maxHeight:560,photo:true});}catch(error){console.warn('Report photo preparation failed:',error);return '';}})();
+  const [shared,photo]=await Promise.all([sharedAssets||prepareSharedReportAssets(settings,classInfo,result?.student?.classId),photoPromise]);
+  return {...shared,photo};
 }
 
 async function withReportAssetDeadline(promise, label, timeoutMs = 15000) {
@@ -8790,6 +8794,7 @@ function reportAssetIssuesForPrepared(result,assets){const issues=[],studentName
 function confirmReportAssetIssues(issues){const unique=Array.from(new Set((issues||[]).filter(Boolean)));if(!unique.length)return true;const shown=unique.slice(0,8),more=unique.length>shown.length?`\n…plus ${unique.length-shown.length} more issue(s).`:'';return confirm(`Report Asset Check found ${unique.length} issue${unique.length===1?'':'s'}:\n\n`+shown.map(item=>`• ${item}`).join('\n')+more+'\n\nGenerate the report anyway? No credits are deducted if you cancel here.');}
 
 async function runReportAction(button, action) {
+  const ownsProgress=!runReportAction.button;if(ownsProgress)runReportAction.button=button;
   const label = button.textContent;
   button.disabled = true;
   button.textContent = 'Preparing PDF…';
@@ -8800,6 +8805,7 @@ async function runReportAction(button, action) {
   } finally {
     button.disabled = false;
     button.textContent = label;
+    if(ownsProgress)runReportAction.button=null;
   }
 }
 
@@ -8851,6 +8857,15 @@ function showPreparedReport(url, filename) {
   download.click();
 }
 
+function reportGenerationProgress(message){
+  const button=typeof runReportAction==='function'?runReportAction.button:null;
+  if(button&&button.isConnected!==false){button.textContent=message;button.setAttribute?.('aria-live','polite');}
+}
+function reportGenerationSession(){
+  const generation=typeof sessionGeneration==='undefined'?null:sessionGeneration,uid=typeof currentUid==='undefined'?null:currentUid,school=typeof currentSchoolId==='undefined'?null:currentSchoolId;
+  return ()=>{if(typeof isCurrentSession==='function'&&!isCurrentSession(generation,uid,school))throw Error('Your school session changed. Generate the report again.');};
+}
+
 async function downloadGeneratedReport(doc, filename, count, reportType = 'paid', classId) {
   if (!enforceGuestTrial()) return;
   // Serialize before deducting, then download the same prepared PDF.
@@ -8886,15 +8901,13 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const doc = new Pdf({compress:true});
   const settings = settingsOverride || DB.get(KEYS.settings, {});
   if (reportUsesCredits(settings) && !await ensureCreditsAvailable(1, 'generating a premium report card')) return;
-  const reportFees = await loadReportFeeBalances(classInfo?.id || result.student.classId,settings);
-  studentRemarks = reportFeeRemarks(studentRemarks,result.student.id,reportFees);
-  let assets;
-  try {
-    assets = await prepareReportAssets(result, settings, classInfo);
-  } catch (assetError) {
-    console.warn('Report image preparation failed:', assetError);
-    assets = { logo: '', photo: '', classTeacherSignature: '', headTeacherSignature: '', classTeacherName: '', headTeacherName: '' };
-  }
+  const valid=reportGenerationSession();
+  reportGenerationProgress('Preparing report images and balances…');
+  const [reportFees,assets]=await Promise.all([
+    loadReportFeeBalances(classInfo?.id||result.student.classId,settings),
+    prepareReportAssets(result,settings,classInfo).catch(error=>{console.warn('Report image preparation failed:',error);return {};})
+  ]);
+  valid();studentRemarks = reportFeeRemarks(studentRemarks,result.student.id,reportFees);
   const assetIssues = typeof reportAssetIssuesForPrepared === 'function' ? reportAssetIssuesForPrepared(result, assets) : [];
   if (typeof confirmReportAssetIssues === 'function' && !confirmReportAssetIssues(assetIssues)) return;
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
@@ -8918,21 +8931,32 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
   // every report that will be generated.
   if (!await ensureCreditsAvailable(usable.length, 'generating the class report batch')) return;
 
-  const reportFees = await loadReportFeeBalances(classInfo?.id || usable[0].student.classId,settings);
+  const valid=reportGenerationSession();
+  reportGenerationProgress('Preparing shared images and balances…');
+  const [reportFees,sharedAssets]=await Promise.all([
+    loadReportFeeBalances(classInfo?.id||usable[0].student.classId,settings),
+    prepareSharedReportAssets(settings,classInfo,usable[0].student.classId).catch(error=>{console.warn('Shared report images unavailable:',error);return {};})
+  ]);
+  valid();
   remarksAll = Object.fromEntries(usable.map(r=>[r.student.id,reportFeeRemarks(remarksAll[r.student.id]||{},r.student.id,reportFees)]));
-  const prepared = [];
-  const assetIssues = [];
-  for (const r of usable) {
-    let assets;
-    try { assets = await prepareReportAssets(r, settings, classInfo); }
-    catch (assetError) { console.warn('Report image preparation failed:', assetError); assets = { logo:'',photo:'',classTeacherSignature:'',headTeacherSignature:'',classTeacherName:'',headTeacherName:'' }; }
-    prepared.push({ result:r, assets });
-    if (typeof reportAssetIssuesForPrepared === 'function') assetIssues.push(...reportAssetIssuesForPrepared(r, assets));
-  }
+  const assetIssues = [];let completed=0;
+  const prepared=await mapReportAssetsWithLimit(usable,3,async r=>{
+    valid();let assets;
+    try{assets=await prepareReportAssets(r,settings,classInfo,sharedAssets);}catch(error){console.warn('Report image preparation failed:',error);assets={};}
+    valid();completed++;reportGenerationProgress(`Preparing report ${completed} of ${usable.length}…`);
+    if(typeof reportAssetIssuesForPrepared==='function')assetIssues.push(...reportAssetIssuesForPrepared(r,assets));
+    return {result:r,assets};
+  });
   if (typeof confirmReportAssetIssues === 'function' && !confirmReportAssetIssues(assetIssues)) return;
   const Pdf = reportPdfConstructor();
   const doc = new Pdf({compress:true});
-  prepared.forEach((item,index)=>{if(index>0)doc.addPage();drawReportPage(doc,item.result,settings,positions,numOnRoll,classInfo,remarksAll[item.result.student.id]||{},item.assets);});
+  for(let index=0;index<prepared.length;index++){
+    valid();const item=prepared[index];if(index>0)doc.addPage();
+    reportGenerationProgress(`Rendering report ${index+1} of ${prepared.length}…`);
+    drawReportPage(doc,item.result,settings,positions,numOnRoll,classInfo,remarksAll[item.result.student.id]||{},item.assets);
+    if(index%3===0)await new Promise(resolve=>setTimeout(resolve,0));
+  }
+  valid();reportGenerationProgress('Finalizing PDF…');
   const classFilename = String(classInfo?.name || 'class').trim().replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/\s+/g, '_').replace(/[. ]+$/g, '').slice(0,120) || 'class';
   await downloadGeneratedReport(doc, `${classFilename}_report_cards.pdf`, usable.length, 'paid', classInfo?.id||usable[0].student.classId);
   } finally { reportGenerationBusy = false; }

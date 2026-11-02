@@ -13,12 +13,13 @@ function fixture({ theme = 'premium', failDraw = false, failOutput = false, enou
     consumeReportCredits: async (n, id, reportType) => { requests.push({ n, reportType }); if (reportType !== 'bw-single') deductions.push(n); },
     crypto: {randomUUID: () => 'test-generation-id'}, enforceGuestTrial: () => true, requireParentReportAccess:async()=>true,confirmParentReportCompleteness:()=>true, isActiveGuest: () => false,
     loadReportFeeBalances: async () => ({balances:{one:12345}}),
-    prepareReportAssets: async () => ({}),
+    prepareReportAssets: async () => ({}), prepareSharedReportAssets:async()=>({}),
     drawReportPage: () => { if (failDraw) throw Error('render failed'); },
     URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
     document: { createElement: () => ({ click() { downloads.push(this.download); } }) },
     setTimeout: fn => fn(), alert() {}, console
   });
+  vm.runInContext(app.slice(app.indexOf('async function mapReportAssetsWithLimit('),app.indexOf('function clearReportAssetCheck(')),context);
   const feeSource=fs.readFileSync(`${__dirname}/../fees.js`,'utf8');
   vm.runInContext(feeSource.slice(feeSource.indexOf('function reportFeeRemarks('),feeSource.indexOf('async function refreshRemarksFeeBalance(')),context);
   vm.runInContext(app.slice(app.indexOf('function reportPdfConstructor('), app.indexOf('/* ---------- utils ---------- */')), context);
@@ -113,4 +114,14 @@ test('declining incomplete reports stops single and batch before school credits 
  const f=fixture();f.context.confirmParentReportCompleteness=()=>false;
  await f.context.generateSinglePDF(f.student);await f.context.generateBatchPDF([f.student],{},1,{},{});
  assert.deepEqual(f.deductions,[]);assert.deepEqual(f.downloads,[]);
+});
+
+test('batch prepares shared assets and confirmed balances once and reports progress',async()=>{
+ const f=fixture();let shared=0,balances=0,progress=[];f.context.prepareSharedReportAssets=async()=>{shared++;return {logo:'shared'};};f.context.loadReportFeeBalances=async()=>{balances++;return {balances:{one:0}};};f.context.prepareReportAssets=async(r,s,c,assets)=>{assert.equal(assets.logo,'shared');return assets;};f.context.runReportAction=function(){};f.context.runReportAction.button={isConnected:true,set textContent(value){progress.push(value);}};
+ await f.context.generateBatchPDF([f.student,f.student,f.student],{},3,{id:'c',name:'JHS 1'},{});
+ assert.equal(shared,1);assert.equal(balances,1);assert.ok(progress.includes('Preparing report 3 of 3…'));assert.ok(progress.includes('Rendering report 3 of 3…'));assert.equal(f.downloads.length,1);
+});
+test('session change during report preparation blocks download and credit deduction',async()=>{
+ const f=fixture();f.context.isCurrentSession=()=>false;
+ await assert.rejects(f.context.generateSinglePDF(f.student),/session changed/);await assert.rejects(f.context.generateBatchPDF([f.student],{},1,{},{}),/session changed/);assert.deepEqual(f.deductions,[]);assert.deepEqual(f.downloads,[]);
 });
