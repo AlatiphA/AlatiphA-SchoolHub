@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.34';
+const APP_VERSION = '40.1.35';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -8475,9 +8475,11 @@ function drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, 
   setFill(PRIMARY_DARK); doc.rect(0, footerY, pageWidth, footerH, 'F');
   setFill(GOLD); doc.rect(0, footerY, pageWidth, theme.footerAccent, 'F');
   setText(PAPER); doc.setFont('helvetica','normal'); doc.setFontSize(6.4);
-  doc.text('Phone: +233243443688', left, footerY + 6);
-  doc.setFont('helvetica','bold'); doc.text('Designed with AlatiphA SchoolHub', pageWidth / 2, footerY + 6, {align:'center'});
-  doc.setFont('helvetica','normal'); doc.text('Email: alatipha@ymail.com', right, footerY + 6, {align:'right'});
+  // Center in the usable band below the accent, for every theme's footer height.
+  const footerTextY = footerY + theme.footerAccent + (footerH - theme.footerAccent) / 2;
+  doc.text('Phone: +233243443688', left, footerTextY, {baseline:'middle'});
+  doc.setFont('helvetica','bold'); doc.text('Designed with AlatiphA SchoolHub', pageWidth / 2, footerTextY, {align:'center',baseline:'middle'});
+  doc.setFont('helvetica','normal'); doc.text('Email: alatipha@ymail.com', right, footerTextY, {align:'right',baseline:'middle'});
   }
 }
 
