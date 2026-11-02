@@ -125,9 +125,14 @@ function feeReminderRecipientFields(host){
  }
 }
 function feeParentBatchStudents(students,classId=''){return students.filter(s=>s.active!==false&&!s.deleted&&!s.deletedAt&&(!classId||s.classId===classId)).slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));}
-function feeParentHeader(settings,schoolName){return `<header class="fee-statement-head"><img class="fee-parent-logo fee-receipt-logo" alt="School logo" ${isDataImage(settings.logo)?`src="${escapeHtml(settings.logo)}"`:'hidden'}><h3>${escapeHtml(schoolName||settings.schoolName||'School')}</h3>${[settings.address,settings.phone,settings.email].filter(Boolean).map(value=>`<p>${escapeHtml(value)}</p>`).join('')}</header>`;}
+function feeParentHeader(settings,schoolName){return `<header class="fee-statement-head"><img class="fee-parent-logo fee-receipt-logo" alt="School logo" hidden><h3>${escapeHtml(schoolName||settings.schoolName||'School')}</h3>${[settings.address,settings.phone,settings.email].filter(Boolean).map(value=>`<p>${escapeHtml(value)}</p>`).join('')}</header>`;}
 function feeParentFooter(){return '<footer class="fee-parent-footer">Generated from AlatiphA SchoolHub</footer>';}
-async function loadFeeParentLogos(container){await Promise.all([...container.querySelectorAll('.fee-parent-logo')].map(image=>loadFeeReceiptLogo({get isConnected(){return container.isConnected&&image.isConnected;},querySelector:()=>image})));}
+async function loadFeeParentLogos(container){
+ const images=[...container.querySelectorAll('.fee-parent-logo')];if(!images.length)return;
+ // Reuse one optimized copy for the whole statement/reminder batch.
+ const logoReady=prepareFeePrintLogo();
+ await Promise.all(images.map(image=>loadFeeReceiptLogo({get isConnected(){return container.isConnected&&image.isConnected;},querySelector:()=>image},logoReady)));
+}
 function feeReminderHtml(row,settings,options={}){const esc=escapeHtml,charges=(row.charges||[]).slice().sort((a,b)=>feePeriodKey(a).localeCompare(feePeriodKey(b))),school=settings.schoolName||'School',title=(options.mode||'arrears')==='arrears'?'Fee Arrears Reminder':'School Fees Reminder';return `<section class="fee-reminder-notice">${feeParentHeader(settings,school)}<div class="fee-document-title"><h4>${esc(title)}</h4><p>Date: ${esc(new Date().toLocaleDateString())}</p></div><p>Dear <strong>${esc(row.guardianName||'Parent/Guardian')}</strong>,</p><p>This is a reminder regarding the school fees of <strong>${esc(row.studentName)}</strong>${row.className?' of '+esc(row.className):''}.</p><div class="fee-kpis fee-reminder-kpis"><div><small>Previous arrears</small><strong>${feeCash(row.arrearsBalance)}</strong></div><div><small>Current outstanding</small><strong>${feeCash(row.currentBalance)}</strong></div><div><small>Amount requested</small><strong>${feeCash(row.balance)}</strong></div></div>${charges.length?`<div class="table-scroll"><table class="fee-summary-table fee-reminder-table"><thead><tr><th>Fee item</th><th>Category</th><th>Period</th><th>Balance</th></tr></thead><tbody>${charges.map(a=>`<tr><td>${esc(a.itemName||'Fee')}</td><td>${esc(a._categoryName||a.categoryName||'Uncategorised')}</td><td>${esc([a.term,a.year].filter(Boolean).join(' '))}</td><td><strong>${feeCash(feeChargeBalance(a))}</strong></td></tr>`).join('')}</tbody></table></div>`:''}${options.deadline?`<p>Please make payment by <strong>${esc(options.deadline)}</strong>.</p>`:'<p>Please arrange payment at your earliest convenience.</p>'}${String(options.note||'').trim()?`<p>${esc(String(options.note).trim())}</p>`:''}<p>Thank you.</p>${row.parentPhone?`<p class="fee-statement-note">Parent/Guardian phone: ${esc(row.parentPhone)}</p>`:''}${feeParentFooter()}</section>`;}
 async function feeCopyText(text){if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(text);return;}const area=document.createElement('textarea');area.value=text;area.style.position='fixed';area.style.opacity='0';document.body.append(area);area.select();document.execCommand('copy');area.remove();}
 let feeActionToastTimer=0;
@@ -428,12 +433,20 @@ function feeStatementHtml(statement,categoryMap,schoolName,{print=false,settings
 
 function showFeePrintDialog({title,schoolName,subtitle='',content,parentDocument=false}){if(!isHeadTeacher())return;document.getElementById('feeReceiptDialog')?.remove();document.getElementById('feePrintDialog')?.remove();const overlay=document.createElement('div');overlay.className='about-overlay';overlay.id='feePrintDialog';overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label',title);overlay.innerHTML=`<div class="about-box fee-print-box">${parentDocument?'':`<div class="fee-print-heading"><h2>${escapeHtml(schoolName||'School')}</h2><h3>${escapeHtml(title||'Financial Report')}</h3>${subtitle?`<p>${escapeHtml(subtitle)}</p>`:''}</div>`}${content}<div class="fee-print-actions"><button type="button" class="btn-primary" data-print>Print / Save as PDF</button><button type="button" class="btn-secondary" data-close data-dismiss-ui>Close</button></div></div>`;const logoReady=Promise.resolve().then(()=>loadFeeParentLogos(overlay));overlay.querySelector('[data-print]').onclick=async()=>{await logoReady;if(overlay.isConnected&&isHeadTeacher())window.print();};overlay.querySelector('[data-close]').onclick=()=>overlay.remove();document.body.append(overlay);overlay.querySelector('[data-close]').focus();}
 
-async function loadFeeReceiptLogo(overlay) {
+async function prepareFeePrintLogo(){
+ const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId,settings=DB.get(KEYS.settings,{});
+ const source=isDataImage(settings.logo)?settings.logo:await getOrSyncReportImage('logo','school',settings.logoStoragePath||'',settings.logoUrl||'',`schools/${schoolId}/logos/school-logo`);
+ if(!isDataImage(source)||!isCurrentSession(token,userId,schoolId)||!isHeadTeacher())return '';
+ // This is a print-only copy. Never replace the school record or image cache.
+ return optimizeReportImage(source,{maxWidth:384,maxHeight:384});
+}
+
+async function loadFeeReceiptLogo(overlay,logoReady) {
  const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
- const settings=DB.get(KEYS.settings,{});
  const image=overlay.querySelector('.fee-receipt-logo');
+ if(!image)return;
  try {
-  const logo=isDataImage(settings.logo)?settings.logo:await getOrSyncReportImage('logo','school',settings.logoStoragePath||'',settings.logoUrl||'',`schools/${schoolId}/logos/school-logo`);
+  const logo=await (logoReady||prepareFeePrintLogo());
   if(!logo||!isDataImage(logo)||!overlay.isConnected||!isCurrentSession(token,userId,schoolId)||!isHeadTeacher())return;
   image.src=logo;
   try { await image.decode(); } catch(e) { return; }
