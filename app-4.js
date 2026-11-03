@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.38';
+const APP_VERSION = '40.1.39';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -6465,7 +6465,7 @@ function renderAttendanceSummary() {
     html += `<div class="attendance-completion-grid"><div><h4>Student Attendance Completion</h4><div class="completion-progress"><span style="width:${completion.student.total ? Math.round((completion.student.full / completion.student.total) * 100) : 0}%"></span></div><p><strong>${completion.student.full}</strong> complete · <strong>${completion.student.partial}</strong> partial · <strong>${completion.student.missing}</strong> not recorded of ${completion.student.total} class(es)</p></div>`;
     if (isHeadTeacher()) html += `<div><h4>Teacher Attendance Completion</h4><div class="completion-progress"><span style="width:${completion.teacher.total ? Math.round((completion.teacher.full / completion.teacher.total) * 100) : 0}%"></span></div><p><strong>${completion.teacher.full}</strong> complete · <strong>${completion.teacher.partial}</strong> partial · <strong>${completion.teacher.missing}</strong> not recorded</p></div>`;
     html += '</div>';
-    html += '<h4 class="attendance-dashboard-section-title">Daily Class Completion</h4><div class="table-scroll"><table class="grades-table attendance-report-table"><thead><tr><th>Class</th><th>Pupils</th><th>Marked</th><th>Status</th></tr></thead><tbody>';
+    html += '<h4 class="attendance-dashboard-section-title">Daily Class Completion</h4><div class="table-scroll"><table class="grades-table attendance-report-table attendance-completion-table"><thead><tr><th>Class</th><th>Pupils</th><th>Marked</th><th>Status</th></tr></thead><tbody>';
     const attendanceAll = DB.get(KEYS.attendance, {});
     const dashClasses = getAccessibleClasses();
     if (!dashClasses.length) html += '<tr><td colspan="4" class="empty">No accessible classes.</td></tr>';
