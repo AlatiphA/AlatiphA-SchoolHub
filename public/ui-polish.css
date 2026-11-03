@@ -1122,3 +1122,16 @@
  #app #view-attendance #schoolCalendarWrap .attendance-table thead th:nth-child(4){width:auto;}
  #app #view-attendance .attendance-completion-table thead th:nth-child(4){width:auto;}
 }
+
+/* Balance narrow-screen attendance columns and keep calendar actions on one row. */
+@media screen and (max-width:900px){
+ #app #view-attendance :is(.attendance-table,.attendance-report-table) :is(th,td):not(:first-child){text-align:center!important;vertical-align:middle;}
+ #app #view-attendance .attendance-completion-table thead th:nth-child(2),
+ #app #view-attendance .attendance-completion-table thead th:nth-child(3){width:auto;}
+ #app #view-attendance .attendance-completion-table thead th:nth-child(4){width:100px;}
+ #app #schoolCalendarWrap .attendance-table{min-width:calc(var(--attendance-frozen-width) + 394px);}
+ #app #view-attendance #schoolCalendarWrap .attendance-table thead th:nth-child(4){width:auto;}
+ #app #schoolCalendarWrap .attendance-table thead th:nth-child(5){width:136px;}
+ #app #schoolCalendarWrap .calendar-row-actions{flex-direction:row;flex-wrap:nowrap;justify-content:center;gap:6px;}
+ #app #schoolCalendarWrap .calendar-row-actions button{width:auto;flex:0 0 auto;min-width:48px;min-height:44px;padding:7px 6px;white-space:nowrap;}
+}
