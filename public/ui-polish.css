@@ -1112,3 +1112,8 @@
  #app #view-attendance .attendance-completion-table .attendance-completion-badge{white-space:nowrap;}
  #app #schoolCalendarWrap .attendance-table :is(th,td):nth-child(4){text-align:left;}
 }
+
+/* Fit the border to compact tables instead of leaving an empty trailing panel. */
+@media screen{
+ #app #view-attendance .table-scroll:has(> :is(.attendance-table,.attendance-report-table)){width:fit-content;max-width:100%;box-sizing:border-box;}
+}
