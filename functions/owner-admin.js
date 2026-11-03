@@ -34,7 +34,7 @@ module.exports={millis,licence,register({onCall,HttpsError,db,admin,checkoutTest
    const users=db.collection('users');
    const [schools,heads,teachers,pending,push]=await Promise.all([count(db.collection('schools')),count(users.where('role','==','headteacher').where('status','==','active')),count(users.where('role','==','teacher').where('status','==','active')),count(users.where('role','==','teacher').where('status','==','pending')),db.doc('configuration/schoolHubPush').get()]);
    const p=push.data()||{};
-   return {schoolRecords:schools,activeHeads:heads,activeTeachers:teachers,pendingTeachers:pending,pushEnabled:p.enabled===true&&validKey(p.publicKey)&&!!p.appId&&!!p.messagingSenderId,checkoutTestOnly:checkoutTestOnly===true,asOfMs:Date.now()};
+   return {schoolRecords:schools,activeHeads:heads,activeTeachers:teachers,pendingTeachers:pending,pushEnabled:p.enabled===true&&validKey(p.publicKey)&&!!p.appId&&!!p.messagingSenderId,checkoutTestOnly:checkoutTestOnly===true,paymentProvider:'manual',asOfMs:Date.now()};
   }),
   listSchoolHubOwnerSchools:secure(async d=>{
    if(d.cursor!=null&&d.cursor!==''&&!docId(d.cursor))fail('invalid-argument','Invalid school page.');

@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="school-operations.css?v=v40-private-images-1">
 <link rel="stylesheet" href="ui-polish.css?v=v40-private-images-1-sync-center-1">
 <script src="firebase-config.js"></script>
-<script src="https://js.paystack.co/v2/inline.js"></script>
+
 <script>
   (function () {
     try {
@@ -1028,7 +1028,7 @@
         <details><summary>How do I enter grades?</summary><div class="inline-doc-answer"><p>Open <strong>Grades</strong>, choose a class, enter the required scores and save the grade sheet. Wide grade tables can scroll horizontally when many subjects are present and score inputs support full three-digit values.</p></div></details>
         <details><summary>How do reports work?</summary><div class="inline-doc-answer"><p>Add grades and remarks, then open <strong>Reports</strong>. Select the class/student and generate the available report. Themes can be previewed where enabled. Complete the subject results before issuing a final report; incomplete results can affect the subjects shown and aggregate.</p></div></details>
         <details><summary>Why is the aggregate a dash, or why are fewer subjects shown?</summary><div class="inline-doc-answer"><p>An aggregate is not calculated when fewer than <strong>six subject results are complete</strong>; the report shows a dash and no aggregate-based class position. Only completed results available for that report are listed. When results are missing, the report explains the subjects shown and the dash near the footer. Ask the school for clarification or an updated report.</p></div></details>
-        <details><summary>Why is Billing &amp; Credits sometimes unavailable?</summary><div class="inline-doc-answer"><p>Billing controls are Head Teacher-only. The current build can suspend live billing while updates are in progress, in which case SchoolHub shows that no payment or credit is required for report generation during the suspension.</p></div></details>
+        <details><summary>Why is Billing &amp; Credits sometimes unavailable?</summary><div class="inline-doc-answer"><p>Head Teachers select a school package in Billing &amp; Credits, pay by MoMo and submit the transaction ID. The SchoolHub owner verifies the received payment before activating a licence or adding credits. Pending requests do not activate access. Test balances remain separate.</p></div></details>
       </section>
 
       <section class="inline-doc-section">
@@ -1239,7 +1239,7 @@
 <p>SchoolHub can create downloadable JSON backups and year-end rollover backups. These files may contain school, student or staff information. Anyone who downloads a backup is responsible for storing it securely and sharing it only with authorized persons.</p>
 
 <h2>8. Third-party services</h2>
-<p>SchoolHub may rely on Google/Firebase for authentication and cloud services. Where billing is enabled, checkout may use Paystack. Those providers process information under their own terms and privacy practices.</p>
+<p>SchoolHub may rely on Google/Firebase for authentication and cloud services. SchoolHub currently uses manual MoMo verification for new school-service purchases. Submitted transaction IDs, selected packages, approval or rejection details and school entitlements are stored for payment review and audit. Do not submit a MoMo PIN or verification code. Historical Paystack payment records remain available. Those providers process information under their own terms and privacy practices.</p>
 
 <h2>9. Data retention and deletion</h2>
 <p>Cloud records generally remain until they are changed or deleted by an authorized school user or the service is otherwise removed. Local data remains until SchoolHub/browser storage is cleared, replaced by authorized restore/sync actions, or removed by the user/device. Downloaded backups remain wherever the user stores them.</p>
@@ -1285,7 +1285,7 @@
 <p>SchoolHub calculates and formats information from the data entered by authorized users. Schools should review grades, remarks, attendance summaries and generated reports before relying on or distributing them. SchoolHub does not replace professional or administrative review.</p>
 
 <h2>8. Billing and payments</h2>
-<p>Billing/credit features may be enabled, suspended or placed in test mode depending on the current SchoolHub release. When billing is suspended, the app will state that no payment or credit is required. When a real checkout is enabled, the amount and payment flow should be shown before payment. Payment processing may be provided by Paystack or another configured provider.</p>
+<p>Billing/credit features may be enabled, suspended or placed in test mode depending on the current SchoolHub release. When billing is suspended, the app will state that no payment or credit is required. When a real checkout is enabled, the amount and payment flow should be shown before payment. New purchases use manual MoMo payment and owner verification. Submitting a transaction ID does not activate access. A rejected request includes a reason; contact the SchoolHub owner about payment discrepancies. Existing Paystack records are retained.</p>
 
 <h2>9. Acceptable use</h2>
 <p>You must not misuse SchoolHub, bypass access controls, interfere with synchronization/security, upload unlawful content, impersonate another user, use another school's join code without authorization, or attempt to access data that does not belong to your authorized school workspace.</p>
@@ -1314,7 +1314,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.42</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.43</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
@@ -1354,6 +1354,7 @@
 <script src="private-images.js?v=v40-private-images-1"></script>
 <script src="app-updates.js"></script>
 <script src="sync-review.js"></script>
+<script src="manual-billing.js"></script>
 <script src="app-4.js?v=v40-private-images-1-sync-center-1"></script>
 <script src="fees.js?v=v40-private-images-1"></script>
 <script src="school-operations.js?v=v40-private-images-1"></script>

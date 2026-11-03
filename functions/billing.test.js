@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 
-function fixture(overrides = {}, key = 'sk_test_fixture') {
+function fixture(overrides = {}, key = 'sk_test_fixture', policy={provider:'paystack',mode:'test'}) {
   const records = new Map([
     ['users/head', { role: 'headteacher', status: 'active', schoolId: 'school' }],
     ['schools/school/billingTransactions/ref', { uid: 'head', mode: 'test', status: 'payment_pending', credits: 10, expectedAmountPesewas: 200 }],
@@ -22,7 +22,7 @@ function fixture(overrides = {}, key = 'sk_test_fixture') {
   class HttpsError extends Error { constructor(code, message) { super(message); this.code = code; } }
   const exports = {};
   let fetches = 0;
-  vm.runInNewContext(fs.readFileSync(`${__dirname}/index.js`, 'utf8'), {
+  vm.runInNewContext(fs.readFileSync(`${__dirname}/index.js`, 'utf8').replace("const PAYMENT_PROVIDER = 'manual';",`const PAYMENT_PROVIDER = '${policy.provider}';`).replace("const BILLING_MODE = 'live';",`const BILLING_MODE = '${policy.mode}';`), {
     exports, console,
     require: name => ({
       'firebase-functions/v2/https': { onCall: (_, fn) => fn, HttpsError },
@@ -225,4 +225,15 @@ test('subject-only or foreign-class teachers cannot consume school report credit
  await assert.rejects(f.exports.consumeReportCredits(deductionRequest()),e=>e.code==='permission-denied');
  f.records.get('users/head').formClassIds=['c2'];await assert.rejects(f.exports.consumeReportCredits(deductionRequest()),e=>e.code==='permission-denied');
  assert.equal(f.records.get('schools/school/billing/account').testBalance,balance);
+});
+
+test('production manual billing blocks new Paystack checkout and uses only real credit balances',async()=>{
+ const f=fixture({},'sk_test_fixture',{provider:'manual',mode:'live'});await assert.rejects(f.exports.initializeReportCreditPurchase(f.request),e=>e.code==='failed-precondition');assert.equal(f.fetches(),0);
+ f.records.get('schools/school/billing/account').testBalance=90;const req=deductionRequest();req.data.mode='live';const result=await f.exports.consumeReportCredits(req);assert.equal(result.balance,6);assert.equal(result.mode,'live');assert.equal(f.records.get('schools/school/billing/account').testBalance,90);assert.equal(f.records.get('schools/school/billing/account').balance,6);req.data.requestId='another-request-0001';req.data.mode='test';await assert.rejects(f.exports.consumeReportCredits(req),e=>e.code==='failed-precondition');
+});
+
+test('live Black and White allowance is school-wide and does not consume or inherit test allowances',async()=>{
+ const f=fixture({},'sk_test_fixture',{provider:'manual',mode:'live'});f.records.set('schools/school',{profile:{currentTerm:'Term 1',currentYear:'2026/2027'}});const bill=f.records.get('schools/school/billing/account');bill.testBwUsageByTerm={legacy:9};
+ for(let i=0;i<11;i++){const r=deductionRequest(1,'live-bw-generation-'+i);r.data.mode='live';r.data.reportType='bw-single';const result=await f.exports.consumeReportCredits(r);assert.equal(result.consumed,i<10?0:1);}
+ assert.equal(f.records.get('schools/school/billing/account').balance,6);assert.deepEqual(f.records.get('schools/school/billing/account').testBwUsageByTerm,{legacy:9});
 });

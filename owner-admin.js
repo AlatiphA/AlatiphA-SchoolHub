@@ -10,6 +10,7 @@
  const page=()=>({cursor:'',next:'',history:[],rows:[],loaded:false,busy:false,seq:0});let pages={schools:page(),licences:page(),activity:page()};
  const active=(e,u)=>epoch===e&&uid===u&&firebase.auth().currentUser?.uid===u&&allowed;
  function clear(){
+  $('ownerManualPayments')?.replaceChildren();
   allowed=false;messagesLoaded=false;modeChosen=false;schoolAction=null;actionBusy=false;lastDeletion='';$('ownerSchoolDialog')?.close();$('ownerSchoolConfirmId').value='';$('ownerSchoolConfirmPhrase').value='';$('ownerSchoolBackupConfirmed').checked=false;$('ownerSchoolArchiveFilter').value='active';$('ownerCheckDeletion').hidden=true;$('ownerRetryDeletion').hidden=true;pages={schools:page(),licences:page(),activity:page()};$('ownerDashboard').hidden=true;
   for(const id of ['ownerOverviewCards','ownerOverviewDetails','ownerSchoolsList','ownerLicencesList','ownerActivityList'])$(id).replaceChildren();
   for(const id of ['ownerOverviewStatus','ownerSchoolsStatus','ownerLicencesStatus','ownerActivityStatus','ownerSecurityAccount'])text(id,'');
@@ -31,8 +32,8 @@
   const e=epoch,u=uid;if(!allowed)return;$('ownerRefreshOverview').disabled=true;text('ownerOverviewStatus','Loading overview…');
   try{const data=await call('getSchoolHubOwnerOverview');if(!active(e,u))return;
    $('ownerOverviewCards').innerHTML=overviewCards(data);
-   $('ownerOverviewDetails').innerHTML=`<div class="owner-status-card"><h3>Messages &amp; Push</h3><span class="owner-badge">${data.pushEnabled?'Server push enabled':'Push setup not enabled'}</span><p>Send service messages to a school or selected active recipients.</p><button class="owner-button" type="button" data-owner-go="messages">Open Messages &amp; Push</button></div><div class="owner-status-card"><h3>School licences</h3><span class="owner-badge ${data.checkoutTestOnly?'owner-badge-test':''}">${data.checkoutTestOnly?'Test checkout · live billing disabled':'Live checkout enabled'}</span><p>Review three-year licences, existing lifetime licences and report credits.</p><button class="owner-button" type="button" data-owner-go="licences">View licences</button></div>`;
-   if(!modeChosen)$('ownerLicenceMode').value=data.checkoutTestOnly?'test':'live';
+   $('ownerOverviewDetails').innerHTML=`<div class="owner-status-card"><h3>Messages &amp; Push</h3><span class="owner-badge">${data.pushEnabled?'Server push enabled':'Push setup not enabled'}</span><p>Send service messages to a school or selected active recipients.</p><button class="owner-button" type="button" data-owner-go="messages">Open Messages &amp; Push</button></div><div class="owner-status-card"><h3>School licences</h3><span class="owner-badge ${data.checkoutTestOnly?'owner-badge-test':''}">${data.paymentProvider==='manual'?'Manual MoMo · owner verification':data.checkoutTestOnly?'Test checkout · live billing disabled':'Live checkout enabled'}</span><p>Review three-year licences, existing lifetime licences and report credits.</p><button class="owner-button" type="button" data-owner-go="licences">View licences</button></div>`;
+   if(!modeChosen)$('ownerLicenceMode').value=data.paymentProvider==='manual'?'live':data.checkoutTestOnly?'test':'live';
    text('ownerOverviewStatus','Last checked: '+date(data.asOfMs));
   }catch(error){if(active(e,u))errorAt('ownerOverviewStatus',error);}finally{if(active(e,u))$('ownerRefreshOverview').disabled=false;}
  }
@@ -50,6 +51,7 @@
   const names={'three-year':'3-year School Licence',lifetime:'Lifetime School Licence','pay-as-you-go':'Pay as you go'},states={active:'Active',expired:'Expired',inactive:'Inactive','needs-review':'Needs review',none:'No active school licence'};
   $('ownerLicencesList').innerHTML=rows.length?table(['School','Environment','Licence','Status / expiry','Report credits'],rows.map(r=>{const p=r.licences[mode];return `<tr><td><strong>${esc(r.name)}</strong><small>${esc(r.id)}</small></td><td><span class="owner-badge ${mode==='test'?'owner-badge-test':''}">${mode==='test'?'TEST':'LIVE'}</span></td><td>${esc(names[p.plan]||'Unknown')}${p.plan==='lifetime'?'<small>Existing entitlement retained</small>':''}</td><td>${esc(states[p.state]||'Needs review')}<small>${p.expiresAt?'Expires: '+esc(date(Date.parse(p.expiresAt))):p.plan==='lifetime'?'No expiry recorded':''}</small></td><td>${integer(r.credits[mode])} ${mode==='test'?'test credits':'credits'}</td></tr>`;}).join('')):'<div class="owner-empty">'+(s.rows.length?'No matches on this page.':'No school records found.')+'</div>';
   pager('licences','Licences');
+  if(typeof renderOwnerManualPayments==='function'){const e=epoch,u=uid;renderOwnerManualPayments($('ownerManualPayments'),()=>active(e,u));}
  }
  async function loadSchools(kind,direction='refresh'){
   if(!allowed)return;const e=epoch,u=uid,s=pages[kind];if(s.busy)return;const label=kind==='schools'?'Schools':'Licences',prefix='owner'+label;

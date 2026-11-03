@@ -94,6 +94,11 @@ service cloud.firestore {
         && request.resource.data.readAt == request.time;
     }
 
+    // School-service payment requests, reference locks and approval audit are server-owned.
+    match /manualSchoolPayments/{id} { allow read, write: if false; }
+    match /manualPaymentReferences/{id} { allow read, write: if false; }
+    match /manualPaymentAudit/{id} { allow read, write: if false; }
+
     match /joinCodes/{code} {
       allow get: if signedIn();
       allow list: if false;

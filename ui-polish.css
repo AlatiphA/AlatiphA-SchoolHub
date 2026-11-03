@@ -1135,3 +1135,14 @@
  #app #schoolCalendarWrap .calendar-row-actions{flex-direction:row;flex-wrap:nowrap;justify-content:center;gap:6px;}
  #app #schoolCalendarWrap .calendar-row-actions button{width:auto;flex:0 0 auto;min-width:48px;min-height:44px;padding:7px 6px;white-space:nowrap;}
 }
+
+/* School-service manual payments in Billing and Owner Administration. */
+.manual-billing{min-width:0;overflow-wrap:anywhere;}
+.manual-billing .billing-section{margin:18px 0;padding:16px;border:1px solid var(--rule);border-radius:12px;}
+.manual-billing label{display:block;margin:12px 0;font-weight:500;}
+.manual-billing :is(input:not([type=checkbox]),select){display:block;width:100%;max-width:480px;min-height:44px;margin-top:6px;box-sizing:border-box;}
+.manual-billing label:has(input[type=checkbox]){display:flex;gap:8px;align-items:flex-start;}
+.manual-billing input[type=checkbox]{flex:0 0 auto;margin-top:4px;}
+.manual-billing button{min-height:44px;max-width:100%;white-space:normal;}
+.manual-billing .fee-actions{display:flex;flex-wrap:wrap;gap:8px;}
+@media(max-width:600px){.manual-billing .fee-actions button{width:100%;}.manual-billing .billing-section{padding:12px;}}

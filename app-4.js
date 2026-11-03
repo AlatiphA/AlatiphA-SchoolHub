@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.42';
+const APP_VERSION = '40.1.43';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -5577,7 +5577,7 @@ async function downloadAttendanceReportPdf(){
 
 async function renderAttendanceView() {
   const host = document.getElementById('view-attendance');
-  if (host && hasSchoolBillingAccount() && testCreditDeductionsEnabled()) {
+  if (host && hasSchoolBillingAccount() && !reportBillingIsFree()) {
     let notice = document.getElementById('attendancePlanNotice');
     if (!notice) { notice = document.createElement('div'); notice.id = 'attendancePlanNotice'; notice.className = 'billing-note'; host.prepend(notice); }
     notice.textContent = 'Checking school attendance access…';
@@ -5588,7 +5588,7 @@ async function renderAttendanceView() {
     if (school !== currentSchoolId || uid !== currentUid) return;
     const allowed = hasSchoolAttendanceAccess();
     Array.from(host.children).forEach(child => { if (child !== notice) child.inert = !allowed; });
-    notice.innerHTML = allowed ? '<span>School attendance access active for this term.</span>' : '<span>Pay as you go attendance costs GH₵50 per school term. An active School Licence includes attendance. Test mode: no real money is charged.</span>';
+    notice.innerHTML = allowed ? '<span>School attendance access active for this term.</span>' : '<span>Pay as you go attendance costs GH₵50 per school term. An active School Licence includes attendance. '+(isBillingTestMode()?'Test mode: no real money is charged.':'Submit payment in Billing & Credits; owner approval is required.')+'</span>';
     if (!allowed && isHeadTeacher()) {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'btn-primary'; button.textContent = 'View school plans'; button.onclick = () => showView('billing'); notice.append(button);
     }
@@ -7864,9 +7864,8 @@ document.getElementById('startNewTermBtn').addEventListener('click', () => {
 });
 
 /* ---------- Phase 4: School Billing & Report Credits ---------- */
-// Billing is temporarily suspended while the Staff module is being expanded.
-// All billing/payment code remains in this build for later reactivation.
-const BILLING_SUSPENDED = true;
+// Manual school-service payments are active. Legacy Paystack records remain available.
+const BILLING_SUSPENDED = false;
 const TEST_CREDIT_DEDUCTIONS = true;
 function testCreditDeductionsEnabled() { return TEST_CREDIT_DEDUCTIONS && isBillingTestMode(); }
 function reportBillingIsFree() { return BILLING_SUSPENDED && !testCreditDeductionsEnabled(); }
@@ -7893,9 +7892,9 @@ function schoolLicenceLabel() {
 function reportBillingMessage() {
   if (hasSchoolLifetimeLicence()) return schoolLicenceLabel() + ': unlimited reports and attendance while the licence is active, including teachers and updates.';
   if (testCreditDeductionsEnabled()) return 'Test deductions enabled. Premium single reports use 1 test credit; class batches use 1 per report. Each school gets 10 free single Black & White reports per term, then 1 test credit per report. Live billing is disabled; no real money is charged.';
-  return 'Live billing disabled. All report generation, including class batch PDFs, is free. No credits are deducted.';
+  return BILLING_SUSPENDED?'Live billing disabled. All report generation is free. No credits are deducted.':'Manual school payments are active. Premium reports and class batches use school credits; 10 single Black & White reports are free per school term.';
 }
-function isBillingTestMode() { return String(window.PAYSTACK_PUBLIC_KEY || '').startsWith('pk_test_'); }
+function isBillingTestMode() { return typeof manualPaymentsEnabled==='function'&&manualPaymentsEnabled()?false:String(window.PAYSTACK_PUBLIC_KEY || '').startsWith('pk_test_'); }
 function pendingPaymentKey() { return `arc_pending_payment_${currentSchoolId}_${currentUid}`; }
 function pendingPaymentReference() { return localStorage.getItem(pendingPaymentKey()) || ''; }
 let checkoutBusy = false;
@@ -7908,7 +7907,8 @@ function bwAllowanceKey(settings = DB.get(KEYS.settings, {})) {
 }
 function bwFreeRemaining() {
   if (!currentUid && !currentSchoolId) return Math.max(0, BW_FREE_REPORT_LIMIT - Number(localStorage.getItem(GUEST_BW_USAGE_KEY) || 0));
-  const usage = DB.get(KEYS.billing, {}).testBwUsageByTerm || {};
+  const account=DB.get(KEYS.billing, {});
+  const usage = account[isBillingTestMode()?'testBwUsageByTerm':'bwUsageByTerm'] || {};
   return Math.max(0, BW_FREE_REPORT_LIMIT - Number(usage[bwAllowanceKey()] || 0));
 }
 const REPORT_CREDIT_PACKAGES = [
@@ -7951,6 +7951,7 @@ async function refreshBillingAccount(silent = true) {
     const cachedAccount = DB.get(KEYS.billing, {});
     cachedAccount.testBalance = Math.max(0, Number(data.testBalance || 0));
     cachedAccount.testBwUsageByTerm = data.testBwUsageByTerm || {};
+    cachedAccount.bwUsageByTerm = data.bwUsageByTerm || {};
     cachedAccount.testSchoolLicence = data.testSchoolLicence || null;
     cachedAccount.schoolLicence = data.schoolLicence || null;
     cachedAccount.testLifetimeLicence = data.testLifetimeLicence || null;
@@ -7992,22 +7993,23 @@ async function consumeReportCredits(count, requestId = crypto.randomUUID(), repo
   if (!requireSchoolAccountForPaidFeature('generating report cards')) throw new Error('School account required.');
   if (!firebase.functions) throw new Error('Billing service is not available.');
   const fn = billingFunctions().httpsCallable('consumeReportCredits');
+  const mode=isBillingTestMode()?'test':'live';
   const deductionSchool = currentSchoolId;
   const deductionUid = currentUid;
   let result;
   for (let attempt = 0; attempt < 2; attempt++) {
-    try { result = await fn({ count, requestId, mode: 'test', reportType, ...(classId?{classId}:{}) }); break; }
+    try { result = await fn({ count, requestId, mode, reportType, ...(classId?{classId}:{}) }); break; }
     catch (error) {
       if (attempt || !['functions/unavailable', 'functions/deadline-exceeded', 'functions/internal'].includes(error.code)) throw error;
     }
   }
-  if (result.data?.mode !== 'test') throw new Error('Unexpected credit deduction mode.');
+  if (result.data?.mode !== mode) throw new Error('Unexpected credit deduction mode.');
   const balance = Number(result.data.balance);
   if (currentSchoolId === deductionSchool && currentUid === deductionUid) {
     const account = DB.get(KEYS.billing, {});
-    account.testBalance = balance;
+    account[mode==='test'?'testBalance':'balance'] = balance;
     if (result.data.allowanceKey && result.data.freeRemaining != null) {
-      account.testBwUsageByTerm = { ...(account.testBwUsageByTerm || {}), [result.data.allowanceKey]: BW_FREE_REPORT_LIMIT - Number(result.data.freeRemaining) };
+      account[mode==='test'?'testBwUsageByTerm':'bwUsageByTerm'] = { ...(account[mode==='test'?'testBwUsageByTerm':'bwUsageByTerm'] || {}), [result.data.allowanceKey]: BW_FREE_REPORT_LIMIT - Number(result.data.freeRemaining) };
     }
     DB.set(KEYS.billing, account);
     renderReportCreditStatus();
@@ -8016,6 +8018,7 @@ async function consumeReportCredits(count, requestId = crypto.randomUUID(), repo
   return result.data;
 }
 async function buyReportCredits(packageId) {
+  if (typeof manualPaymentsEnabled==='function'&&manualPaymentsEnabled()){if(!isHeadTeacher())return;return renderManualSchoolBilling(document.getElementById('billingWrap'),String(packageId));}
   if (checkoutBusy) return;
   if (!isHeadTeacher()) { alert('Only the Head Teacher can purchase a plan or report credits for the school.'); return; }
   const pack = packageId === 'attendance' ? { id: 'attendance', amount: 50.00 } : packageId === 'three-year' ? { id: 'three-year', amount: 349.99 } : REPORT_CREDIT_PACKAGES.find(p => p.id === String(packageId));
@@ -8091,6 +8094,7 @@ async function verifyPendingCreditPayment(reference) {
 async function renderBilling() {
   const wrap = document.getElementById('billingWrap');
   if (!wrap) return;
+  if(typeof manualPaymentsEnabled==='function'&&manualPaymentsEnabled())return renderManualSchoolBilling(wrap);
   if (BILLING_SUSPENDED && !isBillingTestMode()) {
     wrap.innerHTML = `<div class="billing-card"><h3>Billing &amp; Credits</h3><p class="hint">Billing and report credits are temporarily suspended while SchoolHub is being updated. No payment or credit is required during this period.</p></div>`;
     return;
@@ -8881,7 +8885,7 @@ async function downloadGeneratedReport(doc, filename, count, reportType = 'paid'
       renderReportCreditStatus();
     } else if (count) {
       try { await consumeReportCredits(count, crypto.randomUUID(), reportType, classId); }
-      catch (error) { alert(error.message || 'Test credits could not be deducted. The report was not downloaded.'); return; }
+      catch (error) { alert(error.message || 'School credits could not be confirmed. The report was not downloaded.'); return; }
     }
     showPreparedReport(url, filename);
     offered = true;

@@ -20,10 +20,10 @@ const context=vm.createContext({exports:{},require:name=>{
   if(name==='firebase-functions/v2/https')return {onCall:(_,fn)=>fn,HttpsError};
   if(name==='firebase-functions/params')return {defineSecret:()=>({value:()=> 'sk_test_fake'})};
   if(name==='firebase-admin')return {initializeApp:()=>{},firestore};
-  if(name==='./school-lifecycle'||name==='./owner-admin'||name==='./push-messaging'||name==='./safety'||name==='./fees'||name==='./teacher-lifecycle'||name==='./notifications'||name==='./account-security'||name==='./school-operations'||name==='./weekly-supervision'||name==='./private-images'||name==='./school-registration')return null; // Billing fixture: feature handlers are tested separately.
+  if(name==='./manual-payments'||name==='./school-lifecycle'||name==='./owner-admin'||name==='./push-messaging'||name==='./safety'||name==='./fees'||name==='./teacher-lifecycle'||name==='./notifications'||name==='./account-security'||name==='./school-operations'||name==='./weekly-supervision'||name==='./private-images'||name==='./school-registration')return null; // Billing fixture: feature handlers are tested separately.
   throw Error(name);
 }});
-vm.runInContext(fs.readFileSync('functions/index.js','utf8'),context);
+vm.runInContext(fs.readFileSync('functions/index.js','utf8').replace("const BILLING_MODE = 'live';","const BILLING_MODE = 'test';"),context);
 const consume=context.exports.consumeReportCredits;
 records.set('users/head',{role:'headteacher',status:'active',schoolId:'school'});
 records.set('users/teacher',{role:'teacher',status:'active',schoolId:'school',assignedClassIds:['c1'],formClassIds:['c1']});

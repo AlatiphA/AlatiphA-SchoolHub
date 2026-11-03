@@ -7,8 +7,10 @@ const rawDb = admin.firestore();
 const schoolLifecycle = require('./school-lifecycle');
 const db = schoolLifecycle ? schoolLifecycle.guardDatabase(rawDb, HttpsError) : rawDb;
 const PAYSTACK_SECRET_KEY = defineSecret('PAYSTACK_SECRET_KEY');
-// Keep real-money checkout disabled until the end-to-end test is approved.
+// Legacy Paystack verification retains its test environment; new manual purchases use live school entitlements.
 const CHECKOUT_TEST_ONLY = true;
+const PAYMENT_PROVIDER = 'manual';
+const BILLING_MODE = 'live';
 
 function paymentMode() {
   const key = PAYSTACK_SECRET_KEY.value();
@@ -75,6 +77,7 @@ async function paystackRequest(path, options = {}) {
 // token validation. Authorization is enforced below using request.auth and role.
 exports.initializeReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYSTACK_SECRET_KEY], region: 'us-central1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
+  if(PAYMENT_PROVIDER!=='paystack')throw new HttpsError('failed-precondition','New Paystack checkout is disabled. Submit a manual payment in Billing & Credits.');
   const { schoolId } = await getHeadSchool(request.auth.uid);
   const mode = paymentMode();
   const packageId = String(request.data?.packageId || '');
@@ -236,7 +239,9 @@ exports.verifyReportCreditPurchase = onCall({ invoker: 'public', secrets: [PAYST
 
 exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1' }, async (request) => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in.');
-  if (!CHECKOUT_TEST_ONLY || request.data?.mode !== 'test') throw new HttpsError('failed-precondition', 'Only test-credit deductions are enabled.');
+  const mode=BILLING_MODE;
+  if(request.data?.mode!==mode)throw new HttpsError('failed-precondition','Report billing environment changed. Refresh SchoolHub.');
+  const balanceField=mode==='test'?'testBalance':'balance',usageField=mode==='test'?'testBwUsageByTerm':'bwUsageByTerm';
   const userSnap = await db.collection('users').doc(request.auth.uid).get();
   const user = userSnap.data() || {};
   if (!['headteacher', 'teacher'].includes(user.role) || user.status !== 'active' || !user.schoolId) {
@@ -268,9 +273,9 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
     const billSnap = await t.get(billRef);
     const usageSnap = await t.get(usageRef);
     const account = billSnap.data() || {};
-    const current = Number(account.testBalance || 0);
-    lifetime = activeSchoolLicence(account, schoolId, 'test');
-    const allowances = account.testBwUsageByTerm || {};
+    const current = Number(account[balanceField] || 0);
+    lifetime = activeSchoolLicence(account, schoolId, mode);
+    const allowances = account[usageField] || {};
     if (reportType === 'bw-single' && !lifetime) {
       const schoolSnap = await t.get(db.collection('schools').doc(schoolId));
       const profile = schoolSnap.data()?.profile || {};
@@ -283,7 +288,7 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
     }
     if (usageSnap.exists) {
       const usage = usageSnap.data();
-      if (usage.uid !== request.auth.uid || usage.count !== count || usage.mode !== 'test' || (usage.reportType || 'paid') !== reportType) throw new HttpsError('failed-precondition', 'Generation request does not match the original deduction.');
+      if (usage.uid !== request.auth.uid || usage.count !== count || usage.mode !== mode || (usage.reportType || 'paid') !== reportType) throw new HttpsError('failed-precondition', 'Generation request does not match the original deduction.');
       balance = current;
       consumed = usage.consumed ?? usage.count;
       allowanceKey = usage.allowanceKey || allowanceKey;
@@ -294,10 +299,10 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
     consumed = lifetime || (reportType === 'bw-single' && used < 10) ? 0 : count;
     if (current < consumed) throw new HttpsError('failed-precondition', `Not enough report credits. You have ${current}.`);
     balance = current - consumed;
-    const update = { testBalance: balance, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    const update = { [balanceField]: balance, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
     if (allowanceKey) {
       const nextUsed = used + (consumed === 0 ? 1 : 0);
-      update.testBwUsageByTerm = { ...allowances, [allowanceKey]: nextUsed };
+      update[usageField] = { ...allowances, [allowanceKey]: nextUsed };
       freeRemaining = Math.max(0, 10 - nextUsed);
     }
     t.set(billRef, update, { merge: true });
@@ -308,12 +313,12 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
       consumed,
       reportType,
       allowanceKey,
-      mode: 'test',
+      mode,
       action: 'report_card_generation',
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
   });
-  return { balance, consumed, freeRemaining, allowanceKey, lifetime, mode: 'test' };
+  return { balance, consumed, freeRemaining, allowanceKey, lifetime, mode };
 });
 
 const safetyModule = require('./safety');
@@ -346,3 +351,6 @@ const ownerAdmin=require("./owner-admin");
 if(ownerAdmin)Object.assign(exports,ownerAdmin.register({onCall,HttpsError,db,admin,checkoutTestOnly:CHECKOUT_TEST_ONLY}));
 
 if(schoolLifecycle)Object.assign(exports,schoolLifecycle.register({onCall,HttpsError,db:rawDb,admin,onDocumentWritten:require('firebase-functions/v2/firestore').onDocumentWritten}));
+
+const manualPayments=require('./manual-payments');
+if(manualPayments)Object.assign(exports,manualPayments.register({onCall,HttpsError,db,admin,packages:PACKAGES,schoolLicenceEnd}));

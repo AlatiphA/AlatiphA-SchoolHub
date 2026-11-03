@@ -60,7 +60,7 @@ test('insufficient balance blocks generation; overlapping clicks only deduct onc
 test('transient deduction retries reuse the request ID and update only the test balance', async () => {
   const account = { balance: 7, testBalance: 10 }, requests = [];
   const context = vm.createContext({
-    crypto: { randomUUID: () => 'same-generation-id' }, reportBillingIsFree: () => false,
+    isBillingTestMode:()=>true,crypto: { randomUUID: () => 'same-generation-id' }, reportBillingIsFree: () => false,
     requireSchoolAccountForPaidFeature: () => true, firebase: { functions: true },
     currentSchoolId: 'school', currentUid: 'head',
     billingFunctions: () => ({ httpsCallable: () => async data => {
