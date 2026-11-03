@@ -1113,7 +1113,12 @@
  #app #schoolCalendarWrap .attendance-table :is(th,td):nth-child(4){text-align:left;}
 }
 
-/* Fit the border to compact tables instead of leaving an empty trailing panel. */
+/* Fill the available row; compact minimums retain mobile horizontal scrolling. */
 @media screen{
- #app #view-attendance .table-scroll:has(> :is(.attendance-table,.attendance-report-table)){width:fit-content;max-width:100%;box-sizing:border-box;}
+ #app #view-attendance .table-scroll:has(> :is(.attendance-table,.attendance-report-table)){width:100%;max-width:100%;box-sizing:border-box;}
+ #app #view-attendance .table-scroll>:is(.attendance-table,.attendance-report-table){width:100%;}
+}
+@media screen and (max-width:900px){
+ #app #view-attendance #schoolCalendarWrap .attendance-table thead th:nth-child(4){width:auto;}
+ #app #view-attendance .attendance-completion-table thead th:nth-child(4){width:auto;}
 }
