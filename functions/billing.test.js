@@ -246,3 +246,5 @@ for(const type of ['termly','yearly','expired','foreign','wrong-term'])test('rep
  const req=deductionRequest();req.data.mode='live';const result=await f.exports.consumeReportCredits(req);
  assert.equal(result.consumed,['termly','yearly'].includes(type)?0:1);assert.equal(f.records.get('schools/school/billing/account').balance,['termly','yearly'].includes(type)?7:6);
 });
+
+test('owner complimentary access waives live credit deductions without consuming paid balance',async()=>{const f=fixture({},'sk_test_fixture',{provider:'manual',mode:'live'});const b=f.records.get('schools/school/billing/account');b.complimentaryAccess={active:true,schoolId:'school'};const r=deductionRequest();r.data.mode='live';assert.equal((await f.exports.consumeReportCredits(r)).consumed,0);assert.equal(f.records.get('schools/school/billing/account').balance,7);});

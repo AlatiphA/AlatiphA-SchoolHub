@@ -16,3 +16,7 @@
 .owner-guide-content summary{cursor:pointer;font-weight:700;line-height:1.5}
 .owner-guide-content li{margin:.5rem 0}
 @media(max-width:600px){.owner-guide>summary{padding:14px}.owner-guide-content{padding:0 14px 14px}.owner-guide-content ol{padding-left:22px}}
+
+.owner-access-dialog{width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto}.owner-access-dialog .owner-school-dialog-body{overflow-wrap:anywhere}.owner-access-dialog label{display:block;margin:12px 0}.owner-access-dialog input,.owner-access-dialog select{width:100%;box-sizing:border-box;min-height:44px}.owner-access-dialog [data-users]{display:grid;gap:12px}.owner-access-dialog [data-close]{border-radius:50%;min-width:44px;min-height:44px}.owner-access-dialog button{min-height:44px}.owner-access-dialog [hidden]{display:none!important}@media(max-width:600px){.owner-access-dialog .owner-actions{display:flex;flex-wrap:wrap}.owner-access-dialog .owner-actions button{flex:1 1 140px}}
+
+.owner-access-dialog>header{position:sticky;top:0;background:var(--surface);z-index:2}.owner-access-dialog details{margin:12px 0}.owner-access-dialog summary{cursor:pointer;font-weight:600}

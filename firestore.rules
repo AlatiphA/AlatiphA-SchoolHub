@@ -9,7 +9,15 @@ service cloud.firestore {
 
     function schoolAvailable(schoolId) {
       return !exists(/databases/$(database)/documents/schoolAdministration/$(schoolId))
-        || !(get(/databases/$(database)/documents/schoolAdministration/$(schoolId)).data.get('state', '') in ['deleting','deleted']);
+        || (!(get(/databases/$(database)/documents/schoolAdministration/$(schoolId)).data.get('state', '') in ['deleting','deleted'])
+          && !(get(/databases/$(database)/documents/schoolAdministration/$(schoolId)).data.get('accessStatus', 'active') in ['suspended','disabled']));
+    }
+    function ownerUserAllowed() {
+      return !exists(/databases/$(database)/documents/users/$(request.auth.uid)) || !(myUser().get('ownerAccess', {}).get('status', 'active') in ['suspended','disabled']);
+    }
+    match /schoolAdministration/{schoolId} {
+      allow get: if signedIn() && myUser().schoolId == schoolId;
+      allow list, write: if false;
     }
 
     function myUser() {
@@ -18,6 +26,7 @@ service cloud.firestore {
 
     function isHeadTeacher(schoolId) {
       return signedIn()
+        && ownerUserAllowed()
         && schoolAvailable(schoolId)
         && myUser().schoolId == schoolId
         && myUser().role == 'headteacher'
@@ -26,6 +35,7 @@ service cloud.firestore {
 
     function isActiveTeacher(schoolId) {
       return signedIn()
+        && ownerUserAllowed()
         && schoolAvailable(schoolId)
         && myUser().schoolId == schoolId
         && myUser().role == 'teacher'
@@ -121,6 +131,7 @@ service cloud.firestore {
 
     match /schools/{schoolId} {
       allow read: if signedIn()
+        && ownerUserAllowed()
         && schoolAvailable(schoolId)
         && (
           isHeadTeacher(schoolId)
@@ -132,6 +143,7 @@ service cloud.firestore {
         );
 
       allow create: if verifiedEmail()
+        && ownerUserAllowed()
         && schoolAvailable(schoolId)
         && request.auth.uid == request.resource.data.ownerUid
         && request.resource.data.profile.schoolName is string;

@@ -1,4 +1,4 @@
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall: rawOnCall, HttpsError } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 
@@ -6,6 +6,8 @@ admin.initializeApp();
 const rawDb = admin.firestore();
 const schoolLifecycle = require('./school-lifecycle');
 const db = schoolLifecycle ? schoolLifecycle.guardDatabase(rawDb, HttpsError) : rawDb;
+const serviceAccess = require('./service-access');
+const onCall = serviceAccess ? serviceAccess.wrapOnCall(rawOnCall,{db:rawDb,admin,HttpsError}) : rawOnCall;
 const PAYSTACK_SECRET_KEY = defineSecret('PAYSTACK_SECRET_KEY');
 // Legacy Paystack verification retains its test environment; new manual purchases use live school entitlements.
 const CHECKOUT_TEST_ONLY = true;
@@ -280,7 +282,7 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
     const reportProfile = reportSchool.data()?.profile || {};
     const reportKey = encodeURIComponent(JSON.stringify([reportProfile.currentYear, reportProfile.currentTerm]));
     const reportYear = account[mode === 'test' ? 'testReportYearLicence' : 'reportYearLicence'];
-    lifetime = activeSchoolLicence(account, schoolId, mode) ||
+    lifetime = (mode === 'live' && account.complimentaryAccess?.active === true && account.complimentaryAccess.schoolId === schoolId) || activeSchoolLicence(account, schoolId, mode) ||
       (reportYear?.active === true && reportYear.schoolId === schoolId && Date.parse(reportYear.expiresAt) > Date.now()) ||
       account[mode === 'test' ? 'testReportTerms' : 'reportTerms']?.[reportKey]?.active === true;
     const allowances = account[usageField] || {};
@@ -362,3 +364,6 @@ if(schoolLifecycle)Object.assign(exports,schoolLifecycle.register({onCall,HttpsE
 
 const manualPayments=require('./manual-payments');
 if(manualPayments)Object.assign(exports,manualPayments.register({onCall,HttpsError,db,admin,packages:PACKAGES,schoolLicenceEnd}));
+
+const ownerAccess = require('./owner-access');
+if(ownerAccess)Object.assign(exports,ownerAccess.register({onCall:rawOnCall,onDocumentWritten:require('firebase-functions/v2/firestore').onDocumentWritten,HttpsError,db:rawDb,admin}));

@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.44';
+const APP_VERSION = '40.1.45';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -531,6 +531,7 @@ function resetWorkspaceState() {
   document.getElementById('accountSecurityDialog')?.close();
   currentUid = null;
   if (typeof SchoolHubSyncQueue !== 'undefined') SchoolHubSyncQueue.disable().catch(() => {});
+  window.SchoolHubServiceAccess?.stop();
   stopNotificationListener();
   hideNotificationCenter(true);
   currentSchoolId = null;
@@ -7871,7 +7872,9 @@ function testCreditDeductionsEnabled() { return TEST_CREDIT_DEDUCTIONS && isBill
 function reportBillingIsFree() { return BILLING_SUSPENDED && !testCreditDeductionsEnabled(); }
 function hasSchoolAttendanceAccess() {
   if (!hasSchoolBillingAccount()) return false;
-  const billing = DB.get(KEYS.billing, {}), legacy = billing[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'], licence = billing[isBillingTestMode() ? 'testSchoolLicence' : 'schoolLicence'];
+  const billing = DB.get(KEYS.billing, {});
+  if(!isBillingTestMode()&&billing.complimentaryAccess?.active===true&&billing.complimentaryAccess.schoolId===currentSchoolId)return true;
+  const legacy = billing[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'], licence = billing[isBillingTestMode() ? 'testSchoolLicence' : 'schoolLicence'];
   if (legacy?.active === true && legacy.schoolId === currentSchoolId || licence?.active === true && licence.schoolId === currentSchoolId && Date.parse(licence.expiresAt) > Date.now()) return true;
   const account = DB.get(KEYS.billing, {});
   return account[isBillingTestMode() ? 'testAttendanceTerms' : 'attendanceTerms']?.[bwAllowanceKey()]?.active === true;
@@ -7879,6 +7882,7 @@ function hasSchoolAttendanceAccess() {
 function hasSchoolReportPackage() {
   if (!hasSchoolBillingAccount()) return false;
   const account = DB.get(KEYS.billing, {}), yearly = account.reportYearLicence;
+  if(account.complimentaryAccess?.active===true&&account.complimentaryAccess.schoolId===currentSchoolId)return true;
   return (yearly?.active === true && yearly.schoolId === currentSchoolId && Date.parse(yearly.expiresAt) > Date.now()) || account.reportTerms?.[bwAllowanceKey()]?.active === true;
 }
 function hasSchoolLifetimeLicence() {
@@ -7894,6 +7898,7 @@ function schoolLicenceLabel() {
   const account = DB.get(KEYS.billing, {}), legacy = account[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'];
   if (legacy?.active === true && legacy.schoolId === currentSchoolId) return 'Existing Lifetime School Licence';
   const licence = account[isBillingTestMode() ? 'testSchoolLicence' : 'schoolLicence'];
+  if (!isBillingTestMode() && account.complimentaryAccess?.active===true && account.complimentaryAccess.schoolId===currentSchoolId) return 'Complimentary school access';
   if (!isBillingTestMode() && hasSchoolReportPackage()) { const yearly = account.reportYearLicence; return yearly?.active && yearly.schoolId === currentSchoolId && Date.parse(yearly.expiresAt) > Date.now() ? 'Yearly reports: expires ' + new Date(yearly.expiresAt).toLocaleDateString('en-GB') : 'Termly reports: current school term'; }
   return '3-year School Licence' + (licence?.schoolId === currentSchoolId && typeof licence.expiresAt === 'string' && Number.isFinite(Date.parse(licence.expiresAt)) ? ' · expires ' + new Date(licence.expiresAt).toLocaleDateString('en-GB') : '');
 }
@@ -7964,6 +7969,7 @@ async function refreshBillingAccount(silent = true) {
     cachedAccount.schoolLicence = data.schoolLicence || null;
     cachedAccount.reportYearLicence = data.reportYearLicence || null;
     cachedAccount.reportTerms = data.reportTerms || {};
+    cachedAccount.complimentaryAccess = data.complimentaryAccess || null;
     cachedAccount.testLifetimeLicence = data.testLifetimeLicence || null;
     cachedAccount.lifetimeLicence = data.lifetimeLicence || null;
     cachedAccount.testAttendanceTerms = data.testAttendanceTerms || {};
@@ -11099,12 +11105,15 @@ async function performReconnectRecovery() {
     const userDoc = await withSessionVerificationDeadline(firebase.firestore().collection('users').doc(uidBefore).get({source:'server'}));
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
     let data = userDoc.exists ? userDoc.data() : null;
+    if(window.SchoolHubServiceAccess)data=await withSessionVerificationDeadline(SchoolHubServiceAccess.verify(data));
+    if(!isCurrentSession(token,uidBefore,schoolBefore))return;
     if(data?.status==='active'&&data.schoolId===schoolBefore&&String(data.email||'').trim().toLowerCase()!==String(authUser.email||'').trim().toLowerCase()){
       await withSessionVerificationDeadline(authUser.getIdToken(true));
       const result=await withSessionVerificationDeadline(firebase.functions().httpsCallable('synchronizeLoginEmail')({}));
       if(!isCurrentSession(token,uidBefore,schoolBefore))return;
       data={...data,email:result.data.email,pendingLoginEmail:result.data.pendingEmail};
     }
+    if(data?.status==='active')window.SchoolHubServiceAccess?.watch(data,token,uidBefore);
     if (!data || data.status !== 'active' || !data.schoolId || data.schoolId !== schoolBefore) {
       clearVerifiedLocalSession(uidBefore);
       offlineAuthenticatedMode = false;
@@ -11254,6 +11263,10 @@ function showSchoolChoiceGate() { document.documentElement.classList.add('school
 function hideSchoolChoiceGate() { document.documentElement.classList.remove('schoolChoice'); }
 function showPendingGate() { document.documentElement.classList.add('pendingApproval'); }
 function hidePendingGate() { document.documentElement.classList.remove('pendingApproval'); }
+function restrictSchoolHubOwnerSession(message) {
+  const uid=currentUid;clearVerifiedLocalSession(uid);sessionGeneration++;sessionReady=false;sessionDataReady=false;offlineAuthenticatedMode=false;currentStatus='disabled';hideSessionRestoring();hideSyncingMessage();hideAuthGate();hideSchoolChoiceGate();hidePendingGate();showDisabledGate();
+  const hint=document.querySelector('#disabledGate .hint');if(hint)hint.textContent=message+' Saved work remains on this device. Use Check access again after reactivation.';
+}
 function showDisabledGate() { document.documentElement.classList.add('disabledAccess'); }
 function hideDisabledGate() { document.documentElement.classList.remove('disabledAccess'); }
 
@@ -12360,6 +12373,8 @@ function initAuth() {
         }
         const userDoc = startup.snapshot;
         let data = userDoc.exists ? userDoc.data() : null;
+        if(window.SchoolHubServiceAccess)data=await withSessionVerificationDeadline(SchoolHubServiceAccess.verify(data));
+        if(!isCurrentSession(token,user.uid,null))return;
         if(data?.schoolId&&data.status==='active'&&String(data.email||'').trim().toLowerCase()!==String(user.email||'').trim().toLowerCase()){
           await user.getIdToken(true);
           const result=await firebase.functions().httpsCallable('synchronizeLoginEmail')({});
@@ -12409,6 +12424,7 @@ function initAuth() {
         if (currentRole === 'teacher') redactCachedStaff();
         currentStatus = 'active';
         saveVerifiedLocalSession(user, data);
+        window.SchoolHubServiceAccess?.watch(data,token,user.uid);
         offlineAuthenticatedMode = false;
         updateOfflineModeBanner();
 

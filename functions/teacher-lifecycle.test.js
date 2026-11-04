@@ -102,3 +102,5 @@ test('invalid or unauthorized form assignments are atomic and removals clear rep
  const f=fixture();await assert.rejects(f.handlers.manageTeacherLifecycle(f.req({...save,formClassIds:['c1']},'teacher')),e=>e.code==='permission-denied');
  await f.handlers.manageTeacherLifecycle(f.req({...save,formClassIds:['c1']}));await f.handlers.manageTeacherLifecycle(f.req({action:'remove',teacherUid:'teacher'}));assert.deepEqual(f.records.get('users/teacher').formClassIds,[]);
 });
+
+test('Head Teachers cannot orphan an owner-restricted account or modify membership during an unfinished sign-in update',async()=>{for(const ownerAccess of [{status:'disabled'},{status:'suspended'},{status:'disabled',authPending:true}]){const f=fixture();f.records.get('users/teacher').ownerAccess=ownerAccess;await assert.rejects(f.handlers.manageTeacherLifecycle(f.req({action:'remove',teacherUid:'teacher'})),e=>e.code==='failed-precondition');assert.equal(f.records.get('users/teacher').schoolId,'s');}});

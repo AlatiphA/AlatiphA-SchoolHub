@@ -20,14 +20,24 @@ service firebase.storage {
       return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
     }
 
+    // Storage permits two Firestore document reads. Use the server-projected
+    // school restriction on the membership so current-student authorization
+    // can still use its second read (including photos under old class paths).
+    function serviceAllowed(schoolId) {
+      return !(myUser().get('ownerAccess', {}).get('status', 'active') in ['suspended','disabled'])
+        && !(myUser().get('ownerSchoolAccess', {}).get('schoolId', '') == schoolId
+          && myUser().get('ownerSchoolAccess', {}).get('status', 'active') in ['suspended','disabled']);
+    }
     function isMember(schoolId) {
       return signedIn()
+        && serviceAllowed(schoolId)
         && myUser().schoolId == schoolId
         && myUser().status == 'active';
     }
 
     function isHeadTeacher(schoolId) {
       return signedIn()
+        && serviceAllowed(schoolId)
         && myUser().schoolId == schoolId
         && myUser().role == 'headteacher'
         && myUser().status == 'active';
@@ -61,6 +71,7 @@ service firebase.storage {
 
     function isActiveTeacherForStorage(schoolId) {
       return signedIn()
+        && serviceAllowed(schoolId)
         && myUser().schoolId == schoolId
         && myUser().role == 'teacher'
         && myUser().status == 'active'

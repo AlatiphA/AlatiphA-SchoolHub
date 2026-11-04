@@ -71,7 +71,7 @@
    $('shPushGlobalEnabled').checked=s.enabled;$('shPushKey').value=s.publicKey;$('shPushSender').value=s.messagingSenderId;$('shPushApp').value=s.appId;
    const old=choice();$('shPushMessages').checked=old.preferences?.messages!==false;$('shPushActivity').checked=old.preferences?.activity!==false;
    if(a.owner){const r=await call('getSchoolHubMessageDirectory');if(!active(t,o))return;const select=$('shMessageSchool');select.replaceChildren(new Option('Unarchived schools · active Head Teachers and teachers',''));for(const p of r.schools)select.add(new Option(p.name,p.id));if(initial?.schoolId){if(!Array.from(select.options).some(p=>p.value===initial.schoolId))select.add(new Option(initial.schoolName||initial.schoolId,initial.schoolId));select.value=initial.schoolId;}if(r.more)text('shMessagingStatus','Showing the first 100 schools.');}
-   if(a.canSend)await loadRecipients();if(active(t,o)){text('shMessagingStatus','');await refresh();}
+   if(a.canSend)await loadRecipients();if(active(t,o)&&initial.recipientUid){const select=$('shMessageRecipient');if(!Array.from(select.options).some(p=>p.value===initial.recipientUid))throw Error('This recipient is no longer eligible. Refresh the school users.');select.value=initial.recipientUid;}if(active(t,o)){text('shMessagingStatus','');await refresh();}
   }catch(e){if(active(t,o))showError(e);}renderDevice();
  }
  async function send(e){

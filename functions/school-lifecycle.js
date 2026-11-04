@@ -11,11 +11,11 @@ function guardDatabase(raw,HttpsError){
  const originals=new WeakMap(),wrapped=new WeakMap();
  const unwrap=r=>originals.get(r)||r;
  const schoolIds=(ref,data)=>{const p=String(unwrap(ref)?.path||'').split('/'),ids=[];if(p[0]==='schools'&&id(p[1]))ids.push(p[1]);if(id(data?.schoolId))ids.push(data.schoolId);return ids;};
- async function check(tx,ids){for(const school of new Set(ids))if(unavailable((await tx.get(raw.doc('schoolAdministration/'+school))).data()))throw new HttpsError('failed-precondition','This school is being permanently deleted or has been deleted.');}
+ async function check(tx,ids,notificationScope=false){const actor=require('./service-access').actor();if(actor?.uid&&!actor.owner){const u=(await tx.get(raw.doc('users/'+actor.uid))).data();if(['suspended','disabled'].includes(u?.ownerAccess?.status))throw new HttpsError('permission-denied','Account access is restricted.');if(u?.schoolId)ids.push(u.schoolId);}for(const school of new Set(ids)){const state=(await tx.get(raw.doc('schoolAdministration/'+school))).data();if(unavailable(state))throw new HttpsError('failed-precondition','This school is being permanently deleted or has been deleted.');if(['suspended','disabled'].includes(state?.accessStatus)&&!notificationScope)throw new HttpsError('permission-denied','School access is restricted by the owner.');}}
  async function transaction(fn,options){return raw.runTransaction(async tx=>{
   const writes=[],scope=[];
   const proxy=new Proxy(tx,{get(t,k){if(['set','create','update','delete'].includes(k))return (ref,...args)=>{writes.push([k,unwrap(ref),args]);scope.push(...schoolIds(ref,args[0]));return proxy;};if(k==='get')return r=>t.get(unwrap(r));if(k==='getAll')return (...refs)=>t.getAll(...refs.map(unwrap));const v=t[k];return typeof v==='function'?v.bind(t):v;}});
-  const result=await fn(proxy);await check(tx,scope);for(const [method,ref,args]of writes)tx[method](ref,...args);return result;
+  const result=await fn(proxy);await check(tx,scope,writes.every(([,r])=>r.path.startsWith('messageJobs/')||/^users\/[^/]+\/notifications\//.test(r.path)||r.path.startsWith('messageRate/')));for(const [method,ref,args]of writes)tx[method](ref,...args);return result;
  },options);}
  function wrap(ref){if(!ref||typeof ref!=='object')return ref;if(wrapped.has(ref))return wrapped.get(ref);
   const proxy=new Proxy(ref,{get(t,k){if(['doc','collection','where','orderBy','limit','startAfter','select'].includes(k)&&typeof t[k]==='function')return (...args)=>wrap(t[k](...args));
