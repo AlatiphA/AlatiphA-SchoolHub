@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.43';
+const APP_VERSION = '40.1.44';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -7870,14 +7870,21 @@ const TEST_CREDIT_DEDUCTIONS = true;
 function testCreditDeductionsEnabled() { return TEST_CREDIT_DEDUCTIONS && isBillingTestMode(); }
 function reportBillingIsFree() { return BILLING_SUSPENDED && !testCreditDeductionsEnabled(); }
 function hasSchoolAttendanceAccess() {
-  if (hasSchoolLifetimeLicence()) return true;
   if (!hasSchoolBillingAccount()) return false;
+  const billing = DB.get(KEYS.billing, {}), legacy = billing[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'], licence = billing[isBillingTestMode() ? 'testSchoolLicence' : 'schoolLicence'];
+  if (legacy?.active === true && legacy.schoolId === currentSchoolId || licence?.active === true && licence.schoolId === currentSchoolId && Date.parse(licence.expiresAt) > Date.now()) return true;
   const account = DB.get(KEYS.billing, {});
   return account[isBillingTestMode() ? 'testAttendanceTerms' : 'attendanceTerms']?.[bwAllowanceKey()]?.active === true;
+}
+function hasSchoolReportPackage() {
+  if (!hasSchoolBillingAccount()) return false;
+  const account = DB.get(KEYS.billing, {}), yearly = account.reportYearLicence;
+  return (yearly?.active === true && yearly.schoolId === currentSchoolId && Date.parse(yearly.expiresAt) > Date.now()) || account.reportTerms?.[bwAllowanceKey()]?.active === true;
 }
 function hasSchoolLifetimeLicence() {
   if (!hasSchoolBillingAccount()) return false;
   const account = DB.get(KEYS.billing, {});
+  if (!isBillingTestMode() && hasSchoolReportPackage()) return true;
   const legacy = account[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'];
   if (legacy?.active === true && legacy.schoolId === currentSchoolId) return true;
   const licence = account[isBillingTestMode() ? 'testSchoolLicence' : 'schoolLicence'];
@@ -7887,10 +7894,11 @@ function schoolLicenceLabel() {
   const account = DB.get(KEYS.billing, {}), legacy = account[isBillingTestMode() ? 'testLifetimeLicence' : 'lifetimeLicence'];
   if (legacy?.active === true && legacy.schoolId === currentSchoolId) return 'Existing Lifetime School Licence';
   const licence = account[isBillingTestMode() ? 'testSchoolLicence' : 'schoolLicence'];
+  if (!isBillingTestMode() && hasSchoolReportPackage()) { const yearly = account.reportYearLicence; return yearly?.active && yearly.schoolId === currentSchoolId && Date.parse(yearly.expiresAt) > Date.now() ? 'Yearly reports: expires ' + new Date(yearly.expiresAt).toLocaleDateString('en-GB') : 'Termly reports: current school term'; }
   return '3-year School Licence' + (licence?.schoolId === currentSchoolId && typeof licence.expiresAt === 'string' && Number.isFinite(Date.parse(licence.expiresAt)) ? ' · expires ' + new Date(licence.expiresAt).toLocaleDateString('en-GB') : '');
 }
 function reportBillingMessage() {
-  if (hasSchoolLifetimeLicence()) return schoolLicenceLabel() + ': unlimited reports and attendance while the licence is active, including teachers and updates.';
+  if (hasSchoolLifetimeLicence()) return schoolLicenceLabel() + ': unlimited reports while active. Attendance is billed separately for termly and yearly report packages.';
   if (testCreditDeductionsEnabled()) return 'Test deductions enabled. Premium single reports use 1 test credit; class batches use 1 per report. Each school gets 10 free single Black & White reports per term, then 1 test credit per report. Live billing is disabled; no real money is charged.';
   return BILLING_SUSPENDED?'Live billing disabled. All report generation is free. No credits are deducted.':'Manual school payments are active. Premium reports and class batches use school credits; 10 single Black & White reports are free per school term.';
 }
@@ -7954,6 +7962,8 @@ async function refreshBillingAccount(silent = true) {
     cachedAccount.bwUsageByTerm = data.bwUsageByTerm || {};
     cachedAccount.testSchoolLicence = data.testSchoolLicence || null;
     cachedAccount.schoolLicence = data.schoolLicence || null;
+    cachedAccount.reportYearLicence = data.reportYearLicence || null;
+    cachedAccount.reportTerms = data.reportTerms || {};
     cachedAccount.testLifetimeLicence = data.testLifetimeLicence || null;
     cachedAccount.lifetimeLicence = data.lifetimeLicence || null;
     cachedAccount.testAttendanceTerms = data.testAttendanceTerms || {};

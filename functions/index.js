@@ -22,6 +22,8 @@ function paymentMode() {
 }
 
 const PACKAGES = {
+  termly: { credits: 0, amountPesewas: 5000, type: 'reports_term' },
+  yearly: { credits: 0, amountPesewas: 12000, type: 'reports_year' },
   attendance: { credits: 0, amountPesewas: 5000, type: 'attendance_term' },
   lifetime: { credits: 0, amountPesewas: 54900, type: 'lifetime_licence' }, // Retained for existing receipts; disabled for new purchases.
   'three-year': { credits: 0, amountPesewas: 34999, type: 'school_licence_3_year' },
@@ -274,7 +276,13 @@ exports.consumeReportCredits = onCall({ invoker: 'public', region: 'us-central1'
     const usageSnap = await t.get(usageRef);
     const account = billSnap.data() || {};
     const current = Number(account[balanceField] || 0);
-    lifetime = activeSchoolLicence(account, schoolId, mode);
+    const reportSchool = await t.get(db.collection('schools').doc(schoolId));
+    const reportProfile = reportSchool.data()?.profile || {};
+    const reportKey = encodeURIComponent(JSON.stringify([reportProfile.currentYear, reportProfile.currentTerm]));
+    const reportYear = account[mode === 'test' ? 'testReportYearLicence' : 'reportYearLicence'];
+    lifetime = activeSchoolLicence(account, schoolId, mode) ||
+      (reportYear?.active === true && reportYear.schoolId === schoolId && Date.parse(reportYear.expiresAt) > Date.now()) ||
+      account[mode === 'test' ? 'testReportTerms' : 'reportTerms']?.[reportKey]?.active === true;
     const allowances = account[usageField] || {};
     if (reportType === 'bw-single' && !lifetime) {
       const schoolSnap = await t.get(db.collection('schools').doc(schoolId));

@@ -237,3 +237,12 @@ test('live Black and White allowance is school-wide and does not consume or inhe
  for(let i=0;i<11;i++){const r=deductionRequest(1,'live-bw-generation-'+i);r.data.mode='live';r.data.reportType='bw-single';const result=await f.exports.consumeReportCredits(r);assert.equal(result.consumed,i<10?0:1);}
  assert.equal(f.records.get('schools/school/billing/account').balance,6);assert.deepEqual(f.records.get('schools/school/billing/account').testBwUsageByTerm,{legacy:9});
 });
+
+for(const type of ['termly','yearly','expired','foreign','wrong-term'])test('report-only entitlement: '+type,async()=>{
+ const f=fixture({},'sk_test_fixture',{provider:'manual',mode:'live'}),b=f.records.get('schools/school/billing/account');
+ f.records.set('schools/school',{profile:{currentYear:'2026/2027',currentTerm:'Term 1'}});
+ if(type==='termly'||type==='wrong-term')b.reportTerms={[encodeURIComponent(JSON.stringify(['2026/2027',type==='wrong-term'?'Term 2':'Term 1']))]:{active:true}};
+ else b.reportYearLicence={active:true,schoolId:type==='foreign'?'other':'school',expiresAt:type==='expired'?'2020-01-01':'2099-01-01'};
+ const req=deductionRequest();req.data.mode='live';const result=await f.exports.consumeReportCredits(req);
+ assert.equal(result.consumed,['termly','yearly'].includes(type)?0:1);assert.equal(f.records.get('schools/school/billing/account').balance,['termly','yearly'].includes(type)?7:6);
+});
