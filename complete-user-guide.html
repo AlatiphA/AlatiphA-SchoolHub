@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AlatiphA SchoolHub Complete User Guide</title>
-<meta name="description" content="SchoolHub school-user guide, reviewed 24 October 2026. Covers Head Teacher, Teacher and Guest workflows, student onboarding, daily attendance, class filters, sync conflict review, app updates, messages, fees, stock, backups and recovery.">
+<meta name="description" content="SchoolHub school-user guide, reviewed 5 November 2026. Covers Head Teacher, Teacher and Guest workflows, student onboarding, daily attendance, class filters, sync conflict review, app updates, messages, fees, stock, backups and recovery.">
 <style>
 html { scroll-behavior: smooth; }
 .embedded-guide .guide-app-link { display:none; }
@@ -112,7 +112,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h1>AlatiphA SchoolHub Complete User Guide</h1>
 <p class="guide-app-link"><a href="https://alatipha-schoolhub.web.app/">Open SchoolHub</a></p>
-<p class="updated"><strong>Updated:</strong> 24 October 2026 · School-user workflows, including Sync Review</p>
+<p class="updated"><strong>Updated:</strong> 5 November 2026 · School-user workflows, including Sync Review</p>
 
 <div class="intro-box">
 <strong>AlatiphA SchoolHub</strong> is a school-management Progressive Web App designed to bring school administration, staff and pupil records, weekly teaching supervision, stores and school property, attendance, assessment, report cards, fees and receipts, notifications and school communication, parent fee communication, synchronisation, backup and recovery into one working environment.
@@ -210,7 +210,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
     <li><a href="#fis-sync">FIS Pending Saves and Confirmation</a></li>
   </ol>
 </li>
-<li><a href="#billing">Billing &amp; Credits</a></li>
+<li><a href="#billing">Billing &amp; Credits, Manual MoMo and Owner Administration</a></li>
 <li><a href="#offline">Offline Mode, Drafts &amp; Synchronisation</a><ol><li><a href="#app-updates">App updates</a></li><li><a href="#sync-center">Sync Center</a></li><li><a href="#conflict-review">Review conflicting edits</a></li></ol></li>
 <li><a href="#recovery">Data Protection &amp; Recovery</a></li>
 <li><a href="#profile">Profile Menu &amp; Help</a></li>
@@ -641,12 +641,26 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <div class="note-box">The header counts retained supported school-record, fee and operations requests, including rejected fee requests. Sync Center also lists pending sections. Always check the specific financial action: only a server-confirmed action contributes to confirmed balances. Up to date does not submit a form draft or prove another device has refreshed.</div>
 
 <h2 id="billing"><span class="chapter-number">Chapter 20:</span> Billing &amp; Credits</h2>
-<p>SchoolHub contains Billing &amp; Credits infrastructure for report-card generation.</p>
-<div class="warning-box"><strong>Current release status:</strong> Billing remains suspended in the application. The retained payment and report-credit functions are currently test functionality and should not be interpreted as active live billing.</div>
+<p>SchoolHub service billing is live through <strong>manual MTN MoMo</strong>. New Paystack checkout is disabled; historical Paystack test records remain separate. School service packages belong to the school, not to an individual teacher. Learner fees in Fees &amp; Receipts are a separate ledger.</p>
+<table><thead><tr><th>Package</th><th>Price</th><th>Coverage</th></tr></thead><tbody><tr><td>Report credits</td><td>GH₵0.20 per report</td><td>School-owned credits shared by authorized staff</td></tr><tr><td>Termly reports</td><td>GH₵50</td><td>Unlimited reports for the saved school term and academic year</td></tr><tr><td>Yearly reports</td><td>GH₵120</td><td>Unlimited reports for 12 months from activation; renewal extends an active yearly package</td></tr><tr><td>Attendance</td><td>GH₵50 per school term</td><td>Attendance for the submitted school term, paid separately from termly/yearly reports</td></tr></tbody></table>
+<p>New three-year purchases are suspended. Existing valid three-year and lifetime licences retain their original benefits. Each school still has 10 free single Black &amp; White reports per term; premium reports and class batches use credits unless an applicable unlimited package is active.</p>
+<h3 id="manual-payments">20.1 Submit and approve a manual payment</h3>
+<ol><li>The Head Teacher saves and syncs the correct term and academic year in Setup, then opens <strong>Profile → Billing &amp; Credits</strong>.</li><li>Select a package and follow the displayed recipient and amount. Pay MTN MoMo <strong>0243443688 · Abdul-Latif Ahmed</strong>; verify these details against the app before paying.</li><li>Enter the unique MoMo transaction ID and submit while online. <strong>Awaiting verification</strong> grants no access.</li><li>The owner opens <a class="guide-app-link" href="messaging.html">Owner Administration</a> → <strong>Licences → Manual payment verification</strong>, checks the actual wallet receipt and exact amount, and approves or rejects with a reason.</li><li>The school uses <strong>Refresh payment status</strong> to confirm the result. A rejected request shows its reason; correct the details before resubmitting. Never submit a MoMo PIN or password.</li></ol>
+<p><strong>Former Paystack testers:</strong> test attendance, credits and licences do not activate live access. For a pilot school, the owner may grant complimentary access; otherwise submit the appropriate real payment. Changing billing mode does not delete attendance records.</p>
+<h3 id="owner-management">20.2 Owner Administration: schools, users and complimentary access</h3>
+<p>Sign in with the verified owner account at <a href="messaging.html">Owner Administration</a>. Go to <strong>Schools → Access &amp; users</strong>, match the unique School ID and Head Teacher, then select the action, enter a reason and confirm the exact School ID. User actions also require the exact user ID.</p>
+<ul><li><strong>Suspend / Reactivate:</strong> restrict or restore school workspace access, or owner access for an individual user. Existing membership approvals and teaching assignments still apply.</li><li><strong>Disable sign-in:</strong> for a school, blocks entry to that school while keeping staff login accounts. For an individual user, also disables that Firebase login. Owner accounts are protected.</li><li><strong>Grant free access:</strong> gives unlimited reports and attendance. Look for <strong>Complimentary</strong> in Schools, <strong>Complimentary school access</strong> in Live licences/Billing, or <strong>Free unlimited reports and attendance</strong> in Access &amp; users. Removing the grant restores existing paid packages and credits without erasing them.</li><li><strong>Message school / Message user:</strong> opens the existing message form for review; sending still requires confirmation. Archived schools must be restored before service messaging.</li></ul>
+<p>Search applies to the current user page; use Previous/Next for further results. If a sign-in change is unfinished, use <strong>Retry sign-in update</strong> for the retained request. The owner must finish or lift a restriction before the Head Teacher can remove that membership. <strong>Activity → School management</strong> records actions, reasons and target users.</p>
+<p>Archiving is organisational and does not suspend access. Permanent deletion is a separate, irreversible workflow. Restrictions take effect on connected devices and on rechecking after reconnect; saved offline copies cannot be remotely erased.</p>
 
 <h2 id="offline"><span class="chapter-number">Chapter 21:</span> Offline Mode, Drafts &amp; Synchronisation</h2>
 <p>A previously verified signed-in account on the same device can reopen locally stored school information when Firebase is temporarily unavailable. First sign-in, joining a school and loading an uncached workspace on a new device still require internet.</p>
 
+<h3 id="automatic-updates">21.0 Automatic updates between devices</h3>
+<p>Keep each device online and install the latest SchoolHub update. Classes, students and notifications receive live updates; selected grade and pupil attendance registers update while open. Calendar exceptions and teacher attendance update while Attendance is open, with teacher attendance restricted to the Head Teacher. A confirmed full server calendar snapshot can remove stale local holiday/midterm exceptions, retaining a recovery backup. Unsaved entries and pending local changes are protected.</p>
+<p>Other workspace areas check approximately <strong>every 30 seconds while open, visible and online</strong>: staff, subjects, Setup/term settings, remarks, teacher membership/assignments, Fees &amp; Receipts, Billing &amp; Credits, and Weekly Supervision. This is not a guaranteed instant delivery time. Stores &amp; Operations also has its own visible-page refresh, approximately every 15 seconds.</p>
+<p>Automatic refresh pauses while a form has changed or a dialog is open. Finish the operation or leave/reopen the view to resume; use manual Refresh if needed. Typing during a network check defers replacement of the form. Existing page, scroll position and role restrictions are preserved. Conflicting teacher attendance requires reviewing the latest saved register before saving again.</p>
+<p>Pending-approval and restricted-access screens recheck when online; restored active access can reopen the workspace. A login disabled at Firebase may require signing in again. Offline changes remain pending until verified and accepted; device-scoped drafts still require deliberate submission. Automatic cross-device updates require the app to be open and visible; background upload after closing depends on browser support.</p>
 <h3>21.1 Saved locally / pending</h3>
 <p>Supported pupil edits, offline pupil additions, grades, pupil attendance and remarks can be saved locally before upload. Teachers remain restricted to their assigned classes and subjects. A pending record change stays in SchoolHub's durable local queue until the account is revalidated and the cloud accepts it.</p>
 
