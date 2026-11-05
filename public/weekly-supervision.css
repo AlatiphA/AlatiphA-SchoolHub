@@ -1,11 +1,11 @@
 #supervisionWrap .supervision-tools{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:12px}
 #supervisionWrap label{display:flex;flex-direction:column;gap:6px}
 .supervision-table-scroll{overflow:auto;max-height:65vh;border:1px solid var(--rule);border-radius:12px}
-.supervision-table{border-collapse:separate;border-spacing:0;width:100%;min-width:850px;text-align:left}
-.supervision-table :is(th,td){padding:12px;border-bottom:1px solid var(--rule);background:var(--surface);vertical-align:top}
+.supervision-table{border-collapse:separate;border-spacing:0;width:100%;min-width:850px;text-align:center}
+.supervision-table :is(th,td){padding:12px;border-bottom:1px solid var(--rule);background:var(--surface);vertical-align:middle;text-align:center}
 .supervision-table th{position:sticky;top:0;z-index:2;background:var(--surface-alt)}
 .supervision-table :is(th,td):first-child{position:sticky;left:0;min-width:140px;max-width:190px;z-index:1}
-.supervision-table th:first-child{z-index:3}.supervision-table td:last-child{white-space:nowrap}.supervision-table button{margin-right:6px}
+.supervision-table th:first-child{z-index:3}.supervision-table td:last-child{white-space:nowrap}.supervision-table button{margin:0 3px;text-align:center}
 body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:0;z-index:20000;background:#0008;display:flex;align-items:center;justify-content:center;padding:16px}
 .supervision-box{box-sizing:border-box;display:flex;flex-direction:column;width:min(850px,100%);max-height:90dvh;background:var(--surface);color:var(--paper);border:1px solid var(--rule);border-radius:20px;padding:22px;gap:14px;overflow:hidden}
 .supervision-box h3{margin:0}.supervision-body{overflow:auto;min-height:0}.supervision-grid,.supervision-subject{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
