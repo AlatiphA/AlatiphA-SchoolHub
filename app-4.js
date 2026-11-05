@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.49';
+const APP_VERSION = '40.1.50';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -2196,7 +2196,8 @@ document.getElementById('saveSettings').addEventListener('click', () => {
   s.reportTheme = document.getElementById('reportThemeSelect') ? document.getElementById('reportThemeSelect').value : (s.reportTheme || 'schoolhub');
   if (isActiveGuest()) s.reportTheme = 'bw';
   s.headTeacherId = document.getElementById('headTeacherSelect').value;
-  DB.set(KEYS.settings, s);
+  if(DB.set(KEYS.settings, s)===false)return;
+  if(typeof window!=='undefined')window.SchoolHubAutomaticSync?.saved('setup');
   auditAction('update', 'settings', 'school', 'Updated school and report settings');
   alert('Settings saved. School name on report: ' + (s.schoolName || '(not set)'));
 });
@@ -7227,7 +7228,8 @@ function saveCurrentRemarks(showAlert = true) {
     comment: card.querySelector('.rm-comment').value.trim()
   };
   allRemarks[key] = classRemarks;
-  DB.set(KEYS.remarks, allRemarks);
+  if(DB.set(KEYS.remarks, allRemarks)===false)return;
+  if(typeof window!=='undefined')window.SchoolHubAutomaticSync?.saved('remarks');
   auditAction('update', 'remarks', `${key}__${student.id}`, `Saved remarks for ${student.name}, ${settings.currentTerm}, ${settings.currentYear}`);
   if (showAlert) alert(`Remarks saved for ${student.name}.`);
   return true;
@@ -11025,6 +11027,7 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
 if (typeof window !== 'undefined') window.runSchoolHubBackgroundSync = runSchoolHubBackgroundSync;
 
 async function revalidateAndSyncAfterReconnect(force = true) {
+  const options=arguments[1]||{};
   // Overlapping online/resume events must await the same verification. A task
   // belonging to an earlier login or school must never block the new session.
   if (reconnectTask && reconnectTask.generation === sessionGeneration && reconnectTask.uid === currentUid && reconnectTask.school === currentSchoolId) return reconnectTask.promise;
@@ -11036,7 +11039,7 @@ async function revalidateAndSyncAfterReconnect(force = true) {
   }
   const task = { generation: sessionGeneration, uid: currentUid, school: currentSchoolId };
   reconnectTask = task;
-  task.promise = performReconnectRecovery().finally(() => {
+  task.promise = performReconnectRecovery(options).finally(() => {
     if (reconnectTask === task) { reconnectTask = null; offlineReconnectInProgress = false; updateOfflineModeBanner(); }
   });
   return task.promise;
@@ -11078,6 +11081,7 @@ function refreshAfterReconnectWhenMenuCloses(refresh) {
 }
 
 async function performReconnectRecovery() {
+  const options=arguments[0]||{};
   if (navigator.onLine === false || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active' || !sessionReady || !sessionDataReady || cloudHydrationInProgress) {
     updateOfflineModeBanner();
     return;
@@ -11137,6 +11141,7 @@ async function performReconnectRecovery() {
       return;
     }
 
+    const accessChanged=currentRole!==data.role||JSON.stringify(currentAssignedClassIds)!==JSON.stringify(data.assignedClassIds||[])||JSON.stringify(currentAssignedSubjectIds)!==JSON.stringify(data.assignedSubjectIds||[])||JSON.stringify(currentUserData?.formClassIds||[])!==JSON.stringify(data.formClassIds||[]);
     currentRole = data.role;
     currentStatus = 'active';
     currentAssignedClassIds = Array.isArray(data.assignedClassIds) ? data.assignedClassIds : [];
@@ -11148,6 +11153,8 @@ async function performReconnectRecovery() {
     sessionReady = true;
     sessionDataReady = true;
     cloudHydrationInProgress = false;
+
+    if(options.metadataOnly&&!accessChanged&&!performReconnectRecovery.startedOffline)return;
 
     // Local offline edits go first so a cloud pull cannot overwrite them.
     await flushPendingCloudWrites();
