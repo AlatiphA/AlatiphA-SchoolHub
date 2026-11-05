@@ -33,9 +33,14 @@ function register({onCall,HttpsError,db}){
   const query=head?school.collection('weeklySupervision').where('week','==',w):school.collection('weeklySupervision').where('staffId','==',u.staffId);
   const records=rows(await tx.get(query)).filter(x=>x.week===w);
   if(!head)return {role:'teacher',records,staff:[],classes:[],subjects:[]};
-  const [staff,classes,subjects,schoolSnap]=await Promise.all([...['staff','classes','subjects'].map(n=>tx.get(school.collection(n))),tx.get(school)]);
+  const [staff,classes,subjects,schoolSnap,members]=await Promise.all([...['staff','classes','subjects'].map(n=>tx.get(school.collection(n))),tx.get(school),tx.get(db.collection('users').where('schoolId','==',u.schoolId))]);
   const headIds=new Set([u.staffId,schoolSnap.data()?.profile?.headTeacherId].filter(Boolean)),allStaff=rows(staff).map(x=>({id:x.id,name:x.name,role:x.role||'Teacher'}));
-  return {role:'headteacher',records,staff:allStaff.filter(x=>!isHeadStaff(x,headIds)),excludedStaff:allStaff.filter(x=>isHeadStaff(x,headIds)),classes:rows(classes).map(x=>({id:x.id,name:x.name})),subjects:subjectChoices(rows(subjects))};
+  const teaching=allStaff.filter(x=>!isHeadStaff(x,headIds)),staffIds=new Set(teaching.map(x=>x.id)),classRows=rows(classes),classIds=new Set(classRows.map(x=>x.id)),pairs=new Map();
+  const add=(staffId,classId)=>{if(staffIds.has(staffId)&&classIds.has(classId))pairs.set(JSON.stringify([staffId,classId]),{staffId,classId});};
+  classRows.forEach(c=>add(c.classTeacherId,c.id));
+  rows(members).filter(m=>m.role==='teacher'&&m.status==='active').forEach(m=>{const st=staffIds.has(m.staffId)?m.staffId:rows(staff).find(s=>s.userUid===m.id)?.id;if(st)for(const cls of (Array.isArray(m.assignedClassIds)?m.assignedClassIds:[]))add(st,cls);});
+  const profile=schoolSnap.data()?.profile||{};
+  return {role:'headteacher',records,assignments:[...pairs.values()],periodSettings:{currentYear:profile.currentYear||'',currentTerm:profile.currentTerm||'',termDates:profile.termDates||{}},staff:allStaff.filter(x=>!isHeadStaff(x,headIds)),excludedStaff:allStaff.filter(x=>isHeadStaff(x,headIds)),classes:rows(classes).map(x=>({id:x.id,name:x.name})),subjects:subjectChoices(rows(subjects))};
  }));
  const saveWeeklySupervision=call(r=>db.runTransaction(async tx=>{
   const {u,school}=await access(tx,r);if(u.role!=='headteacher')fail('permission-denied','Only the Head Teacher records supervision checks.');

@@ -22,3 +22,5 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 .supervision-box .supervision-actions button{min-height:48px}
 
 .supervision-box label{margin:0;padding:0}.supervision-box form{margin:0}.supervision-box .hint{font-size:14px;line-height:1.5}
+
+.supervision-outstanding{border:1px solid var(--rule);border-radius:12px;padding:14px;margin:14px 0}.supervision-outstanding ul{padding:0;list-style:none}.supervision-outstanding li{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0}.supervision-outstanding label{margin:8px 0}.supervision-outstanding input,.supervision-outstanding select{font:inherit;max-width:100%;box-sizing:border-box;padding:10px}
