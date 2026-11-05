@@ -37,7 +37,7 @@
  function button(text,fn,cls='btn-secondary'){const b=node('button',text,cls);b.type='button';b.onclick=fn;return b;}
  function message(text){const n=host.querySelector('[data-supervision-status]');if(n)n.textContent=text;}
  function discardDialog(){dialog?.remove();dialog=null;document.body.classList.remove('supervision-open');}
- function reset(){discardDialog();periodOverrides.clear();data=null;owner=null;loading++;host.replaceChildren();}
+ function reset(){window.SchoolHubLessonObservations?.close();discardDialog();periodOverrides.clear();data=null;owner=null;loading++;host.replaceChildren();}
  const originalReset=resetWorkspaceState;resetWorkspaceState=function(...args){reset();return originalReset(...args);};
  async function load(quiet=false,canRefresh=null){
   const s=session();if(!same(s)){reset();owner=s;}
@@ -66,6 +66,8 @@
     if(plan.unmapped.length)box.append(node('p','Teaching class not mapped — review assignments: '+plan.unmapped.map(s=>s.name).join(', ')+'. These staff are not counted as complete.'));
    }host.append(box);
   }
+  if(data&&window.SchoolHubLessonObservations){const captured=session();window.SchoolHubLessonObservations.render(host,data,{uid:captured.uid,school:captured.school,head:captured.head,week,staff:data.staff||[],classes:data.classes||[],valid:()=>active(captured)&&same(captured),message,reload:async selected=>{if(selected)week=selected;data=null;await load();}});}
+  host.append(node('h3','Weekly checks'));
   const rows=(data?.records||[]).slice().sort((a,b)=>String(a.staffName).localeCompare(String(b.staffName)));
   if(!rows.length){host.append(node('p','No recorded checks for this week.'));return;}
   const scroll=node('div',null,'supervision-table-scroll'),table=node('table',null,'supervision-table');table.innerHTML='<thead><tr><th>Teacher / class</th><th>Plans reviewed</th><th>Exercises</th><th>Assessments</th><th>Register</th><th>Follow-up</th><th>Actions</th></tr></thead><tbody></tbody>';

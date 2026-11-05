@@ -29,10 +29,12 @@ function register({onCall,HttpsError,db}){
  const rows=s=>s.docs.map(d=>({...d.data(),id:d.id}));
  const getWeeklySupervision=call(r=>db.runTransaction(async tx=>{
   const {u,school}=await access(tx,r),w=week(r.data.week),head=u.role==='headteacher';
-  if(!head&&!u.staffId)return {role:'teacher',records:[],staff:[],classes:[],subjects:[],unlinked:true};
+  if(!head&&!u.staffId)return {role:'teacher',records:[],observations:[],staff:[],classes:[],subjects:[],unlinked:true};
   const query=head?school.collection('weeklySupervision').where('week','==',w):school.collection('weeklySupervision').where('staffId','==',u.staffId);
   const records=rows(await tx.get(query)).filter(x=>x.week===w);
-  if(!head)return {role:'teacher',records,staff:[],classes:[],subjects:[]};
+  const observationQuery=head?school.collection('lessonObservations').where('week','==',w):school.collection('lessonObservations').where('staffId','==',u.staffId);
+  const observations=rows(await tx.get(observationQuery)).filter(x=>x.week===w);
+  if(!head)return {role:'teacher',records,observations,staff:[],classes:[],subjects:[]};
   const [staff,classes,subjects,schoolSnap,members]=await Promise.all([...['staff','classes','subjects'].map(n=>tx.get(school.collection(n))),tx.get(school),tx.get(db.collection('users').where('schoolId','==',u.schoolId))]);
   const headIds=new Set([u.staffId,schoolSnap.data()?.profile?.headTeacherId].filter(Boolean)),allStaff=rows(staff).map(x=>({id:x.id,name:x.name,role:x.role||'Teacher'}));
   const teaching=allStaff.filter(x=>!isHeadStaff(x,headIds)),staffIds=new Set(teaching.map(x=>x.id)),classRows=rows(classes),classIds=new Set(classRows.map(x=>x.id)),pairs=new Map();
@@ -40,7 +42,7 @@ function register({onCall,HttpsError,db}){
   classRows.forEach(c=>add(c.classTeacherId,c.id));
   rows(members).filter(m=>m.role==='teacher'&&m.status==='active').forEach(m=>{const st=staffIds.has(m.staffId)?m.staffId:rows(staff).find(s=>s.userUid===m.id)?.id;if(st)for(const cls of (Array.isArray(m.assignedClassIds)?m.assignedClassIds:[]))add(st,cls);});
   const profile=schoolSnap.data()?.profile||{};
-  return {role:'headteacher',records,assignments:[...pairs.values()],periodSettings:{currentYear:profile.currentYear||'',currentTerm:profile.currentTerm||'',termDates:profile.termDates||{}},staff:allStaff.filter(x=>!isHeadStaff(x,headIds)),excludedStaff:allStaff.filter(x=>isHeadStaff(x,headIds)),classes:rows(classes).map(x=>({id:x.id,name:x.name})),subjects:subjectChoices(rows(subjects))};
+  return {role:'headteacher',records,observations,assignments:[...pairs.values()],periodSettings:{currentYear:profile.currentYear||'',currentTerm:profile.currentTerm||'',termDates:profile.termDates||{}},staff:allStaff.filter(x=>!isHeadStaff(x,headIds)),excludedStaff:allStaff.filter(x=>isHeadStaff(x,headIds)),classes:rows(classes).map(x=>({id:x.id,name:x.name})),subjects:subjectChoices(rows(subjects))};
  }));
  const saveWeeklySupervision=call(r=>db.runTransaction(async tx=>{
   const {u,school}=await access(tx,r);if(u.role!=='headteacher')fail('permission-denied','Only the Head Teacher records supervision checks.');
@@ -67,6 +69,21 @@ function register({onCall,HttpsError,db}){
   const result={id,revision:record.revision};
   tx.set(ref,record);tx.set(school.collection('supervisionHistory').doc(digest(r.auth.uid+'|'+requestId)),{recordId:id,actor:r.auth.uid,at:now,before:old.exists?old.data():null,after:record});tx.set(receipt,{fingerprint,result,createdAt:now});return result;
  }));
- return {getWeeklySupervision,saveWeeklySupervision};
+ const saveLessonObservation=call(r=>db.runTransaction(async tx=>{
+  const {u,school}=await access(tx,r);if(u.role!=='headteacher')fail('permission-denied','Only the Head Teacher records lesson observations.');
+  const d=r.data,requestId=recordId(d.requestId);if(Buffer.byteLength(canonical(d))>18000)fail('invalid-argument','This observation is too large.');
+  const receipt=school.collection('observationReceipts').doc(digest(r.auth.uid+'|'+requestId)),prior=await tx.get(receipt),fingerprint=digest(canonical(d));
+  if(prior.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition','This retry differs from the original observation.');return prior.data().result;}
+  const staffId=recordId(d.staffId),classId=recordId(d.classId),observationDate=date(d.observationDate),id=d.id?recordId(d.id):requestId;
+  const ref=school.collection('lessonObservations').doc(id),[old,staff,cls,schoolSnap]=await Promise.all([tx.get(ref),tx.get(school.collection('staff').doc(staffId)),tx.get(school.collection('classes').doc(classId)),tx.get(school)]);
+  if(!staff.exists||!cls.exists)fail('not-found','Choose an existing teaching staff member and class.');
+  if(old.exists&&(!d.id||!Number.isSafeInteger(d.revision)||d.revision!==old.data().revision))fail('aborted','This observation changed on another device. Refresh and review it before saving.');
+  if(d.id&&!old.exists)fail('not-found','This observation no longer exists.');
+  if(!old.exists&&isHeadStaff({...staff.data(),id:staffId},new Set([u.staffId,schoolSnap.data()?.profile?.headTeacherId].filter(Boolean))))fail('invalid-argument','Choose a classroom teacher for observation.');
+  const start=new Date(observationDate+'T00:00:00Z');start.setUTCDate(start.getUTCDate()-(start.getUTCDay()+6)%7);
+  const now=new Date().toISOString(),record={id,staffId,staffName:staff.data().name||staffId,classId,className:cls.data().name||classId,observationDate,week:start.toISOString().slice(0,10),strengths:text(d.strengths,'what the teacher does well',2000),recommendations:text(d.recommendations,'key recommendations',2000),revision:old.exists?old.data().revision+1:0,createdAt:old.exists?old.data().createdAt:now,createdBy:old.exists?old.data().createdBy:r.auth.uid,updatedAt:now,updatedBy:r.auth.uid};
+  const result={id,revision:record.revision,week:record.week};tx.set(ref,record);tx.set(school.collection('observationHistory').doc(digest(r.auth.uid+'|'+requestId)),{recordId:id,actor:r.auth.uid,at:now,before:old.exists?old.data():null,after:record});tx.set(receipt,{fingerprint,result,createdAt:now});return result;
+ }));
+ return {getWeeklySupervision,saveWeeklySupervision,saveLessonObservation};
 }
 module.exports={register,subjectChoices,isHeadStaff};

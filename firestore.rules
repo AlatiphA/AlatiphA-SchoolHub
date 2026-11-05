@@ -176,6 +176,9 @@ service cloud.firestore {
       }
 
       // Weekly supervision is managed by authenticated callable Functions.
+      match /lessonObservations/{id} { allow read, write: if false; }
+      match /observationReceipts/{id} { allow read, write: if false; }
+      match /observationHistory/{id} { allow read, write: if false; }
       match /weeklySupervision/{id} { allow read, write: if false; }
       match /supervisionReceipts/{id} { allow read, write: if false; }
       match /supervisionHistory/{id} { allow read, write: if false; }
