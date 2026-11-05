@@ -1146,3 +1146,5 @@
 .manual-billing button{min-height:44px;max-width:100%;white-space:normal;}
 .manual-billing .fee-actions{display:flex;flex-wrap:wrap;gap:8px;}
 @media(max-width:600px){.manual-billing .fee-actions button{width:100%;}.manual-billing .billing-section{padding:12px;}}
+
+.sync-status-badge[data-state='paused']::before{background:#69766e;}

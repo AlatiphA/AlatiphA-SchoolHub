@@ -5,8 +5,8 @@
   const inputs=()=>Array.from(document.querySelectorAll('#attendanceFormWrap select[data-student]'));
   const cellKey=e=>String(e.dataset.student);
   const value=(entries,e)=>String(entries?.[e.dataset.student] ?? '');
-  let baseline=new Map(), conflicts=new Set();
-  function capture(){baseline=new Map(inputs().map(e=>[cellKey(e),String(e.value)]));conflicts.clear();start();}
+  let baseline=new Map(), conflicts=new Set(), renderedContext=null;
+  function capture(){baseline=new Map(inputs().map(e=>[cellKey(e),String(e.value)]));conflicts.clear();renderedContext=context().key;start();}
   const context=()=>{
     const classId=document.getElementById('attendanceClassSelect')?.value,settings=DB.get(KEYS.settings,{});
     const recordKey=attendanceKey(classId,settings.currentTerm,settings.currentYear,document.getElementById('attendanceDate')?.value);
@@ -54,6 +54,7 @@
   }
   window.captureLiveAttendanceBaseline=capture;window.startLiveAttendanceSync=start;window.stopLiveAttendanceSync=stop;
   window.canSaveLiveAttendance=()=>{
+    if(renderedContext!==context().key){alert('The term, class or teaching permissions changed. Reopen this attendance register before saving. Your unfinished entries are kept.');return false;}
     const current=inputs();
     conflicts=new Set([...conflicts].filter(key=>{const e=current.find(e=>cellKey(e)===key);return e&&String(e.value)!==baseline.get(key);}));
     if(!conflicts.size)return true;

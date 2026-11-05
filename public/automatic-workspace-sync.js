@@ -1,10 +1,23 @@
 /* Automatic server refresh for areas without dedicated live subscriptions. */
 (()=>{
- let gateAt=0,context='',busy=false,nextAt=0,baseline=new WeakMap(),deferred=null;
+ let lastFailure=false,lastChecked=0,gateAt=0,context='',account='',busy=false,nextAt=0,baseline=new WeakMap(),deferred=null;
  const controls=()=>Array.from(document.querySelectorAll('main input,main select,main textarea')).filter(e=>e.getClientRects().length&&!e.disabled&&!e.readOnly&&e.type!=='search'&&!/search|filter|^(attendanceDate|teacherAttendanceDate)$|ClassSelect$|YearSelect$|TermSelect$/i.test(e.id||''));
  const value=e=>e.type==='checkbox'||e.type==='radio'?String(e.checked):e.type==='file'?String(e.files?.length||0):String(e.value);
  function capture(){for(const e of controls())if(!baseline.has(e))baseline.set(e,value(e));}
- function editing(){capture();return !!document.querySelector('dialog[open],.modal:not(.hidden),#profileDropdown:not(.hidden)')||controls().some(e=>baseline.get(e)!==value(e));}
+ function editing(){capture();return !!document.querySelector('dialog[open],[role="dialog"]:not(.hidden):not([hidden]),.modal:not(.hidden),#profileDropdown:not(.hidden)')||controls().some(e=>baseline.get(e)!==value(e));}
+ function status(info={}){
+  const result=(label,state,detail)=>({label,state,detail});
+  if(info.hydrationFailed&&!info.writeFailed)return result('Updates paused','error','School data could not be refreshed. Saved work is retained; reconnect or use Sync Center to retry.');
+  if(info.failed)return result('Needs review','error','A saved change or connection needs attention. Open Sync Center; keep browser data intact.');
+  if(navigator.onLine===false||info.offline)return result('Offline','offline','Saved work stays on this device. Updates resume after connection and account verification.');
+  if(info.pending)return result(info.pending+' pending','pending','Saved on this device; waiting for cloud confirmation.');
+  if(editing())return result('Updates paused','paused','Finish or save your edits, or close the open dialog/menu, to resume automatic updates.');
+  if(info.waiting||info.checking&&!info.quietRecovery)return result('Reconnecting','pending','Checking school access before receiving or sending updates.');
+  if(info.loading)return result('Connecting','pending','Loading and verifying school data before updates can be confirmed.');
+  if(lastFailure)return result('Updates paused','paused','The last refresh failed. Saved work is retained; SchoolHub will retry automatically.');
+  return result('Connected','saved','Automatic updates are connected. Other areas refresh about every 30 seconds while visible.'+(lastChecked?' Last successful refresh: '+new Date(lastChecked).toLocaleTimeString()+'.':''));
+ }
+ function paint(){if(typeof updateOfflineModeBanner==='function')updateOfflineModeBanner();}
  const key=()=>JSON.stringify([sessionGeneration,currentUid,currentSchoolId,currentVisibleViewName()]);
  const ready=()=>FIREBASE_ENABLED&&currentUid&&currentSchoolId&&currentStatus==='active'&&sessionReady&&sessionDataReady&&!cloudHydrationInProgress&&!offlineAuthenticatedMode&&navigator.onLine!==false&&document.visibilityState==='visible';
  const original=window.refreshAfterReconnectWhenMenuCloses;
@@ -41,22 +54,23 @@
 
  }
  async function tick(){
+  paint();
   if(FIREBASE_ENABLED&&['pending','disabled','suspended'].includes(currentStatus)&&navigator.onLine!==false&&document.visibilityState==='visible'&&Date.now()>=gateAt){
    gateAt=Date.now()+30000;const user=firebase.auth().currentUser,uid=currentUid,status=currentStatus;
    if(user?.uid===uid)try{const snap=await firebase.firestore().collection('users').doc(uid).get({source:'server'});let data=snap.data();if(window.SchoolHubServiceAccess)data=await SchoolHubServiceAccess.verify(data);if(firebase.auth().currentUser?.uid===uid&&currentStatus===status&&data?.status==='active'&&data.schoolId)window.location.reload();}catch(_){}
    return;
   }
-  if(!ready())return;const current=key();if(current!==context){context=current;baseline=new WeakMap();capture();nextAt=Date.now()+30000;deferred=null;return;}
+  if(!ready())return;const identity=JSON.stringify([sessionGeneration,currentUid,currentSchoolId]);if(identity!==account){account=identity;lastFailure=false;lastChecked=0;}const current=key();if(current!==context){context=current;baseline=new WeakMap();capture();nextAt=Date.now()+30000;deferred=null;return;}
   if(busy||editing())return;
   if(deferred){const refresh=deferred;deferred=null;refresh();baseline=new WeakMap();capture();}
   if(Date.now()<nextAt)return;
   busy=true;nextAt=Date.now()+30000;const token=sessionGeneration,uid=currentUid,school=currentSchoolId;
-  try{await revalidateAndSyncAfterReconnect(true,{metadataOnly:true});if(!isCurrentSession(token,uid,school)||!ready()||key()!==current||editing())return;await refreshCore(current);if(!ready()||key()!==current||editing())return;await activeView();if(isCurrentSession(token,uid,school)){baseline=new WeakMap();capture();}}
-  catch(error){console.warn('Automatic workspace refresh paused; saved work is retained:',error);nextAt=Date.now()+60000;}
-  finally{busy=false;}
+  try{await revalidateAndSyncAfterReconnect(true,{metadataOnly:true});if(!isCurrentSession(token,uid,school)||!ready()||key()!==current||editing())return;await refreshCore(current);if(!ready()||key()!==current||editing())return;await activeView();lastFailure=false;lastChecked=Date.now();if(isCurrentSession(token,uid,school)){baseline=new WeakMap();capture();}}
+  catch(error){lastFailure=true;console.warn('Automatic workspace refresh paused; saved work is retained:',error);nextAt=Date.now()+60000;}
+  finally{busy=false;paint();}
  }
  document.addEventListener('focusin',capture,true);document.addEventListener('pointerdown',capture,true);
  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')tick();});
  window.addEventListener('online',tick);setInterval(tick,2000);tick();
- window.SchoolHubAutomaticSync={editing,tick,refreshCore,saved:view=>{if(currentVisibleViewName()===view){baseline=new WeakMap();capture();}}};
+ window.SchoolHubAutomaticSync={editing,tick,refreshCore,status,saved:view=>{if(currentVisibleViewName()===view){baseline=new WeakMap();capture();}}};
 })();

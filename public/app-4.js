@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.50';
+const APP_VERSION = '40.1.51';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -450,6 +450,8 @@ function updateOfflineModeBanner(message) {
       : checking ? 'Checking your account and safely syncing saved changes. Open Sync Center.'
       : pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
       : offline ? 'Offline. No pending record changes. Open Sync Center.' : 'No pending record changes on this device. Open Sync Center.';
+    const automatic=typeof window==='undefined'?null:window.SchoolHubAutomaticSync?.status?.({failed,writeFailed,hydrationFailed,pending,offline,checking,waiting,quietRecovery,loading:!sessionReady||!sessionDataReady||cloudHydrationInProgress});
+    if(automatic){statusButton.textContent=automatic.label;statusButton.dataset.state=automatic.state;statusButton.title=automatic.detail+' Open Sync Center.';const detail=document.getElementById('automaticSyncDetail');if(detail&&detail.textContent!==automatic.label+': '+automatic.detail)detail.textContent=automatic.label+': '+automatic.detail;}
     statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
   }
   banner.classList.toggle('hidden', quietRecovery || (!offline && !pending && !reconnecting && !prolonged && !failed));
@@ -10497,7 +10499,9 @@ function pullCloudData(sessionToken, { background = false } = {}) {
       statusButton.dataset.state = 'pending';
       statusButton.textContent = 'Still syncing';
       statusButton.title = 'The initial cloud check is taking longer than expected. Your local data remains available.';
-      statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
+      const automatic=typeof window==='undefined'?null:window.SchoolHubAutomaticSync?.status?.({failed,writeFailed,hydrationFailed,pending,offline,checking,waiting,quietRecovery,loading:!sessionReady||!sessionDataReady||cloudHydrationInProgress});
+    if(automatic){statusButton.textContent=automatic.label;statusButton.dataset.state=automatic.state;statusButton.title=automatic.detail+' Open Sync Center.';const detail=document.getElementById('automaticSyncDetail');if(detail&&detail.textContent!==automatic.label+': '+automatic.detail)detail.textContent=automatic.label+': '+automatic.detail;}
+    statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
     }
   }, CORE_HYDRATION_SOFT_WARNING_MS);
   let hydrationDeadlineTimer = null;

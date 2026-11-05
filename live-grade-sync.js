@@ -59,6 +59,7 @@
     start();return true;
   };
   window.canSaveLiveGrades=()=>{
+    if(renderedContext!==context().key){alert('The term, class or teaching permissions changed. Reopen this grade sheet before saving. Your unfinished entries are kept.');return false;}
     const current=inputs();
     conflicts=new Set([...conflicts].filter(key=>{const e=current.find(e=>cellKey(e)===key);return e&&String(e.value)!==baseline.get(key);}));
     if(!conflicts.size)return true;
