@@ -41,7 +41,7 @@ function archiveParts(snapshot) {
 }
 function rolloverStudent(student, decision, fromYear,toYear,now) {
   if(!decision || student.isActive===false)return student;
-  const next={...student,classHistory:{...(student.classHistory||{}),[fromYear]:student.classId},rolloverHistory:[...(student.rolloverHistory||[]),{fromYear,toYear,decision:decision.decision,fromClassId:student.classId,toClassId:decision.destinationClassId||'',at:now}]};
+  const next={...student,classHistory:{...(student.classHistory||{}),[fromYear]:student.classId},rolloverHistory:[...(student.rolloverHistory||[]),{fromYear,toYear,decision:decision.decision,fromClassId:student.classId,toClassId:decision.decision==='promote'?decision.destinationClassId:decision.decision==='repeat'?student.classId:'',at:now}]};
   if(decision.decision==='promote'){next.classId=decision.destinationClassId;next.isActive=true;next.enrollmentStatus='active';}
   else if(decision.decision==='repeat'){next.isActive=true;next.enrollmentStatus='active';}
   else if(decision.decision==='graduate'){next.isActive=false;next.enrollmentStatus='graduated';next.completedYear=fromYear;}
@@ -267,38 +267,46 @@ function register({onCall,HttpsError,db,admin}) {
   const names=['students','classes','subjects','grades','attendance','teacherAttendance','schoolCalendar','remarks','staff'];
   const schoolSnap=await tx.get(school);const collections=await Promise.all(names.map(n=>tx.get(school.collection(n))));
   const data=Object.fromEntries(names.map((n,i)=>[n,collections[i].docs.map(d=>({...d.data(),id:d.id}))]));const settings=schoolSnap.data()?.profile||{};
-  const stamp=new Date().toISOString();let students,nextSettings,archiveId,snapshot;
+  const stamp=new Date().toISOString();let students,nextSettings,archiveId,snapshot,rolloverFingerprint='';
   if(input.mode==='rollover'){
    const {fromYear,toYear,decisions}=input;
-   if(!/^\d{4}\/\d{4}$/.test(toYear||'')||Number(toYear.slice(5))!==Number(toYear.slice(0,4))+1||fromYear===toYear||!object(decisions))fail('invalid-argument','Invalid academic year or decisions.');
+   const validYear=y=>typeof y==='string'&&/^\d{4}\/\d{4}$/.test(y)&&Number(y.slice(5))===Number(y.slice(0,4))+1;
+   if(!validYear(fromYear)||!validYear(toYear)||Number(toYear.slice(0,4))!==Number(fromYear.slice(0,4))+1||!object(decisions))fail('invalid-argument','Invalid academic year or decisions.');
+   if(!['Term 1','Term 2','Term 3'].includes(input.expectedTerm))fail('failed-precondition','Refresh SchoolHub and review the current term before rollover.');
+   if(!object(input.expectedRoster))fail('failed-precondition','Refresh SchoolHub and prepare the rollover again so the reviewed roster can be checked.');
+   const operationFingerprint=require('node:crypto').createHash('sha256').update(JSON.stringify([fromYear,toYear,Object.keys(decisions).sort().map(id=>[id,decisions[id]?.decision,decisions[id]?.destinationClassId||'']),Object.keys(input.expectedRoster).sort().map(id=>[id,input.expectedRoster[id]])])).digest('hex');
+   rolloverFingerprint=operationFingerprint;
    archiveId='year_'+String(fromYear).replace(/[^a-z0-9]+/gi,'_');
    const archive=await tx.get(school.collection('yearRollovers').doc(archiveId));
-   if(archive.exists){if(settings.lastYearRollover?.id===archiveId&&settings.currentYear===toYear)return {completed:true,repeated:true};fail('already-exists','This year already has an archive. Review it before another rollover.');}
+   if(archive.exists){if(archive.data().operationFingerprint&&archive.data().operationFingerprint!==operationFingerprint)fail('already-exists','This year was already rolled over with different reviewed decisions. Refresh before continuing.');if(settings.lastYearRollover?.id===archiveId&&settings.currentYear===toYear)return {completed:true,repeated:true};fail('already-exists','This year already has an archive. Review it before another rollover.');}
+   if(settings.currentTerm!==input.expectedTerm)fail('aborted','The current term changed after preparation. Restart the rollover review.');
    if(settings.currentYear!==fromYear)fail('aborted','The current year changed. Reload and review.');
+   const activeRoster=Object.fromEntries(data.students.filter(s=>s.isActive!==false).map(s=>[s.id,s.classId]));
+   if(!equal(input.expectedRoster,activeRoster))fail('aborted','The student roster or class placements changed after review. Restart the rollover.');
    const classIds=new Set(data.classes.map(c=>c.id));
    for(const s of data.students.filter(s=>s.isActive!==false)){
-    const d=decisions[s.id];if(!d||!['promote','repeat','graduate','leave'].includes(d.decision)||(d.decision==='promote'&&!classIds.has(d.destinationClassId)))fail('failed-precondition','Review every current student and destination.');
+    const d=Object.hasOwn(decisions,s.id)?decisions[s.id]:null;if(!d||!['promote','repeat','graduate','leave'].includes(d.decision)||(d.decision==='promote'&&!classIds.has(d.destinationClassId)))fail('failed-precondition','Review every current student and destination.');
    }
    students=data.students.map(s=>rolloverStudent(s,decisions[s.id],fromYear,toYear,stamp));
    nextSettings={...settings,currentYear:toYear,currentTerm:'Term 1',attendanceOutOf:'',nextTermBegins:'',lastYearRollover:{id:archiveId,fromYear,toYear,at:stamp}};
    snapshot={app:'AlatiphA SchoolHub',type:'academic-year-rollover',schoolId:u.schoolId,fromYear,toYear,createdAt:stamp,data:{...data,settings}};
   }else{
    snapshot=input.snapshot;
-   if(!snapshot||snapshot.schoolId!==u.schoolId||snapshot.type!=='academic-year-rollover'||!Array.isArray(snapshot.data?.students)||!object(snapshot.data?.settings))fail('invalid-argument','A complete backup from this school is required.');
-   if(settings.currentYear!==input.expectedYear)fail('aborted','The current year changed. Reload and review.');
+   if(!snapshot||snapshot.app!=='AlatiphA SchoolHub'||!Array.isArray(snapshot.data?.classes)||!/^\d{4}\/\d{4}$/.test(snapshot.fromYear||'')||!/^\d{4}\/\d{4}$/.test(snapshot.toYear||'')||Number(snapshot.fromYear.slice(5))!==Number(snapshot.fromYear.slice(0,4))+1||Number(snapshot.toYear.slice(0,4))!==Number(snapshot.fromYear.slice(5))||Number(snapshot.toYear.slice(5))!==Number(snapshot.toYear.slice(0,4))+1||snapshot.data?.settings?.currentYear!==snapshot.fromYear||snapshot.schoolId!==u.schoolId||snapshot.type!=='academic-year-rollover'||!Array.isArray(snapshot.data?.students)||!object(snapshot.data?.settings))fail('invalid-argument','A complete backup from this school is required.');
    students=snapshot.data.students;
    const seen=new Set();for(const s of students){if(!s||typeof s.id!=='string'||!s.id||s.id.includes('/')||seen.has(s.id))fail('invalid-argument','Invalid or duplicate student.');seen.add(s.id);}
    nextSettings=snapshot.data.settings;
    const crypto=require('node:crypto');archiveId='restore_'+crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex').slice(0,32);
    const previous=await tx.get(school.collection('yearRollovers').doc(archiveId));
-   if(previous.exists)fail('already-exists','This backup has already been restored. Reload to see the current state.');
+   if(previous.exists){if(settings.currentYear===nextSettings.currentYear)return {completed:true,repeated:true};fail('already-exists','This backup has already been restored. Reload to see the current state.');}
+   if(settings.currentYear!==input.expectedYear)fail('aborted','The current year changed. Reload and review.');
    snapshot={app:'AlatiphA SchoolHub',type:'pre-emergency-restore',schoolId:u.schoolId,createdAt:stamp,data:{...data,settings}};
   }
   let chunks;try{chunks=archiveParts(snapshot);}catch(e){fail('resource-exhausted',e.message);}
   // Bound the operation before writing; no multi-batch partial application.
   if(students.length*(input.mode==='restore'?2:1)+chunks.length+2>450 || Buffer.byteLength(JSON.stringify({students,nextSettings,chunks}))>8*1024*1024)fail('resource-exhausted','This school exceeds the safe atomic year-change limit. No changes were made. Contact support for a supervised migration.');
   const archive=school.collection('yearRollovers').doc(archiveId);
-  tx.create(archive,{type:input.mode,createdAt:stamp,createdBy:request.auth.uid,chunkCount:chunks.length,immutable:true});
+  tx.create(archive,{type:input.mode,createdAt:stamp,createdBy:request.auth.uid,chunkCount:chunks.length,immutable:true,...(rolloverFingerprint?{operationFingerprint:rolloverFingerprint}:{})});
   chunks.forEach((chunk,i)=>tx.create(archive.collection('snapshot').doc(String(i).padStart(4,'0')),{index:i,total:chunks.length,encoding:'base64-json',chunk}));
   students.forEach(s=>{const clean={...s};delete clean.photo;if(String(clean.photoUrl||'').startsWith('data:'))delete clean.photoUrl;if(input.mode==='restore')tx.delete(school.collection('deletedRecords').doc('students__'+s.id));tx.set(school.collection('students').doc(s.id),clean);});
   const cleanSettings={...nextSettings};delete cleanSettings.logo;tx.update(school,{profile:cleanSettings,updatedAt:admin.firestore.FieldValue.serverTimestamp()});

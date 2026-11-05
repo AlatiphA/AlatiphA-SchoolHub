@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.51';
+const APP_VERSION = '40.1.52';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -2248,13 +2248,15 @@ function buildYearRolloverDraft() {
     const destination = rolloverDefaultDestination(student.classId);
     decisions[student.id] = destination
       ? { decision: 'promote', destinationClassId: destination }
-      : { decision: 'graduate', destinationClassId: '' };
+      : { decision: '', destinationClassId: '' };
   });
   return {
     fromYear,
+    fromTerm:settings.currentTerm,
     toYear,
     classes,
     decisions,
+    expectedRoster:Object.fromEntries(students.map(s=>[String(s.id),s.classId])),
     createdAt: new Date().toISOString()
   };
 }
@@ -2329,6 +2331,7 @@ function renderYearRollover() {
       html += `<tr data-student="${escapeHtml(student.id)}">
         <td><strong>${escapeHtml(student.name || 'Unnamed student')}</strong><div class="meta">${escapeHtml(student.admissionId || '')}</div></td>
         <td><select class="rollover-decision" data-student="${escapeHtml(student.id)}">
+          <option value="" ${!d.decision ? 'selected' : ''}>Choose a decision</option>
           <option value="promote" ${d.decision === 'promote' ? 'selected' : ''}>Promote</option>
           <option value="repeat" ${d.decision === 'repeat' ? 'selected' : ''}>Repeat</option>
           <option value="graduate" ${d.decision === 'graduate' ? 'selected' : ''}>Graduate / Complete</option>
@@ -2451,7 +2454,7 @@ function showYearRolloverReview() {
   draft.toYear = String(document.getElementById('rolloverNewYear')?.value || draft.toYear || '').trim();
   const review = document.getElementById('yearRolloverReview');
   const counts = rolloverCounts(draft);
-  const validYear = /^\d{4}\s*\/\s*\d{4}$/.test(draft.toYear) && draft.toYear !== draft.fromYear;
+  const validYear = draft.toYear === nextAcademicYearLabel(draft.fromYear);
   const unresolved = counts.unresolved + (validYear ? 0 : 1);
 
   review.innerHTML = `<div class="rollover-confirm-card">
@@ -2527,7 +2530,7 @@ function rolloverUpdatedStudents(draft) {
       toYear:draft.toYear,
       decision:decision.decision,
       fromClassId,
-      toClassId:decision.destinationClassId || '',
+      toClassId:decision.decision==='promote'?decision.destinationClassId:decision.decision==='repeat'?fromClassId:'',
       at:now
     });
     if (decision.decision === 'promote') {
@@ -2557,8 +2560,8 @@ async function applyYearRollover() {
   draft.toYear = String(document.getElementById('rolloverNewYear')?.value || draft.toYear || '').trim();
   const counts = rolloverCounts(draft);
   if (counts.unresolved) { alert('Resolve every student decision and destination first.'); return; }
-  if (!/^\d{4}\s*\/\s*\d{4}$/.test(draft.toYear) || draft.toYear === draft.fromYear) {
-    alert('Enter a valid new Academic Year, for example 2027/2028.'); return;
+  if (!/^\d{4}\/\d{4}$/.test(draft.fromYear)||draft.toYear !== nextAcademicYearLabel(draft.fromYear)) {
+    alert('Enter the next consecutive Academic Year in YYYY/YYYY format, for example 2027/2028.'); return;
   }
   const settings = DB.get(KEYS.settings, {});
   if (String(settings.currentYear || '').trim() !== draft.fromYear) {
@@ -2583,7 +2586,8 @@ async function applyYearRollover() {
     storeLocalRolloverSnapshot(snapshot, rolloverId);
     if (FIREBASE_ENABLED && currentSchoolId) {
       await flushPendingCloudWrites();
-      await safetyCall('applySchoolYearChange', {mode:'rollover',fromYear:draft.fromYear,toYear:draft.toYear,decisions:draft.decisions});
+      if(typeof hasPendingSchoolHubSync==='function'&&hasPendingSchoolHubSync())throw new Error('Resolve pending saves and sync errors before changing the academic year.');
+      await safetyCall('applySchoolYearChange', {mode:'rollover',fromYear:draft.fromYear,toYear:draft.toYear,decisions:draft.decisions,expectedRoster:draft.expectedRoster,expectedTerm:draft.fromTerm});
       await pullCloudData();
       yearRolloverDraft = null;
       loadSettingsForm(); renderStudents(); renderClasses(); renderYearRollover();
@@ -2817,6 +2821,7 @@ async function applyYearEndEmergencyRestore() {
     preserveBeforeEmergencyRestore();
     if (FIREBASE_ENABLED && currentSchoolId) {
       await flushPendingCloudWrites();
+      if(typeof hasPendingSchoolHubSync==='function'&&hasPendingSchoolHubSync())throw new Error('Resolve pending saves and sync errors before restoring a year-end backup.');
       const safeSnapshot = JSON.parse(JSON.stringify(snapshot));
       safeSnapshot.data.students = stripImagesForCloud('students', safeSnapshot.data.students);
       safeSnapshot.data.settings = stripImagesForCloud('settings', safeSnapshot.data.settings);

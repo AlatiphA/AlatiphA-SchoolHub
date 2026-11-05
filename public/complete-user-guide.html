@@ -332,6 +332,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>The current PWA also manages its service-worker lifecycle more robustly, checks for updates and supports native Background Sync where the browser provides it. SchoolHub still keeps its own local pending queues as the source of truth, so unsupported browsers can continue using reconnect and reopen recovery.</p>
 
 <h3 id="year-rollover">4.6 Academic Year Rollover</h3>
+<p><strong>Rollover safety:</strong> advance only to the next consecutive academic year. Pupils without a mapped next class require an explicit decision; they are not automatically graduated. Resolve pending saves and sync errors first. If the roster, class placements, term or year changes after preparation, restart the review. Matching retries are safe, but different decisions cannot replace a completed rollover. Emergency restores require a complete, correctly dated backup from the same school and retain pupils added after that backup.</p>
 <p>At the end of the academic year, SchoolHub provides a structured rollover process.</p>
 <p>Each student can be reviewed as <strong>Promote</strong>, <strong>Repeat</strong>, <strong>Graduate / Complete</strong>, or <strong>Transfer / Leave</strong>.</p>
 <p>SchoolHub creates a protective year-end backup/archive as part of the rollover process and provides a <strong>Restore Year-End Backup</strong> option for emergency reversal.</p>
