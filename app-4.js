@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.45';
+const APP_VERSION = '40.1.46';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -6737,6 +6737,7 @@ document.getElementById('saveAttendanceBtn').addEventListener('click', () => {
 });
 
 document.getElementById('saveTeacherAttendanceBtn').addEventListener('click', () => {
+  if(window.canSaveLiveTeacherAttendance&&!window.canSaveLiveTeacherAttendance())return;
   if (!requireHeadTeacher('record or edit teacher attendance')) return;
   const settings = DB.get(KEYS.settings, {});
   if (!settings.currentTerm || !settings.currentYear) { alert('Set the current Term and Academic Year in Setup first.'); return; }
