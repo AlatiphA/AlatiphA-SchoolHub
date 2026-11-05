@@ -18,7 +18,7 @@
  function discardDialog(){dialog?.remove();dialog=null;document.body.classList.remove('supervision-open');}
  function reset(){discardDialog();data=null;owner=null;loading++;host.replaceChildren();}
  const originalReset=resetWorkspaceState;resetWorkspaceState=function(...args){reset();return originalReset(...args);};
- async function load(quiet=false){
+ async function load(quiet=false,canRefresh=null){
   const s=session();if(!same(s)){reset();owner=s;}
   if(!active(s)||!FIREBASE_ENABLED){message('Sign in to an active school to view weekly supervision.');if(!host.children.length)host.textContent='Sign in to an active school to view weekly supervision.';return;}
   const seq=++loading;
@@ -26,7 +26,7 @@
   if(!host.querySelector('[data-supervision-status]'))render();
   if(navigator.onLine===false||offlineAuthenticatedMode){message('Offline: saved checks remain visible. New entries are drafts until you save online.');return;}
   if(!quiet)message('Updating weekly supervision…');
-  try{const result=await confirmedCall('getWeeklySupervision',{week,expectedUid:s.uid,expectedSchoolId:s.school});if(seq!==loading||!active(s))return;data=result;try{localStorage.setItem(cache(s),JSON.stringify(result));}catch(_){}render();message('Weekly supervision is up to date.');}
+  try{const result=await confirmedCall('getWeeklySupervision',{week,expectedUid:s.uid,expectedSchoolId:s.school});if(seq!==loading||!active(s)||canRefresh&&!canRefresh())return;data=result;try{localStorage.setItem(cache(s),JSON.stringify(result));}catch(_){}render();message('Weekly supervision is up to date.');}
   catch(e){if(seq===loading&&active(s))message('Could not update supervision. Saved checks remain visible. '+(e.message||e));}
  }
  function render(){

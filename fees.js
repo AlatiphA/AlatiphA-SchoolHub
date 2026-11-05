@@ -214,6 +214,7 @@ async function renderSchoolFees(options={}){
   const queue=feeQueueRead(pendingKey);
   // Capture the latest choices after the network wait, including sections closed during refresh.
   if(silent)viewState=feeCaptureViewState(host);
+  if(options.canRefresh&&!options.canRefresh()){host.removeAttribute('aria-busy');return;}
   host.innerHTML=`
    <p>Manage reusable fee categories, term fee items, pupil charges, payments and receipts. This page records school transactions only; it does not collect or transfer money.</p>
    <div id="feeMessage" role="status"></div>

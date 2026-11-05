@@ -4,11 +4,11 @@ function manualBillingCall(name,data={}){return firebase.app().functions('us-cen
 function manualMoney(pesewas){return 'GH₵'+(Number(pesewas||0)/100).toFixed(2);}
 function manualPlanLabel(p){return p.type==='reports_term'?'Unlimited reports for one school term':p.type==='reports_year'?'Unlimited reports for 12 months':p.type==='school_licence_3_year'?'3-year School Licence':p.type==='attendance_term'?'Attendance for one school term':p.credits+' report credits';}
 function manualPesewas(value){if(!/^\d+(\.\d{1,2})?$/.test(String(value)))return null;const [whole,fraction='']=String(value).split('.');const n=Number(whole)*100+Number(fraction.padEnd(2,'0'));return Number.isSafeInteger(n)?n:null;}
-async function renderManualSchoolBilling(wrap,chosenPackage){
+async function renderManualSchoolBilling(wrap,chosenPackage,preloaded){
  const renderId={};wrap.manualBillingRender=renderId;
  const token=sessionGeneration,uid=currentUid,school=currentSchoolId,valid=()=>isCurrentSession(token,uid,school)&&wrap.manualBillingRender===renderId;wrap.classList.add('manual-billing');wrap.textContent='Loading school payment options…';
  try{
-  const data=await manualBillingCall('getSchoolManualBilling',{expectedSchoolId:school});if(!valid())return;
+  const data=preloaded||await manualBillingCall('getSchoolManualBilling',{expectedSchoolId:school});if(!valid())return;
   if(data.provider!=='manual'||data.mode!=='live')throw Error('Billing configuration changed. Refresh SchoolHub.');
   DB.set(KEYS.billing,{...DB.get(KEYS.billing,{}),...data.account});const esc=escapeHtml;
   wrap.innerHTML=`<div class="billing-card"><h3>School Billing &amp; Credits</h3><p>Manual MoMo payment · real school licences and credits. Test balances are separate.</p><p><strong>${esc(manualMoney(20))} per report · GH₵50 for unlimited reports per school term · GH₵120 for unlimited reports for 12 months · GH₵50 per attendance term</strong></p><p>Attendance is paid separately from termly and yearly report packages. New three-year purchases are suspended; existing licences remain valid. Termly reports cover the saved school term and academic year; yearly reports run for 12 months from activation.</p><p>Available report credits: <strong>${Number(data.account.balance||0)}</strong></p><p>${hasSchoolLifetimeLicence()?esc(schoolLicenceLabel())+' is active.':'10 free single Black & White reports per school per term. Premium reports and class batches use credits.'}</p></div>

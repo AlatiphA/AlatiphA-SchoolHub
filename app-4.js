@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.47';
+const APP_VERSION = '40.1.48';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -11467,18 +11467,19 @@ async function prepareTeacherApproval(assignedClassIds, assignedSubjectIds, sele
 
 let editingManageTeacherUid = null;
 
-function renderManageTeachers() {
+function renderManageTeachers(options={}) {
   const list = document.getElementById('manageTeachersList');
   if (!isHeadTeacher()) {
     list.innerHTML = '<li class="empty">Only the Head Teacher can manage teachers.</li>';
     return;
   }
-  list.innerHTML = '<li class="empty">Loading…</li>';
+  if(!options.canRefresh)list.innerHTML = '<li class="empty">Loading…</li>';
   const classes = DB.get(KEYS.classes, []);
   const subjects = DB.get(KEYS.subjects, []);
   const staff = DB.get(KEYS.staff, []);
 
-  fetchSchoolMembers().then(members => {
+  return fetchSchoolMembers().then(members => {
+    if(options.canRefresh&&!options.canRefresh())return;
     members.sort((a, b) => {
       if (a.role === 'headteacher' && b.role !== 'headteacher') return -1;
       if (a.role !== 'headteacher' && b.role === 'headteacher') return 1;
