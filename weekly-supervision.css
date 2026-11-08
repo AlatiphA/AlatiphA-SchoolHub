@@ -39,3 +39,17 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 .supervision-table.lesson-observation-table{min-width:760px}
 .lesson-observation-table .observation-summary{text-align:left;min-width:240px;max-width:360px;line-height:1.45;overflow-wrap:anywhere}
 .lesson-observation-table .observation-summary span{display:inline-block;margin:2px 0}
+
+#supervisionWrap .supervision-report-actions{align-items:center;margin:0 0 12px}
+#supervisionWrap .supervision-report-actions button{min-width:140px}
+.supervision-print-report{max-width:1000px;margin:0 auto;background:#fff;color:#111}
+.supervision-print-card{margin:0 0 14px;padding:12px;border:1px solid #bbb;border-radius:10px;background:#fff;break-inside:avoid-page;page-break-inside:avoid}
+.supervision-print-card h4{margin:0 0 6px;color:#111}
+.supervision-print-meta{margin:0 0 9px;color:#555;font-size:.9rem}
+.supervision-print-report :is(.supervision-print-details,.supervision-print-subjects){width:100%;table-layout:auto}
+.supervision-print-report .supervision-print-details :is(th,td),.supervision-print-report .supervision-print-subjects :is(th,td){white-space:normal!important;overflow-wrap:anywhere;vertical-align:top}
+.supervision-print-report .supervision-print-details td{white-space:pre-wrap!important}
+.supervision-print-report .supervision-print-details th{text-align:left;width:170px}
+.supervision-print-report .supervision-print-subjects{margin:2px 0;font-size:.9em}
+@media(max-width:600px){#supervisionWrap .supervision-report-actions{width:100%}#supervisionWrap .supervision-report-actions button{flex:1 1 140px;min-width:0}}
+@media print{.supervision-print-report{max-width:none!important;color:#111!important;background:#fff!important}.supervision-print-card{border-color:#aaa!important;border-radius:0!important;background:#fff!important}.supervision-print-meta{color:#555!important}.supervision-print-report .supervision-print-details th{width:150px}.supervision-print-report .attendance-report-table th,.supervision-print-report .attendance-report-table td{color:#111!important;background:#fff!important;border:1px solid #bbb!important}}
