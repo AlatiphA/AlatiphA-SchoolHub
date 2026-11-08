@@ -33,3 +33,6 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 .supervision-row-actions .supervision-edit-action{font-weight:700;border-color:var(--accent,#28624d)}
 .supervision-row-actions .supervision-delete-action{color:#a32222;border-color:#c97979}
 @media(max-width:600px){.supervision-table .supervision-row-actions{min-width:230px}.supervision-row-actions{gap:4px}.supervision-row-actions button{padding:6px 8px!important;font-size:.82rem}}
+.supervision-record-filters select{min-width:180px;max-width:100%;padding:9px 12px;font:inherit;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
+.observation-date-cell strong{display:inline-block;font-size:1.08rem;white-space:nowrap}
+.lesson-observations h4{margin:14px 0 8px}
