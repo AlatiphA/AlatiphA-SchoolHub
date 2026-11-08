@@ -1,7 +1,7 @@
 /* Weekly checks are server-owned; this module never resets the school workspace. */
 (()=>{
  const host=document.getElementById('supervisionWrap'),esc=escapeHtml;
- let data=null,owner=null,loading=0,busy=false,dialog=null;
+ let data=null,owner=null,loading=0,busy=false,dialog=null,lastInteraction=0;
  const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
  const monday=()=>{const d=new Date(today()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10);};
  function weekEnding(start){const d=new Date(start+'T00:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(start)||!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==start||d.getUTCDay()!==1)return '';d.setUTCDate(d.getUTCDate()+4);return d.toISOString().slice(0,10);}
@@ -49,7 +49,7 @@
   if(!host.querySelector('[data-supervision-status]'))render();
   if(navigator.onLine===false||offlineAuthenticatedMode){message('Offline: saved checks remain visible. New entries are drafts until you save online.');return;}
   if(!quiet)message('Updating weekly supervision…');
-  try{const result=await confirmedCall('getWeeklySupervision',{week,expectedUid:s.uid,expectedSchoolId:s.school});if(seq!==loading||!active(s)||canRefresh&&!canRefresh())return;data=result;try{localStorage.setItem(cache(s),JSON.stringify(result));}catch(_){}render();message('Weekly supervision is up to date.');}
+  try{const result=await confirmedCall('getWeeklySupervision',{week,expectedUid:s.uid,expectedSchoolId:s.school});if(seq!==loading||!active(s)||canRefresh&&!canRefresh())return;data=result;try{localStorage.setItem(cache(s),JSON.stringify(result));}catch(_){}const focused=document.activeElement,formFocused=host.contains(focused)&&/^(INPUT|SELECT|TEXTAREA)$/.test(focused?.tagName||''),defer=quiet&&(Date.now()-lastInteraction<5000||formFocused);if(!defer)render();message('Updated');}
   catch(e){if(seq===loading&&active(s))message('Could not update supervision. Saved checks remain visible. '+(e.message||e));}
  }
  function render(){
@@ -119,6 +119,7 @@
  }
  function exportCSV(){if(!owner?.head)return;const headers=['Teacher','Class','Week ending (Friday)','Year','Term','Date checked','Plans reviewed','Plan outcome','Register reviewed','Register outcome','Exercises','Assessments','Feedback','Follow-up date','Follow-up status'];const rows=(data?.records||[]).map(r=>[r.staffName,r.className,weekEnding(r.week),r.year,r.term,r.checkedOn,r.lessonReviewed?'Yes':'No',statusText[r.lessonStatus],r.registerReviewed?'Yes':'No',statusText[r.registerStatus],r.assessments.reduce((n,a)=>n+a.exercises,0),r.assessments.reduce((n,a)=>n+a.assessments,0),r.feedback,r.followUpOn,statusText[r.followUpStatus]]);const encode=v=>'"'+String(v??'').replace(/^\s*[=+@-]/,"'$&").replaceAll('"','""')+'"';const blob=new Blob(['\uFEFF'+[headers,...rows].map(row=>row.map(encode).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download='weekly-supervision-'+weekEnding(week)+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  window.renderWeeklySupervision=load;
+ for(const type of ['pointerdown','wheel','touchstart','keydown'])host.addEventListener(type,()=>{lastInteraction=Date.now();},{passive:true});
  window.addEventListener('online',()=>{if(currentVisibleViewName()==='supervision')load(true);});
  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&currentVisibleViewName()==='supervision')load(true);});
 })();
