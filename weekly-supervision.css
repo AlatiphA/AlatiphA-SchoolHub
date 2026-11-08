@@ -27,3 +27,9 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 
 .lesson-observations{margin-block:1.5rem;padding-block:1rem;border-top:1px solid var(--border,#ddd)}
 .supervision-table.lesson-observation-table{min-width:520px;width:100%}
+.supervision-table .supervision-row-actions{white-space:nowrap;min-width:250px}
+.supervision-row-actions{display:flex;align-items:center;justify-content:center;gap:6px}
+.supervision-row-actions button{flex:0 0 auto!important;min-height:38px;padding:7px 10px!important;font-size:.9rem;white-space:nowrap}
+.supervision-row-actions .supervision-edit-action{font-weight:700;border-color:var(--accent,#28624d)}
+.supervision-row-actions .supervision-delete-action{color:#a32222;border-color:#c97979}
+@media(max-width:600px){.supervision-table .supervision-row-actions{min-width:230px}.supervision-row-actions{gap:4px}.supervision-row-actions button{padding:6px 8px!important;font-size:.82rem}}
