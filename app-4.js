@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.59';
+const APP_VERSION = '40.1.67';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -1136,7 +1136,7 @@ function sectionTitle(name) {
   if(name==='app-settings')return 'Settings';
   if(name==='help-about')return 'Help & About';
   if(name==='fees')return 'Fees & Receipts';
-  if(name==='supervision')return 'Weekly Supervision';
+  if(name==='supervision')return 'Supervision and Observation';
   if(name==='operations')return 'Stores, Assets & Liabilities';
   const titles = {
     setup: 'Setup', staff: 'Staff', classes: 'Classes', students: 'Students', subjects: 'Subjects',
@@ -1184,7 +1184,7 @@ const QUICK_ACCESS_CARDS = [
   { view: 'reports', title: 'Reports', description: 'Generate PDFs, CSV, and view statistics',
     icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="9" y2="17"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="15" y1="15" x2="15" y2="17"/>' },
   {view:'operations',title:'Stores, Assets & Liabilities',description:'School stock, property, supplier bills and stock requests',icon:'<path d="M3 7h18v14H3zM3 7l9-5 9 5M12 7v14"/>'},
-  {view:'supervision',title:'Weekly Supervision',description:'Lesson plans, exercises, register checks and teacher feedback',icon:'<path d="M4 4h16v16H4zM7 8h10M7 12h10M7 16h6"/>'},
+  {view:'supervision',title:'Supervision and Observation',description:'Weekly checks and classroom observations',icon:'<path d="M4 4h16v16H4zM7 8h10M7 12h10M7 16h6"/>'},
   { view: 'billing', title: 'Billing & Credits', description: 'Buy and manage school report credits',
     icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 14h4"/><circle cx="17" cy="14" r="1"/>' },
   { view: 'activity', title: 'Activity Log', description: 'See who changed school data and when',
