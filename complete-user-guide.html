@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AlatiphA SchoolHub Complete User Guide</title>
-<meta name="description" content="SchoolHub school-user guide, reviewed 5 November 2026. Covers Head Teacher, Teacher and Guest workflows, student onboarding, daily attendance, class filters, sync conflict review, app updates, messages, fees, stock, backups and recovery.">
+<meta name="description" content="SchoolHub school-user guide, reviewed 8 November 2026 · v40.1.68. Covers Head Teacher, Teacher and Guest workflows, student onboarding, daily attendance, class filters, sync conflict review, app updates, messages, fees, stock, backups and recovery.">
 <style>
 html { scroll-behavior: smooth; }
 .embedded-guide .guide-app-link { display:none; }
@@ -112,15 +112,15 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h1>AlatiphA SchoolHub Complete User Guide</h1>
 <p class="guide-app-link"><a href="https://alatipha-schoolhub.web.app/">Open SchoolHub</a></p>
-<p class="updated"><strong>Updated:</strong> 5 November 2026 · School-user workflows, including Sync Review</p>
+<p class="updated"><strong>Updated:</strong> 8 November 2026 · SchoolHub v40.1.68</p>
 
 <div class="intro-box">
 <strong>AlatiphA SchoolHub</strong> is a school-management Progressive Web App designed to bring school administration, staff and pupil records, weekly teaching supervision, stores and school property, attendance, assessment, report cards, fees and receipts, notifications and school communication, parent fee communication, synchronisation, backup and recovery into one working environment.
 </div>
 
-<p>This guide explains the current SchoolHub school workspace from the perspective of a <strong>Guest</strong>, <strong>Head Teacher</strong> and <strong>Teacher</strong>. It covers the current major tabs, protected school joining and approval, Weekly Supervision, Stores/Inventory/Assets/Liabilities, the Notification Center and announcements, Fees &amp; Receipts, account security, offline drafts and synchronisation, and the safeguards that protect school data.</p>
+<p>This guide explains the current SchoolHub school workspace from the perspective of a <strong>Guest</strong>, <strong>Head Teacher</strong> and <strong>Teacher</strong>. It covers the current major tabs, protected school joining and approval, Supervision and Observation, Stores/Inventory/Assets/Liabilities, the Notification Center and announcements, Fees &amp; Receipts, account security, offline drafts and synchronisation, and the safeguards that protect school data.</p>
 
-<div class="success-box"><strong>Included in this revision:</strong> separate student onboarding methods, class-scoped Search and exports, role-specific pupil summaries, daily attendance pills, narrow frozen attendance columns, configured Messages &amp; Push, Check for updates / Install update, and Sync Center pending-record and conflict review. This guide is for Head Teachers, Teachers and Guests.</div>
+<div class="success-box"><strong>This v40.1.68 guide includes:</strong> separate student onboarding methods, class-scoped Search and exports, role-specific pupil summaries, daily attendance pills, narrow frozen attendance columns, configured Messages &amp; Push, Check for updates / Install update, Sync Center pending-record and conflict review, and the renamed Supervision and Observation section with filters, draft controls, audited edit/delete actions and local-time timestamps. This guide is for Head Teachers, Teachers and Guests.</div>
 
 <details class="toc" open>
 <summary>Table of Contents</summary>
@@ -180,12 +180,13 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
     <li><a href="#assets-liabilities">Assets, Liabilities and History</a></li>
   </ol>
 </li>
-<li><a href="#supervision">Weekly Supervision</a>
+<li><a href="#supervision">Supervision and Observation</a>
   <ol>
     <li><a href="#supervision-access">Who Can Record or View Checks</a></li>
     <li><a href="#supervision-record">Recording a Weekly Check</a></li>
     <li><a href="#supervision-subjects">Subject Checks and Counts</a></li>
     <li><a href="#supervision-offline">Drafts, Refresh and Export</a></li>
+    <li><a href="#lesson-observations">Lesson Observations, Filters and Actions</a></li>
   </ol>
 </li>
 <li><a href="#history">Term History</a></li>
@@ -238,7 +239,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h3 id="headteacher-account">2.2 School / Head Teacher Account</h3>
 <p>The Head Teacher account is the main administrative account for a SchoolHub school.</p>
-<p>A Head Teacher can manage School Settings, Staff, Classes, Subjects, Students, Teacher applications and approvals, Teacher assignments, Attendance, Calendar, Grades, Remarks, Reports, Weekly Supervision, Stores &amp; Inventory, Stock Requests, Assets, Liabilities, Fees &amp; Receipts, Financial Reports, Arrears, Parent Statements, Reminders, Term History, Academic Year Rollover, Backup and Recovery, System Health and Sync information.</p>
+<p>A Head Teacher can manage School Settings, Staff, Classes, Subjects, Students, Teacher applications and approvals, Teacher assignments, Attendance, Calendar, Grades, Remarks, Reports, Supervision and Observation, Stores &amp; Inventory, Stock Requests, Assets, Liabilities, Fees &amp; Receipts, Financial Reports, Arrears, Parent Statements, Reminders, Term History, Academic Year Rollover, Backup and Recovery, System Health and Sync information.</p>
 
 <p>After a school is created, teachers can join it using the school's join code. Their access does not automatically become active. The Head Teacher approves the teacher and determines the classes and subjects the teacher can use.</p>
 
@@ -249,7 +250,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <li>Join the required school using the school's join code.</li>
 <li>Wait for Head Teacher approval.</li>
 <li>The Head Teacher assigns permitted classes and subjects.</li>
-<li>The teacher works only within those approved assignments, can view the Stock Catalogue and submit their own stock requests, and can view Weekly Supervision checks linked to their Staff record.</li>
+<li>The teacher works only within those approved assignments, can view the Stock Catalogue and submit their own stock requests, and can view Supervision and Observation checks linked to their Staff record.</li>
 </ol>
 
 <div class="note-box">If a teacher cannot see an expected class or subject, the Head Teacher should first check the teacher's assignment in <strong>Manage Teachers</strong>.</div>
@@ -287,7 +288,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h2 id="home"><span class="chapter-number">Chapter 3:</span> Home Dashboard</h2>
 <p>The Home tab acts as the main starting point after entering SchoolHub. It provides quick access to the areas available to the current user's role. The top-bar notification bell shows an unread badge when new SchoolHub notifications are waiting.</p>
-<p>Major areas include Setup, Manage Teachers, Staff, Classes, Subjects, Students, Attendance, Grades, Remarks, Fees &amp; Receipts, Reports, Stores, Assets &amp; Liabilities, Weekly Supervision, Activity Log and Term History, depending on the user's role. Billing &amp; Credits remains a separate Head Teacher area when available.</p>
+<p>Major areas include Setup, Manage Teachers, Staff, Classes, Subjects, Students, Attendance, Grades, Remarks, Fees &amp; Receipts, Reports, Stores, Assets &amp; Liabilities, Supervision and Observation, Activity Log and Term History, depending on the user's role. Billing &amp; Credits remains a separate Head Teacher area when available.</p>
 <p>The floating quick-navigation pill also provides fast access to frequently used sections such as Home, Attendance and Reports.</p>
 
 <h2 id="setup"><span class="chapter-number">Chapter 4:</span> School Setup</h2>
@@ -321,7 +322,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 </ol>
 
 <h3 id="backup-restore">4.3 Backup &amp; Restore</h3>
-<p>SchoolHub can export a school backup in JSON format. The <strong>Export Backup (.json)</strong> option provides a copy of core school records outside the application. It excludes FIS, inventory, Weekly Supervision, notifications and cloud image files, so it is not a complete cloud disaster-recovery backup. Signed-in imports require the online Head Teacher and a matching school identity. Older unscoped backups need review in a separate guest test workspace. Import loads core records and queues supported changes; it does not automatically delete cloud records missing from the file.</p>
+<p>SchoolHub can export a school backup in JSON format. The <strong>Export Backup (.json)</strong> option provides a copy of core school records outside the application. It excludes FIS, inventory, Supervision and Observation, notifications and cloud image files, so it is not a complete cloud disaster-recovery backup. Signed-in imports require the online Head Teacher and a matching school identity. Older unscoped backups need review in a separate guest test workspace. Import loads core records and queues supported changes; it does not automatically delete cloud records missing from the file.</p>
 
 <h3 id="pin-lock">4.4 PIN Lock</h3>
 <p>The optional PIN Lock provides an additional privacy screen on a device where SchoolHub may be accessible to other people.</p>
@@ -378,7 +379,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h2 id="subjects"><span class="chapter-number">Chapter 9:</span> Subjects</h2>
 <p>The Subjects tab defines the subjects taught in the school. Users can add subjects, edit existing subjects and arrange subject order.</p>
-<p>Subject order matters for report calculations and is also the display order used by Weekly Supervision. Editing an existing Subject opens in a popup window.</p>
+<p>Subject order matters for report calculations and is also the display order used by Supervision and Observation. Editing an existing Subject opens in a popup window.</p>
 
 <h2 id="attendance"><span class="chapter-number">Chapter 10:</span> Attendance</h2>
 <h3 id="student-attendance">10.1 Student Attendance</h3>
@@ -479,8 +480,8 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>The Liabilities register tracks a supplier/creditor, description, invoice reference, due date, amount owed, amount paid and outstanding balance. Recording a liability payment updates the register; it does <strong>not</strong> transfer money. Recorded payments can be reversed through the protected history workflow when necessary.</p>
 <p>The History tab shows the latest confirmed management events, including stock quantities or amounts and references. The Stores area refreshes its visible records periodically while it is open, online and verified, without forcing a full page refresh. Search text, the selected subtab and table scroll position are preserved where possible.</p>
 
-<h2 id="supervision"><span class="chapter-number">Chapter 15:</span> Weekly Supervision</h2>
-<p>Weekly Supervision gives the Head Teacher a structured record of weekly teaching checks and provides each linked Teacher with read-only access to their own feedback history.</p>
+<h2 id="supervision"><span class="chapter-number">Chapter 15:</span> Supervision and Observation</h2>
+<p>Supervision and Observation gives the Head Teacher a structured record of weekly teaching checks and provides each linked Teacher with read-only access to their own feedback history.</p>
 
 <h3 id="supervision-access">15.1 Who Can Record or View Checks</h3>
 <p>The <strong>Head Teacher</strong> records and edits weekly supervision checks. Teachers cannot change supervision outcomes. A Teacher can view only records linked to that Teacher's Staff record; an account without a Staff link is told to ask the Head Teacher to link it.</p>
@@ -503,7 +504,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <li>Optional follow-up date and status: No follow-up, Open, or Completed</li>
 </ul>
 <p>The date checked cannot be before the selected week, and a follow-up date cannot be earlier than the check date.</p>
-<p>When editing an existing check, the teacher, class, week, academic year and term remain fixed. Create another record if one of those identifying fields must change.</p>
+<p>When editing an existing check, the class can be corrected. Saving moves the record to the new class and keeps an audit entry; a duplicate check at the destination is blocked. Teacher, week, academic year and term remain fixed.</p>
 
 <h3 id="supervision-subjects">15.3 Subject Checks and Counts</h3>
 <p>For each subject checked, the Head Teacher can record:</p>
@@ -518,9 +519,12 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>Subject choices come from the <strong>Subjects</strong> tab in its saved order. Repeated subject names are shown once, and a subject already used in another supervision row is unavailable until that row is changed or removed.</p>
 
 <h3 id="supervision-offline">15.4 Drafts, Refresh and Export</h3>
-<p>If the verified workspace and supervision choices were already loaded, the Head Teacher can prepare a supervision entry offline. It is saved as a <strong>draft on that device</strong>, not as an official school record. Reopen Weekly Supervision and use <strong>Resume saved draft</strong> or discard it before starting a different check.</p>
+<p>If the verified workspace and supervision choices were already loaded, the Head Teacher can prepare a supervision entry offline. It is saved as a <strong>draft on that device</strong>, not as an official school record. Reopen Supervision and Observation. A notice says <strong>Unfinished weekly check saved on this device</strong>; choose <strong>Continue</strong> or <strong>Discard</strong>. New-entry drafts are separate from saved-record edits and do not block them.</p>
 <p>Official saving requires internet and a verified Head Teacher account. If confirmation fails, retry the same retained save rather than creating another copy. If the record changed on another device, SchoolHub can require a refresh before the edit is accepted.</p>
-<p><strong>Refresh checks</strong> loads server-confirmed changes from another device. The Head Teacher can also use <strong>Export this week</strong> to download the selected week's supervision records as CSV. The weekly summary identifies staff with no recorded check for the selected week.</p>
+<p><strong>Refresh checks</strong> loads server-confirmed changes from another device. Quiet background checks show <strong>Updated</strong> and preserve the page and table position; use Refresh checks for an immediate visible reload. The Head Teacher can also use <strong>Export this week</strong> to download the selected week's supervision records as CSV. Weekly check times display in Accra local time.</p>
+<h3 id="lesson-observations">15.5 Lesson Observations, Filters and Actions</h3>
+<p>The Head Teacher opens <strong>Lesson observations → New observation</strong> and completes five fields: teacher, class, observation date, strengths and recommendations. The list is grouped by week ending Friday, shows each observation date clearly and includes short strengths/recommendations previews. Choose <strong>View</strong> for the full notes. Continue or discard an unfinished device draft; it is separate from saved-record edits. Official saving requires internet and a verified Head Teacher account.</p>
+<p>The selected Friday at the top applies to both weekly checks and observations. Use the teacher and class filters above each table. Head Teachers can view, edit and delete records; changes and deletions are kept in audit history. Teachers can view only their own linked records. Recorded/updated timestamps display in Accra local time.</p>
 
 <h2 id="history"><span class="chapter-number">Chapter 16:</span> Term History</h2>
 <p>The Term History tab is used to browse older term/year information and export historical results. It includes Term / Academic Year selection, Class selection, historical report generation, CSV export and Start New Term.</p>
@@ -661,20 +665,20 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h3 id="automatic-updates">21.0 Automatic updates between devices</h3>
 <p>Keep each device online and install the latest SchoolHub update. Classes, students and notifications receive live updates; selected grade and pupil attendance registers update while open. Calendar exceptions and teacher attendance update while Attendance is open, with teacher attendance restricted to the Head Teacher. A confirmed full server calendar snapshot can remove stale local holiday/midterm exceptions, retaining a recovery backup. Unsaved entries and pending local changes are protected.</p>
-<p>Other workspace areas check approximately <strong>every 30 seconds while open, visible and online</strong>: staff, subjects, Setup/term settings, remarks, teacher membership/assignments, Fees &amp; Receipts, Billing &amp; Credits, and Weekly Supervision. This is not a guaranteed instant delivery time. Stores &amp; Operations also has its own visible-page refresh, approximately every 15 seconds.</p>
+<p>Other workspace areas check approximately <strong>every 30 seconds while open, visible and online</strong>: staff, subjects, Setup/term settings, remarks, teacher membership/assignments, Fees &amp; Receipts, Billing &amp; Credits, and Supervision and Observation. This is not a guaranteed instant delivery time. Stores &amp; Operations also has its own visible-page refresh, approximately every 15 seconds.</p>
 <p>Automatic refresh pauses while a form has changed or a dialog is open. Finish the operation or leave/reopen the view to resume; use manual Refresh if needed. Typing during a network check defers replacement of the form. Existing page, scroll position and role restrictions are preserved. Conflicting teacher attendance requires reviewing the latest saved register before saving again.</p>
 <p>Pending-approval and restricted-access screens recheck when online; restored active access can reopen the workspace. A login disabled at Firebase may require signing in again. Offline changes remain pending until verified and accepted; device-scoped drafts still require deliberate submission. Automatic cross-device updates require the app to be open and visible; background upload after closing depends on browser support.</p>
 <h3>21.1 Saved locally / pending</h3>
 <p>Supported pupil edits, offline pupil additions, grades, pupil attendance and remarks can be saved locally before upload. Teachers remain restricted to their assigned classes and subjects. A pending record change stays in SchoolHub's durable local queue until the account is revalidated and the cloud accepts it.</p>
 
 <h3>21.2 Device-scoped form drafts</h3>
-<p>A <strong>draft</strong> is different from a pending record save. It is a form saved on the current device that still needs a deliberate submit action later. Current examples include <strong>My Details</strong>, teacher stock requests, <strong>Add Staff</strong>, and Weekly Supervision.</p>
+<p>A <strong>draft</strong> is different from a pending record save. It is a form saved on the current device that still needs a deliberate submit action later. Current examples include <strong>My Details</strong>, teacher stock requests, <strong>Add Staff</strong>, and Supervision and Observation.</p>
 <p>Drafts are scoped to the relevant account and school and are not automatically shared to another device. Do not clear site/app data while a draft is needed for recovery.</p>
 
 <h3>21.3 Reconnecting and Background Sync</h3>
 <p>When the internet returns, SchoolHub may show <strong>Waiting to reconnect → Checking → Up to date</strong> while it verifies the account and cloud connection. It retries recovery while the app is open, sends supported pending edits, acknowledges successful writes and then refreshes cloud data.</p>
 <p>The PWA uses native Background Sync where the browser supports it. Supported queued record changes may sometimes upload after the app window closes, but timing is not guaranteed. Reopen SchoolHub with internet and wait for confirmation if a save remains pending. Signing out stops background uploads.</p>
-<div class="note-box"><strong>Important distinction:</strong> My Details drafts, stock-request drafts, Add Staff drafts and Weekly Supervision drafts are not automatically submitted merely because the header shows Up to date. A server-confirmed action must complete through its own workflow.</div>
+<div class="note-box"><strong>Important distinction:</strong> My Details drafts, stock-request drafts, Add Staff drafts and Supervision and Observation drafts are not automatically submitted merely because the header shows Up to date. A server-confirmed action must complete through its own workflow.</div>
 
 <h3>21.4 Cross-device updates</h3>
 <p>Connected live views can receive supported class, pupil, grade and attendance updates from another device while retaining open edits. Keep the relevant view open and check its connection or conflict message. Stores periodically refreshes visible records while online and verified; other views can still require Refresh. One device’s saved value is not proof that every other screen has refreshed.</p>
@@ -698,7 +702,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h2 id="profile"><span class="chapter-number">Chapter 23:</span> Profile Menu &amp; Help</h2>
 <p>The compact <strong>Profile menu</strong> keeps account actions together: My Details for linked Teachers, Account Security for active accounts, Settings, Help and Log Out (or sign-in when applicable). <strong>Settings and Help are no longer Home cards.</strong></p>
-<ul class="feature-list"><li><strong>Profile → Settings:</strong> Notifications, Messages &amp; Push, Sync Center and System Health; Head Teachers also see School Setup. Billing &amp; Credits appears directly in Profile for Head Teachers, between Settings and Help.</li><li><strong>Profile → Help:</strong> Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, About SchoolHub, Privacy and Terms of Use.</li><li><strong>Home:</strong> school-work pages, including Setup, Reports, Stores, Assets &amp; Liabilities and Weekly Supervision, according to your permissions.</li></ul>
+<ul class="feature-list"><li><strong>Profile → Settings:</strong> Notifications, Messages &amp; Push, Sync Center and System Health; Head Teachers also see School Setup. Billing &amp; Credits appears directly in Profile for Head Teachers, between Settings and Help.</li><li><strong>Profile → Help:</strong> Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, About SchoolHub, Privacy and Terms of Use.</li><li><strong>Home:</strong> school-work pages, including Setup, Reports, Stores, Assets &amp; Liabilities and Supervision and Observation, according to your permissions.</li></ul>
 <p>The guided tour matches your role: Head Teacher, Teacher or Guest. The <strong>Complete user guide</strong> link in each tour opens this detailed guide in a separate tab without closing your SchoolHub workspace. The guide is also accessible from Profile → Help. It is included in the updated app cache so it can open offline after that cache has been prepared online.</p>
 <p><strong>My Details</strong> edits the user's linked personal Staff record subject to permission and conflict checks. It can preserve a device-scoped draft for later online submission.</p>
 <p><strong>Account Security</strong> changes login credentials for email/password accounts or directs Google-only users to Google Account Security. Credential changes are online-only and are never stored as drafts.</p>
@@ -707,7 +711,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h2 id="mobile-tables"><span class="chapter-number">Chapter 24:</span> Mobile Tables and Horizontal Scrolling</h2>
 <p>Wide SchoolHub tables are designed to remain usable on phones. Where a table contains more columns than can fit on the screen, swipe left or right inside the table to scroll horizontally.</p>
-<p>Fees &amp; Receipts tables pin their main row-label column; the Arrears table keeps the pupil/name area beside its selection checkbox. Stores tables keep headings aligned and the first identifying column visible where the layout supports it. Weekly Supervision also uses a sideways-scrollable table so teacher/class context remains readable while reviewing check columns.</p>
+<p>Fees &amp; Receipts tables pin their main row-label column; the Arrears table keeps the pupil/name area beside its selection checkbox. Stores tables keep headings aligned and the first identifying column visible where the layout supports it. Supervision and Observation also uses a sideways-scrollable table so teacher/class context remains readable while reviewing check columns.</p>
 <div class="note-box">Attendance entry, class comparison, completion, calendar and summary tables keep a narrow first identifying column visible on small screens; labels can wrap. Student class summaries center their headings and keep the Class column visible. The page scrolls vertically as normal; swipe sideways inside the table to reveal other columns.</div>
 
 <h2 id="save-update"><span class="chapter-number">Chapter 25:</span> Save, Update and Popup Editing</h2>
@@ -740,7 +744,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <li><strong>Enter Grades and complete at least six subject results before relying on aggregate/class position.</strong></li>
 <li><strong>Add Remarks and generate Reports.</strong></li>
 <li><strong>Maintain Stores &amp; Inventory.</strong> Receive, issue and correct stock with references; review teacher stock requests; maintain Assets and Liabilities where used.</li>
-<li><strong>Record Weekly Supervision.</strong> Review lesson plans, weekly exercises/assessments, books, attendance register, teacher feedback and follow-up.</li>
+<li><strong>Record Supervision and Observation.</strong> Review lesson plans, weekly exercises/assessments, books, attendance register, teacher feedback and follow-up.</li>
 <li><strong>Create fee categories and term fee items where the school uses FIS.</strong></li>
 <li><strong>Record payments and review receipts, balances, reports, arrears, statements and reminders.</strong></li>
 <li><strong>Review pending sync, drafts, FIS saves and protected stock/supervision saves before clearing device data.</strong></li>
@@ -752,7 +756,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <h2 id="conclusion"><span class="chapter-number">Chapter 27:</span> Conclusion</h2>
 <p>AlatiphA SchoolHub has developed from a simple school-record system into a broader school-management platform covering the daily workflow of Head Teachers and Teachers.</p>
 
-<p>Its role-based accounts separate administrative responsibilities from classroom access. Staff, Classes, Students, Subjects, Attendance, Grades, Remarks, Reports, Stores/Assets/Liabilities, Weekly Supervision, Fees &amp; Receipts and Term History provide the main working environment, while notifications, announcements, account security, financial reporting, parent statements, reminders, backups, cloud synchronisation, offline support and year-end rollover support the wider life of school records.</p>
+<p>Its role-based accounts separate administrative responsibilities from classroom access. Staff, Classes, Students, Subjects, Attendance, Grades, Remarks, Reports, Stores/Assets/Liabilities, Supervision and Observation, Fees &amp; Receipts and Term History provide the main working environment, while notifications, announcements, account security, financial reporting, parent statements, reminders, backups, cloud synchronisation, offline support and year-end rollover support the wider life of school records.</p>
 
 <p>The current safety architecture places particular emphasis on protecting school data and account identity by preserving pending edits and scoped drafts, controlling sensitive cloud operations, preventing duplicate teacher memberships for the same normalised email, isolating protected financial/stock/supervision saves, applying conflict checks, maintaining recovery information and reducing the risk of incomplete local data overwriting fuller cloud records.</p>
 
@@ -764,6 +768,5 @@ Developed by AlatiphA Multimedia<br>
 © All Rights Reserved · AlatiphA Multimedia
 </div>
 
-</div>
-<section><h2>Lesson Observation in Weekly Supervision</h2><p>The Head Teacher records classroom observations separately from routine weekly checks. Select a teacher, class and actual observation date; enter what the teacher does well and key recommendations. Select the corresponding week ending Friday to view earlier observations. Teachers can view their own observations; only the Head Teacher can record or correct them. Recorded and updated timestamps are retained. Closing keeps a local draft. Save online to make it official, or retry the retained request if confirmation fails. A lesson observation does not complete a routine weekly check.</p></section></body>
+</div></body>
 </html>
