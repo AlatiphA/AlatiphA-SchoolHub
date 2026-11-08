@@ -36,3 +36,6 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 .supervision-record-filters select{min-width:180px;max-width:100%;padding:9px 12px;font:inherit;border:1px solid var(--rule);border-radius:10px;background:var(--surface)}
 .observation-date-cell strong{display:inline-block;font-size:1.08rem;white-space:nowrap}
 .lesson-observations h4{margin:14px 0 8px}
+.supervision-table.lesson-observation-table{min-width:760px}
+.lesson-observation-table .observation-summary{text-align:left;min-width:240px;max-width:360px;line-height:1.45;overflow-wrap:anywhere}
+.lesson-observation-table .observation-summary span{display:inline-block;margin:2px 0}
