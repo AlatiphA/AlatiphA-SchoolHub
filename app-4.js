@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.71';
+const APP_VERSION = '40.1.73';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -231,9 +231,12 @@ let sessionReady = false;
 let sessionDataReady = false; // Core school data has finished loading for this session.
 let cloudHydrationInProgress = false; // Suppresses cloud pushes caused by Firestore-to-local writes.
 let cloudHydrationStatusError = ''; // Last core cloud-load error shown by the sync badge.
-const CORE_HYDRATION_SOFT_WARNING_MS = 12000;
-const CORE_HYDRATION_HARD_DEADLINE_MS = 30000;
+const CORE_HYDRATION_SOFT_WARNING_MS = 6000;
+const CORE_HYDRATION_HARD_DEADLINE_MS = 15000;
+const SESSION_VERIFICATION_TIMEOUT_MS = 8000;
 let manualSignOutInProgress = false; // Prevent Firebase auth transitions from re-blocking the login form during logout.
+let reconnectRetryAt = 0;
+let reconnectRetryDelayMs = 30000;
 
 function ns(base) { return currentSchoolId ? `${base}__${currentSchoolId}${currentRole === 'teacher' ? '__user_' + currentUid : ''}` : base; }
 
@@ -344,9 +347,18 @@ function isLikelyOfflineError(error) {
     code.includes('unavailable') ||
     code.includes('network-request-failed') ||
     code.includes('deadline-exceeded') ||
+    code.includes('hydration-timeout') ||
     message.includes('failed to get document because the client is offline') ||
+    message.includes('timed out') ||
+    message.includes('exceeded') ||
     message.includes('network') ||
     message.includes('offline');
+}
+
+function deferReconnectAfterFailure(error) {
+  if (!isLikelyOfflineError(error)) return;
+  reconnectRetryAt = Date.now() + reconnectRetryDelayMs;
+  reconnectRetryDelayMs = Math.min(reconnectRetryDelayMs * 2, 5 * 60 * 1000);
 }
 
 async function routeSchoolHubOwnerAfterSignIn(user, token) {
@@ -364,6 +376,14 @@ async function routeSchoolHubOwnerAfterSignIn(user, token) {
   return true;
 }
 async function resolveSchoolHubStartup(user, token) {
+  // A locally saved session is usable only when it matches the Firebase user,
+  // an active school role, and a recent successful server verification. Open
+  // that verified workspace before asking the network to inspect owner claims.
+  const cached = loadVerifiedLocalSession(user);
+  if (cached) {
+    routeSchoolHubOwnerAfterSignIn(user, token).catch(error => console.warn('Owner access check will retry when connected:', error));
+    return { cached };
+  }
   if (await routeSchoolHubOwnerAfterSignIn(user, token)) return { ownerAdministration: true };
   if (!isCurrentSession(token, user.uid, null)) return { cancelled: true };
   return schoolAccountForStartup(user);
@@ -1822,7 +1842,7 @@ async function runSyncCenterSync() {
   setSyncCenterActionsBusy(true);
   if (status) status.textContent = 'Checking your account and uploading saved data edits…';
   try {
-    await revalidateAndSyncAfterReconnect();
+    await revalidateAndSyncAfterReconnect(true, {userInitiated:true});
     if (!verified()) throw new Error('Account verification is incomplete. Saved edits remain on this device.');
     // Reconnect may report a conflict and return. Explicitly await the retained
     // outbox; downloading images does not confirm that data edits were uploaded.
@@ -10718,7 +10738,7 @@ function pullCloudData(sessionToken, { background = false } = {}) {
     hydrationDeadlineTimer = setTimeout(() => {
       if (!hydrationValid()) return;
       hydrationAttemptActive = false;
-      const error = new Error('Cloud data check exceeded 30 seconds and was stopped. Your saved local data is still available.');
+      const error = new Error(`Cloud data check exceeded ${Math.round(CORE_HYDRATION_HARD_DEADLINE_MS / 1000)} seconds and was stopped. Your saved local data is still available.`);
       error.code = 'schoolhub/hydration-timeout';
       reject(error);
     }, CORE_HYDRATION_HARD_DEADLINE_MS);
@@ -11005,6 +11025,7 @@ async function flushAllSchoolHubWrites(skipPrimary = false) {
 async function runSchoolHubBackgroundSync(source = 'service-worker') {
   if (navigator.onLine === false || !FIREBASE_ENABLED || !currentUid || !currentSchoolId || currentStatus !== 'active') return false;
   if (!sessionReady || !sessionDataReady || cloudHydrationInProgress) return false;
+  if (Date.now() < reconnectRetryAt) return false;
   try {
     // If this session crossed an offline boundary, preserve the v40 safeguard:
     // revalidate membership before any queued write is allowed to leave the device.
@@ -11020,11 +11041,13 @@ async function runSchoolHubBackgroundSync(source = 'service-worker') {
       if (!needsReview) await requestSchoolHubBackgroundSync(`${source}-remaining`);
       return false;
     }
+    reconnectRetryAt = 0;
+    reconnectRetryDelayMs = 30000;
     return true;
   } catch (error) {
     console.warn('Background synchronization could not finish:', error);
     if (isLikelyOfflineError(error) || navigator.onLine === false) {
-      await requestSchoolHubBackgroundSync(`${source}-retry`);
+      deferReconnectAfterFailure(error);
       return false;
     }
     // Permission/conflict failures remain in the existing queues for user review;
@@ -11040,6 +11063,7 @@ async function revalidateAndSyncAfterReconnect(force = true) {
   // Overlapping online/resume events must await the same verification. A task
   // belonging to an earlier login or school must never block the new session.
   if (reconnectTask && reconnectTask.generation === sessionGeneration && reconnectTask.uid === currentUid && reconnectTask.school === currentSchoolId) return reconnectTask.promise;
+  if (Date.now() < reconnectRetryAt && !options.userInitiated) return false;
   const verified = revalidateAndSyncAfterReconnect.verifiedContext;
   if (!force && !offlineAuthenticatedMode && sessionReady && sessionDataReady && verified &&
       isCurrentSession(verified.generation, verified.uid, verified.school) && Date.now() - verified.at < 300000) {
@@ -11061,7 +11085,7 @@ async function withSessionVerificationDeadline(promise) {
       timer = setTimeout(() => {
         const error = new Error('Account verification timed out. Your changes remain saved for retry.');
         error.code = 'schoolhub/deadline-exceeded'; reject(error);
-      }, 15000);
+      }, SESSION_VERIFICATION_TIMEOUT_MS);
     })]);
   } finally { clearTimeout(timer); }
 }
@@ -11158,6 +11182,8 @@ async function performReconnectRecovery() {
     currentUserData = data;
     saveVerifiedLocalSession(authUser, data);
     revalidateAndSyncAfterReconnect.verifiedContext = {generation:token,uid:uidBefore,school:schoolBefore,at:Date.now()};
+    reconnectRetryAt = 0;
+    reconnectRetryDelayMs = 30000;
     offlineAuthenticatedMode = false;
     sessionReady = true;
     sessionDataReady = true;
@@ -11194,7 +11220,7 @@ async function performReconnectRecovery() {
   } catch (error) {
     console.warn('Reconnect synchronization failed:', error);
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
-    if (isLikelyOfflineError(error)) offlineAuthenticatedMode = true;
+    if (isLikelyOfflineError(error)) { offlineAuthenticatedMode = true; deferReconnectAfterFailure(error); }
     if (['auth/user-disabled','auth/user-token-expired','auth/invalid-user-token'].includes(error.code)) {
       clearVerifiedLocalSession(uidBefore);
       sessionReady = false; sessionDataReady = false;
@@ -11822,8 +11848,8 @@ async function readStartupNotificationTap(uid) {
 }
 let schoolStartupReveal = null;
 function revealSchoolStartup() {
-  if(!document.documentElement.classList.contains('sessionRestoring'))return Promise.resolve(false);
   if(!currentUid || currentStatus!=='active' || !sessionReady || !sessionDataReady)return Promise.resolve(false);
+  if(!document.documentElement.classList.contains('sessionRestoring')){flushNotificationTap();return Promise.resolve(false);}
   const token=sessionGeneration,uidAtStart=currentUid,schoolAtStart=currentSchoolId;
   const key=JSON.stringify([token,uidAtStart,schoolAtStart]);
   if(schoolStartupReveal?.key===key)return schoolStartupReveal.promise;
@@ -12191,6 +12217,14 @@ function initAuth() {
     return;
   }
 
+  if (!window.firebase || typeof window.firebase.initializeApp !== 'function' || typeof window.firebase.auth !== 'function') {
+    hideSessionRestoring();
+    renderAuthForm();
+    showAuthGate();
+    setAuthError('SchoolHub could not load its secure sign-in service. Your saved records are still on this device. Connect when possible, then refresh.');
+    return;
+  }
+
   firebase.initializeApp(window.FIREBASE_CONFIG);
 
   // v38.9: explicitly persist Firebase authentication locally. This makes
@@ -12352,8 +12386,10 @@ function initAuth() {
     }).catch(err => setSchoolChoiceError(err.message));
   });
 
-  authPersistenceReady.finally(() => {
-    firebase.auth().onAuthStateChanged(user => {
+  // Firebase restores its locally persisted user independently of the
+  // persistence setting. Register immediately; do not gate startup on this
+  // separate persistence operation.
+  firebase.auth().onAuthStateChanged(user => {
     // During an explicit logout, never let the transient persisted Firebase
     // user state re-enter the authentication loading path. The sign-out
     // handler has already shown a clean login form immediately.
@@ -12394,8 +12430,8 @@ function initAuth() {
         if(window.SchoolHubServiceAccess)data=await withSessionVerificationDeadline(SchoolHubServiceAccess.verify(data));
         if(!isCurrentSession(token,user.uid,null))return;
         if(data?.schoolId&&data.status==='active'&&String(data.email||'').trim().toLowerCase()!==String(user.email||'').trim().toLowerCase()){
-          await user.getIdToken(true);
-          const result=await firebase.functions().httpsCallable('synchronizeLoginEmail')({});
+          await withSessionVerificationDeadline(user.getIdToken(true));
+          const result=await withSessionVerificationDeadline(firebase.functions().httpsCallable('synchronizeLoginEmail')({}));
           if(!isCurrentSession(token,user.uid,null))return;
           data={...data,email:result.data.email,pendingLoginEmail:result.data.pendingEmail};
         }
@@ -12411,9 +12447,6 @@ function initAuth() {
           const authUser = firebase.auth().currentUser;
           if (!data.displayName && authUser.displayName) authProfileUpdates.displayName = authUser.displayName;
         }
-        const repairAccountProfile = Object.keys(authProfileUpdates).length
-          ? firebase.firestore().collection('users').doc(currentUid).set(authProfileUpdates, { merge: true })
-          : Promise.resolve();
         currentAssignedClassIds = data && Array.isArray(data.assignedClassIds) ? data.assignedClassIds : [];
         currentAssignedSubjectIds = data && Array.isArray(data.assignedSubjectIds) ? data.assignedSubjectIds : [];
 
@@ -12446,7 +12479,14 @@ function initAuth() {
         offlineAuthenticatedMode = false;
         updateOfflineModeBanner();
 
-        return repairAccountProfile.then(() => {
+        // This cosmetic profile repair is not required to open the school.
+        // Keep it best-effort so a slow write cannot hold the dashboard closed.
+        if (Object.keys(authProfileUpdates).length) {
+          firebase.firestore().collection('users').doc(user.uid).set(authProfileUpdates, { merge: true })
+            .catch(error => console.warn('Optional account profile update remains pending:', error));
+        }
+
+        return Promise.resolve().then(() => {
           if (!isCurrentSession(token, user.uid, data.schoolId)) return;
 
           // Revision 3: data-changing cloud synchronization stays blocked
@@ -12456,24 +12496,15 @@ function initAuth() {
           cloudHydrationInProgress = true;
 
           // The local cache is namespaced by currentSchoolId, so this does not
-          // expose another school's records. On a new device/school the page
-          // simply renders its empty/loading state until cloud data arrives.
-          hideSyncingMessage(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
+          // expose another school's records. A new device shows its empty local
+          // workspace while the verified account's cloud data loads.
+          hideSessionRestoring(); hideSyncingMessage(); hideAuthGate(); hidePendingGate(); hideDisabledGate();
           initLockScreen();
           if (!appStarted) appStarted = true;
           proceedToApp();
 
-          // Restore the exact page immediately, then synchronize the school in
-          // the background. The sync completion refreshes the current view but
-          // never routes the user through Home.
-          const restoredBeforeSync = getSavedNavigation();
-          if (restoredBeforeSync.view === 'attendance') {
-            showView('attendance');
-            setAttendanceMode(restoredBeforeSync.attendanceTab);
-          } else {
-            showView(restoredBeforeSync.view);
-          }
-
+          // proceedToApp already restored the saved page. Sync completion
+          // refreshes the current view without a second startup navigation.
           pullCloudData(token).then(() => {
             if (!isCurrentSession(token, user.uid, data.schoolId)) return;
             loadSettingsForm();
@@ -12494,6 +12525,11 @@ function initAuth() {
           }).catch(err => {
             if (!isCurrentSession(token, user.uid, data.schoolId)) return;
             console.warn('Background cloud synchronization failed:', err);
+            deferReconnectAfterFailure(err);
+            if (isLikelyOfflineError(err)) {
+              offlineAuthenticatedMode = true;
+              updateOfflineModeBanner('Cloud data is unavailable right now. Your saved workspace and pending changes remain on this device.');
+            }
             const sub = document.getElementById('welcomeSubtext');
             if (sub) sub.textContent = 'Cloud sync is taking longer than expected. You can retry from the profile menu.';
             // Hydration has a bounded terminal state; a failed remote read
@@ -12509,6 +12545,7 @@ function initAuth() {
         const cached = loadVerifiedLocalSession(user);
         if (cached && isLikelyOfflineError(err)) {
           console.warn('Account profile unavailable; opening verified offline session.', err);
+          deferReconnectAfterFailure(err);
           startCachedAuthenticatedSession(user, cached);
           appStarted = true;
           return;
@@ -12551,7 +12588,6 @@ function initAuth() {
         showAuthGate();
       }
     }
-  });
   });
 }
 
@@ -12680,13 +12716,15 @@ function initLockScreen() {
 function proceedToApp() {
   if (!enforceGuestTrial()) return;
   if (FIREBASE_ENABLED && !sessionReady) return;
+  if (FIREBASE_ENABLED && currentUid && currentStatus !== 'active') return;
+  if (currentStatus === 'active' && sessionReady) hideSessionRestoring();
   ensureDefaults();
   renderPinSection();
   if (!FIREBASE_ENABLED || sessionDataReady) loadSettingsForm();
 
-  // On first startup of a session, show a temporary Home while cloud data is
-  // still loading. Once sessionDataReady is true, restore the saved location.
-  // This avoids saving/remembering the temporary Home screen itself.
+  // Once account access is verified, show the locally saved workspace at once.
+  // Cloud hydration continues in the background; its existing barrier still
+  // prevents cloud writes until the school data pull reaches a safe terminal state.
   if (sessionDataReady) {
     if(typeof maybeOpenAccountSecurity==='function')maybeOpenAccountSecurity();
     const restored = getSavedNavigation();
@@ -12698,10 +12736,20 @@ function proceedToApp() {
     }
     if (typeof revealSchoolStartup === 'function') revealSchoolStartup();
   } else {
-    // Firebase session is authenticated, but school data is still loading.
-    // Keep the session-restoration gate on screen instead of showing Home.
-    // The saved page is restored by the pullCloudData() completion handler.
-    return;
+    const restored = getSavedNavigation();
+    if (restored.view === 'attendance') {
+      showView('attendance');
+      setAttendanceMode(restored.attendanceTab);
+    } else {
+      showView(restored.view);
+    }
+    const statusButton = document.getElementById('syncStatusBtn');
+    if (statusButton) {
+      statusButton.dataset.state = 'pending';
+      statusButton.textContent = 'Loading saved workspace';
+      statusButton.title = 'Your verified workspace is open. Cloud data is refreshing in the background.';
+      statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
+    }
   }
 }
 
@@ -12794,7 +12842,6 @@ async function registerSchoolHubServiceWorker() {
     observeSchoolHubServiceWorker(registration);
     scheduleSchoolHubServiceWorkerUpdates(registration);
     requestPendingNotificationTap();
-    setTimeout(() => checkSchoolHubServiceWorkerUpdate('startup'), 3000);
     return registration;
   } catch (error) {
     setServiceWorkerDiagnostic(error && error.message ? error.message : String(error));

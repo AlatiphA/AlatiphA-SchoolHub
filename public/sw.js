@@ -1,5 +1,5 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const RELEASE_VERSION = '40.1.71';
+const RELEASE_VERSION = '40.1.73';
 const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-release-' + RELEASE_VERSION;
 // Install a complete cold-start shell before retiring the previous cache.
 // Runtime-only library caching loses Firebase when an update activates after
@@ -91,17 +91,53 @@ self.addEventListener('sync',event=>{if(event.tag===BACKGROUND_SYNC_TAG)event.wa
   })());
 });
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(async cache=>{
-  for(const url of [...APP_SHELL,...VENDOR_SHELL]){const response=await fetch(url,{cache:'reload'});if(!response.ok)throw new Error('Incomplete app shell');await cache.put(url,response);}
+  const assets=[...APP_SHELL,...VENDOR_SHELL];
+  // Fetch a small batch at a time with a hard timeout. The previous worker
+  // remains active if any essential asset cannot be installed completely.
+  for(let i=0;i<assets.length;i+=8){
+    const batch=assets.slice(i,i+8);
+    await Promise.all(batch.map(async url=>{
+      const request=new Request(new URL(url,self.location.href),{cache:'reload'});
+      const response=await fetchWithTimeout(request,6000);
+      if(!response.ok)throw new Error('Incomplete app shell: '+url);
+      await cache.put(url,response);
+    }));
+  }
 }).then(()=>{if(!self.registration?.active)return self.skipWaiting();}));});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('schoolhub-cache-')&&k!==CACHE_NAME).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
-async function networkFirst(request){const cache=await caches.open(CACHE_NAME);try{const response=await fetch(request,{cache:'no-store'});if(!response.ok)throw new Error('Network response failed');await cache.put(request,response.clone());return response;}catch(error){const cached=await cache.match(request,{ignoreSearch:true});if(cached)return cached;if(request.mode==='navigate'){const fallback=await cache.match('./index.html');if(fallback)return fallback;}throw error;}}
-async function cacheFirst(request){const cache=await caches.open(CACHE_NAME);const cached=await cache.match(request);if(cached)return cached;const response=await fetch(request);if(response.ok)await cache.put(request,response.clone());return response;}
+async function fetchWithTimeout(request, timeoutMs=6000){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+ try{return await fetch(request,{cache:'no-store',signal:controller.signal});}
+ finally{clearTimeout(timer);}
+}
+async function cacheFirst(request){
+ const cache=await caches.open(CACHE_NAME),cached=await cache.match(request,{ignoreSearch:true});
+ // The installed shell is the startup source of truth. Do not wait for a
+ // background network check before serving a page, script, style or library.
+ if(cached)return cached;
+ const response=await fetchWithTimeout(request);
+ if(response.ok)await cache.put(request,response.clone());
+ return response;
+}
+async function cacheFirstNavigation(request){
+ const cache=await caches.open(CACHE_NAME),cached=await cache.match(request,{ignoreSearch:true});
+ if(cached)return cached;
+ try{
+  const response=await fetchWithTimeout(request,8000);
+  if(response.ok)await cache.put(request,response.clone());
+  return response;
+ }catch(error){
+  const fallback=await cache.match('./index.html',{ignoreSearch:true});
+  if(fallback)return fallback;
+  throw error;
+ }
+}
 self.addEventListener('fetch',event=>{const request=event.request;if(request.method!=='GET')return;const url=new URL(request.url);const sameOrigin=url.origin===self.location.origin;
   if(sameOrigin&&url.pathname===new URL('./release.json',self.location.href).pathname)return;
   const shell=sameOrigin&&(request.mode==='navigate'||APP_SHELL.some(p=>new URL(p,self.location.href).pathname===url.pathname));
   const library=(url.hostname==='www.gstatic.com'&&url.pathname.startsWith('/firebasejs/'))||(url.hostname==='cdnjs.cloudflare.com'&&url.pathname.startsWith('/ajax/libs/'));
   if(!shell&&!library)return;
-  event.respondWith(shell?networkFirst(request):cacheFirst(request));
+  event.respondWith(shell&&request.mode==='navigate'?cacheFirstNavigation(request):cacheFirst(request));
 });
 
 // Device opt-in is bound to one signed-in account, independent of shell updates.
