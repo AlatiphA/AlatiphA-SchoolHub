@@ -85,6 +85,20 @@ function register({onCall,HttpsError,db}){
   const now=new Date().toISOString(),record={id,staffId,staffName:staff.data().name||staffId,classId,className:cls.data().name||classId,observationDate,week:start.toISOString().slice(0,10),strengths:text(d.strengths,'what the teacher does well',2000),recommendations:text(d.recommendations,'key recommendations',2000),revision:old.exists?old.data().revision+1:0,createdAt:old.exists?old.data().createdAt:now,createdBy:old.exists?old.data().createdBy:r.auth.uid,updatedAt:now,updatedBy:r.auth.uid};
   const result={id,revision:record.revision,week:record.week};tx.set(ref,record);tx.set(school.collection('observationHistory').doc(digest(r.auth.uid+'|'+requestId)),{recordId:id,actor:r.auth.uid,at:now,before:old.exists?old.data():null,after:record});tx.set(receipt,{fingerprint,result,createdAt:now});return result;
  }));
- return {getWeeklySupervision,saveWeeklySupervision,saveLessonObservation};
+ const deleteWeeklySupervision=call(r=>db.runTransaction(async tx=>{
+  const {u,school}=await access(tx,r);if(u.role!=='headteacher')fail('permission-denied','Only the Head Teacher can delete weekly checks.');
+  const d=r.data,requestId=recordId(d.requestId),id=recordId(d.id),ref=school.collection('weeklySupervision').doc(id),receipt=school.collection('supervisionReceipts').doc(digest(r.auth.uid+'|delete|'+requestId)),prior=await tx.get(receipt),fingerprint=digest(canonical(d));
+  if(prior.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition','This retry differs from the original delete.');return prior.data().result;}
+  const old=await tx.get(ref);if(!old.exists)fail('not-found','This weekly check was already removed. Refresh the list.');if(!Number.isSafeInteger(d.revision)||d.revision!==old.data().revision)fail('aborted','This weekly check changed on another device. Refresh and review it.');
+  const now=new Date().toISOString(),result={id,deleted:true};tx.delete(ref);tx.set(school.collection('supervisionHistory').doc(digest(r.auth.uid+'|delete|'+requestId)),{recordId:id,actor:r.auth.uid,at:now,before:old.data(),after:null,action:'delete'});tx.set(receipt,{fingerprint,result,createdAt:now});return result;
+ }));
+ const deleteLessonObservation=call(r=>db.runTransaction(async tx=>{
+  const {u,school}=await access(tx,r);if(u.role!=='headteacher')fail('permission-denied','Only the Head Teacher can delete lesson observations.');
+  const d=r.data,requestId=recordId(d.requestId),id=recordId(d.id),ref=school.collection('lessonObservations').doc(id),receipt=school.collection('observationReceipts').doc(digest(r.auth.uid+'|delete|'+requestId)),prior=await tx.get(receipt),fingerprint=digest(canonical(d));
+  if(prior.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition','This retry differs from the original delete.');return prior.data().result;}
+  const old=await tx.get(ref);if(!old.exists)fail('not-found','This observation was already removed. Refresh the list.');if(!Number.isSafeInteger(d.revision)||d.revision!==old.data().revision)fail('aborted','This observation changed on another device. Refresh and review it.');
+  const now=new Date().toISOString(),result={id,deleted:true};tx.delete(ref);tx.set(school.collection('observationHistory').doc(digest(r.auth.uid+'|delete|'+requestId)),{recordId:id,actor:r.auth.uid,at:now,before:old.data(),after:null,action:'delete'});tx.set(receipt,{fingerprint,result,createdAt:now});return result;
+ }));
+ return {getWeeklySupervision,saveWeeklySupervision,deleteWeeklySupervision,saveLessonObservation,deleteLessonObservation};
 }
 module.exports={register,subjectChoices,isHeadStaff};
