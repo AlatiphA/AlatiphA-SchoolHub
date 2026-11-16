@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.73';
+const APP_VERSION = '40.1.74';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -8952,7 +8952,7 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const settings = settingsOverride || DB.get(KEYS.settings, {});
   if (reportUsesCredits(settings) && !await ensureCreditsAvailable(1, 'generating a premium report card')) return;
   const valid=reportGenerationSession();
-  reportGenerationProgress('Preparing report images and balances…');
+  reportGenerationProgress('Preparing PDF…');
   const [reportFees,assets]=await Promise.all([
     loadReportFeeBalances(classInfo?.id||result.student.classId,settings),
     prepareReportAssets(result,settings,classInfo).catch(error=>{console.warn('Report image preparation failed:',error);return {};})

@@ -1860,3 +1860,36 @@ html.disabledAccess #schoolHubFloatingPill{
 #authGate .auth-footer-support strong{color:var(--paper);font-size:15px;}
 #authGate .auth-footer-support a{color:var(--muted);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere;line-height:1.5;}
 #authGate .auth-footer-support a:hover{color:var(--gold);}
+
+/* Keep report details readable when generation replaces the PDF button label. */
+@media(max-width:600px){
+  #reportsStudentList .report-student-row{
+    grid-template-columns:minmax(0,1fr);
+    align-items:start;
+    row-gap:10px;
+  }
+  #reportsStudentList .report-student-info{
+    width:100%;
+    min-width:0;
+  }
+  #reportsStudentList .report-student-actions{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    align-items:stretch;
+    width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    gap:8px;
+  }
+  #reportsStudentList .report-student-actions button{
+    box-sizing:border-box;
+    min-width:0;
+    max-width:100%;
+    margin:0;
+    padding:6px 8px;
+    line-height:1.25;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+  #reportsStudentList .report-student-actions button.share{white-space:nowrap;}
+}
