@@ -1873,9 +1873,10 @@ html.disabledAccess #schoolHubFloatingPill{
     min-width:0;
   }
   #reportsStudentList .report-student-actions{
-    display:grid;
-    grid-template-columns:minmax(0,1fr) auto;
+    display:flex;
+    justify-content:flex-end;
     align-items:stretch;
+    flex-wrap:wrap;
     width:100%;
     min-width:0;
     box-sizing:border-box;
@@ -1883,6 +1884,8 @@ html.disabledAccess #schoolHubFloatingPill{
   }
   #reportsStudentList .report-student-actions button{
     box-sizing:border-box;
+    flex:0 1 auto;
+    width:auto;
     min-width:0;
     max-width:100%;
     margin:0;
@@ -1891,5 +1894,5 @@ html.disabledAccess #schoolHubFloatingPill{
     white-space:normal;
     overflow-wrap:anywhere;
   }
-  #reportsStudentList .report-student-actions button.share{white-space:nowrap;}
+  #reportsStudentList .report-student-actions button.share{flex:0 0 auto;white-space:nowrap;}
 }
