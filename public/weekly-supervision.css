@@ -52,3 +52,54 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 .supervision-print-report .supervision-print-details th{text-align:left;width:170px}
 .supervision-print-report .supervision-print-subjects{margin:2px 0;font-size:.9em}
 @media print{.supervision-print-report{max-width:none!important;color:#111!important;background:#fff!important}.supervision-print-card{border-color:#aaa!important;border-radius:0!important;background:#fff!important}.supervision-print-meta{color:#555!important}.supervision-print-report .supervision-print-details th{width:150px}.supervision-print-report .attendance-report-table th,.supervision-print-report .attendance-report-table td{color:#111!important;background:#fff!important;border:1px solid #bbb!important}}
+
+/* Clear weekly supervision navigation, teacher summaries and saved-draft actions. */
+#supervisionWrap .supervision-week-controls{align-items:end;margin:0 0 8px}
+.supervision-week-navigation{min-width:0;margin:0 0 12px}
+.supervision-week-navigation>.hint{margin:0 0 6px}
+.supervision-week-tabs{display:flex;align-items:stretch;gap:7px;max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;padding:2px 2px 8px;scroll-snap-type:x proximity}
+#supervisionWrap .supervision-week-tab{display:flex;flex:0 0 auto;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:78px;min-height:52px;padding:7px 10px;border:1px solid var(--rule);border-radius:10px;background:var(--surface-alt);color:var(--paper);scroll-snap-align:start}
+#supervisionWrap .supervision-week-tab strong{font-size:14px}
+#supervisionWrap .supervision-week-tab span{font-size:12px;color:var(--muted);white-space:nowrap}
+#supervisionWrap .supervision-week-tab.is-selected{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold);font-weight:700}
+.supervision-overview{margin:14px 0 18px;padding:14px;border:1px solid var(--rule);border-radius:12px;background:var(--surface)}
+.supervision-overview>h3{margin:0 0 4px}
+.supervision-overview>p{margin:0 0 12px}
+.supervision-overview-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 16px}
+.supervision-overview-card{display:flex;min-width:0;flex-direction:column;gap:4px;padding:11px;border:1px solid var(--rule);border-radius:10px;background:var(--surface-alt)}
+.supervision-overview-card>span{font-size:12px;color:var(--muted);line-height:1.3}
+.supervision-overview-card>strong{font-size:22px;line-height:1.2;overflow-wrap:anywhere}
+.supervision-overview-card>small{font-size:11px;color:var(--muted);line-height:1.3}
+.supervision-summary-block{margin:14px 0 0;min-width:0}
+.supervision-summary-block h4{margin:0 0 5px}
+.supervision-summary-block>p{margin:0 0 8px}
+.supervision-summary-table{min-width:620px}
+.supervision-summary-table :is(th,td){padding:9px 10px}
+.supervision-summary-table .supervision-summary-name{text-align:left;white-space:normal}
+.supervision-summary-table tfoot :is(th,td){font-weight:700;background:var(--surface-alt)}
+.supervision-summary-scroll{max-height:42vh}
+.lesson-observations .supervision-summary-table{min-width:360px}
+.supervision-section{margin-top:16px}
+.supervision-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 8px}
+.supervision-section-heading h3{margin:0}
+#supervisionWrap .supervision-section-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px}
+.supervision-drafts,.supervision-record-details,.supervision-outstanding{border:1px solid var(--rule);border-radius:10px;padding:10px 12px;margin:10px 0;background:var(--surface-alt)}
+.supervision-drafts>summary,.supervision-record-details>summary,.supervision-outstanding>summary{font-weight:600;cursor:pointer}
+.supervision-drafts>p{margin:8px 0}
+.supervision-draft-item,.supervision-check-choice{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--rule)}
+.supervision-draft-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.supervision-draft-actions button{flex:0 0 auto}
+.supervision-check-choice>span{min-width:0;overflow-wrap:anywhere}
+.supervision-record-details>.supervision-table-scroll{margin-top:10px}
+@media(max-width:720px){
+ .supervision-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .supervision-draft-item{align-items:stretch;flex-direction:column;gap:6px}
+ .supervision-draft-actions{justify-content:flex-start}
+ .supervision-section-heading{align-items:flex-start}
+}
+@media(max-width:420px){
+ .supervision-overview{padding:10px}
+ .supervision-overview-card{padding:8px}
+ .supervision-overview-card>strong{font-size:19px}
+ #supervisionWrap .supervision-week-tab{min-width:72px;padding-inline:8px}
+}
