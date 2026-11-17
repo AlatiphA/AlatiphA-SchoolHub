@@ -103,3 +103,6 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
  .supervision-overview-card>strong{font-size:19px}
  #supervisionWrap .supervision-week-tab{min-width:72px;padding-inline:8px}
 }
+
+@media(min-width:561px){.supervision-subject{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.supervision-summary-table[data-summary-key="exercise-checks"]{min-width:1040px}
