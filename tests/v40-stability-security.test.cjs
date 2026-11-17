@@ -9,5 +9,5 @@ assert.ok(source.includes('Date of Birth must be a valid YYYY-MM-DD date'));
 assert.ok(source.includes('Student was NOT added to SchoolHub'));
 assert.ok(source.includes('Student changes were NOT saved'));
 assert.equal((source.match(/mergeCloudCollection\('grades', grades, all\);/g)||[]).length,1);
-assert.ok(sw.includes('networkFirst(request)')); assert.ok(sw.includes("request.mode==='navigate'"));
+assert.ok(sw.includes('cacheFirstNavigation(request)')); assert.ok(sw.includes("request.mode==='navigate'"));
 console.log('v40 stability/security regression checks passed.');

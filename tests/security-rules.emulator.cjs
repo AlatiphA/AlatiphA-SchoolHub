@@ -114,13 +114,15 @@ test('callables save and restore atomically against real Firestore transactions'
     await db.doc('schools/s').update({profile:{schoolName:'School',currentYear:'2026/2027',currentTerm:'Term 3'}});
     await db.doc('schools/s/classes/c1').set({id:'c1',name:'Class 1'});
     await db.doc('schools/s/classes/c2').set({id:'c2',name:'Class 2'});
+    await db.doc('schools/s/students/p1').set({id:'p1',classId:'c1'});
+    await db.doc('schools/s/students/p2').set({id:'p2',classId:'c2'});
     const key='c1__Term 3__2026/2027';
     await handlers.saveSchoolRecord({auth:{uid:'teacher'},data:{field:'grades',key,base:{},value:{p1:{math:{e:80}}}}});
     const before=(await db.doc('schools/s/students/p1').get()).data();
-    await handlers.applySchoolYearChange(req({mode:'rollover',fromYear:'2026/2027',toYear:'2027/2028',decisions:{p1:{decision:'promote',destinationClassId:'c2'},p2:{decision:'repeat'}}}));
+    await handlers.applySchoolYearChange(req({mode:'rollover',fromYear:'2026/2027',toYear:'2027/2028',decisions:{p1:{decision:'promote',destinationClassId:'c2'},p2:{decision:'repeat'}},expectedTerm:'Term 3',expectedRoster:{p1:'c1',p2:'c2'}}));
     const assert=require('node:assert/strict');
     assert.equal((await db.doc('schools/s/students/p1').get()).data().classId,'c2');
-    await handlers.applySchoolYearChange(req({mode:'restore',expectedYear:'2027/2028',snapshot:{schoolId:'s',type:'academic-year-rollover',data:{students:[before],settings:{schoolName:'School',currentYear:'2026/2027'}}}}));
+    await handlers.applySchoolYearChange(req({mode:'restore',expectedYear:'2027/2028',snapshot:{app:'AlatiphA SchoolHub',schoolId:'s',type:'academic-year-rollover',fromYear:'2026/2027',toYear:'2027/2028',data:{students:[before],classes:[{id:'c1',name:'Class 1'},{id:'c2',name:'Class 2'}],settings:{schoolName:'School',currentYear:'2026/2027'}}}}));
     assert.equal((await db.doc('schools/s/students/p1').get()).data().classId,'c1');
     assert.equal((await db.collection('schools/s/yearRollovers').get()).size,2);
   }finally{await app.delete();}

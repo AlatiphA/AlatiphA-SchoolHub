@@ -48,11 +48,11 @@ test('inline FAQ contains the same current feature guidance', () => {
 });
 
 test('root and public index keep matching inline FAQ content', () => {
-  const extract = html => html.match(/<template id="inlineDocTemplateFaq">([\s\S]*?)<\/template>/)?.[1];
+  const extract = html => html.match(/<template id="inlineDocTemplateFaq">([\s\S]*?)<\/template>/)?.[1]?.replace(/\r\n/g, "\n").trim();
   assert.ok(extract(index));
   assert.equal(extract(publicIndex), extract(index));
   const standalone=faq.match(/<div class="standalone-doc-body">([\s\S]*?)<\/div>\s*<footer/)?.[1];
-  assert.equal(extract(index).trim(),standalone.trim());
+  assert.equal(extract(index),standalone.replace(/\r\n/g, "\n").trim());
 });
 
 test('FAQ preserves important existing help topics and support links', () => {

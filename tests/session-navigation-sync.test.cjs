@@ -13,7 +13,7 @@ function fixture(){
  const user={uid:'u',email:'teacher@example.test',getIdToken:async()=>events.push('token')};
  let reads=0,member={status:'active',schoolId:'s',role:'headTeacher',email:user.email};
  c.firebase={auth:()=>({currentUser:user}),firestore:()=>({collection:()=>({doc:()=>({get:async()=>{reads++;return {exists:true,data:()=>member};}})})})};
- vm.createContext(c);vm.runInContext('let reconnectTask=null;'+recovery+allWrites+background,c);
+ vm.createContext(c);vm.runInContext('let reconnectTask=null,reconnectRetryAt=0,reconnectRetryDelayMs=30000;const SESSION_VERIFICATION_TIMEOUT_MS=8000;'+recovery+allWrites+background,c);
  return {c,writes,events,user,local,setMember:x=>member=x,reads:()=>reads};
 }
 test('every supported view survives refresh including Fees and Billing',()=>{

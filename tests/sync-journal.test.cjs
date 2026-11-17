@@ -28,7 +28,7 @@ test('malformed pending journal does not crash startup or allow subsequent overw
 });
 test('a partial service-worker install does not activate the new cache',async()=>{
  const listeners={};let installed,activated=false;
- const ctx={self:{addEventListener:(event,handler)=>listeners[event]=handler,skipWaiting(){activated=true;}},caches:{open:async()=>({put:async()=>{}})},fetch:async url=>({ok:!url.endsWith('app-4.js')})};
+ const ctx={URL,Request,Response,AbortController,setTimeout,clearTimeout,self:{location:{href:"https://school.test/sw.js",origin:"https://school.test"},addEventListener:(event,handler)=>listeners[event]=handler,skipWaiting(){activated=true;}},caches:{open:async()=>({put:async()=>{}})},fetch:async request=>({ok:!String(request.url||request).endsWith('app-4.js')})};
  vm.createContext(ctx);vm.runInContext(fs.readFileSync('sw.js','utf8'),ctx);
  listeners.install({waitUntil:p=>installed=p});
  await assert.rejects(installed,/Incomplete app shell/);
