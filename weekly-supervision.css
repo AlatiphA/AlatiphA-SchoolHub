@@ -107,6 +107,23 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
  .supervision-draft-actions{justify-content:flex-start}
  .supervision-section-heading{align-items:flex-start}
 }
+/* Match the Students table on narrow screens: keep the teacher label frozen,
+   let the other columns scroll, and size columns to their contents. */
+@media(max-width:720px){
+ #supervisionWrap .supervision-summary-scroll{width:100%;max-width:100%;box-sizing:border-box;overflow:auto}
+ #supervisionWrap .supervision-summary-table[data-summary-key]{width:max-content;min-width:0;table-layout:fixed;border-collapse:separate;border-spacing:0}
+ #supervisionWrap .supervision-summary-table[data-summary-key] th{position:sticky;top:0;z-index:2;white-space:normal;overflow-wrap:anywhere;padding:8px 6px}
+ #supervisionWrap .supervision-summary-table[data-summary-key] :is(th,td):first-child{position:sticky;left:0;width:112px;min-width:112px;max-width:112px;box-sizing:border-box;padding-inline:8px;white-space:normal;overflow-wrap:anywhere;background:var(--surface);box-shadow:2px 0 0 var(--rule);z-index:3}
+ #supervisionWrap .supervision-summary-table[data-summary-key] th:first-child{background:var(--surface-alt);z-index:4}
+ #supervisionWrap .supervision-summary-table[data-summary-key] td:first-child{text-align:left}
+ #supervisionWrap .supervision-summary-table[data-summary-key="lesson-plans"] :is(th,td):nth-child(2){width:132px;min-width:132px;max-width:132px}
+ #supervisionWrap .supervision-summary-table[data-summary-key="lesson-plans"] :is(th,td):nth-child(3){width:92px;min-width:92px;max-width:92px}
+ #supervisionWrap .supervision-summary-table[data-summary-key="lesson-plans"] :is(th,td):nth-child(4){width:136px;min-width:136px;max-width:136px}
+ #supervisionWrap .supervision-summary-table[data-summary-key="lesson-plans"] td:last-child{white-space:normal}
+ #supervisionWrap .supervision-summary-table[data-summary-key="lesson-plans"] .supervision-row-actions{display:flex;justify-content:center;min-width:0;max-width:100%;white-space:normal;gap:4px}
+ #supervisionWrap .supervision-summary-table[data-summary-key="lesson-plans"] .supervision-row-actions button{box-sizing:border-box;flex:1 1 auto!important;width:100%;min-width:0;max-width:100%;padding:6px 4px!important;font-size:12px;line-height:1.25;white-space:normal}
+ #supervisionWrap .supervision-summary-table[data-summary-key="exercise-checks"] :is(th,td):not(:first-child){width:96px;min-width:96px;max-width:96px;padding-inline:5px}
+}
 #supervisionWrap .lesson-observations .supervision-summary-table :is(th,td):nth-child(2){text-align:center!important;font-variant-numeric:tabular-nums}
 @media(max-width:420px){
  .supervision-overview{padding:10px}
