@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.84';
+const APP_VERSION = '40.1.85';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -1963,6 +1963,10 @@ function hideSystemHealth() {
 }
 
 document.getElementById('profileAboutBtn').addEventListener('click', () => {
+  document.getElementById('profileDropdown').classList.add('hidden');
+  showAboutDialog();
+});
+document.getElementById('profileAboutMenuBtn').addEventListener('click', () => {
   document.getElementById('profileDropdown').classList.add('hidden');
   showAboutDialog();
 });

@@ -79,8 +79,7 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 .supervision-summary-table tfoot :is(th,td){font-weight:700;background:var(--surface-alt)}
 .supervision-summary-scroll{max-height:42vh}
 .lesson-observations .supervision-summary-table{min-width:360px}
-/* Keep the observation count column centered at every viewport width. Native
-   table sizing was shrinking the summary on desktop and crowding counts beside names. */
+/* Keep observation counts centered and headings visible while the table scrolls. */
 #supervisionWrap .lesson-observations .supervision-summary-scroll{width:100%;box-sizing:border-box}
 #supervisionWrap .lesson-observations .observation-count-table{display:block;width:100%!important;min-width:0!important;table-layout:fixed;border-collapse:separate;border-spacing:0}
 #supervisionWrap .lesson-observations .observation-count-table :is(thead,tbody,tfoot){display:block;width:100%}
@@ -88,6 +87,8 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 #supervisionWrap .lesson-observations .observation-count-table :is(th,td){position:static;display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:auto;min-width:0;max-width:none;padding:10px 8px;white-space:normal;overflow-wrap:anywhere;text-align:center!important}
 #supervisionWrap .lesson-observations .observation-count-table :is(th,td):first-child{justify-content:flex-start;text-align:left!important}
 #supervisionWrap .lesson-observations .observation-count-table :is(th,td):nth-child(2){justify-content:center;text-align:center!important;font-variant-numeric:tabular-nums}
+#supervisionWrap .lesson-observations .observation-count-table thead th{position:sticky!important;top:0;z-index:4;background:var(--surface-alt)}
+#supervisionWrap .lesson-observations .observation-count-table thead th:first-child{justify-content:center;text-align:center!important}
 .supervision-section{margin-top:16px}
 .supervision-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 8px}
 .supervision-section-heading h3{margin:0}

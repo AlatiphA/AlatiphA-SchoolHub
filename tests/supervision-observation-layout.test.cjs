@@ -23,5 +23,9 @@ test('observation counts use a full-width centered count column on desktop and m
   assert.ok(grid,'header, teacher, and total rows need explicit shared columns');
   assert.match(grid[1],/grid-template-columns:minmax\(0,2fr\) minmax\(112px,1fr\)/);
   assert.match(css,/\.observation-count-table :is\(th,td\):nth-child\(2\)\{[^}]*justify-content:center;[^}]*text-align:center!important/s);
+  assert.match(css,/\.observation-count-table thead th\{[^}]*position:sticky!important;[^}]*top:0/s,
+    'observation headings must stay visible while the summary scrolls');
+  assert.match(css,/\.observation-count-table thead th:first-child\{[^}]*justify-content:center;[^}]*text-align:center!important/s,
+    'Teacher heading must be centered while teacher names remain left aligned');
   assert.equal(publicCss,css,'the deployed stylesheet must match the source stylesheet');
 });
