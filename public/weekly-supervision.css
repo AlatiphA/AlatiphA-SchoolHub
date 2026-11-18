@@ -92,11 +92,14 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 .supervision-check-choice>span{min-width:0;overflow-wrap:anywhere}
 .supervision-record-details>.supervision-table-scroll{margin-top:10px}
 @media(max-width:720px){
+ .supervision-table{table-layout:fixed}
+ .supervision-table :is(th,td):first-child{width:112px;min-width:112px;max-width:112px;box-sizing:border-box;padding-inline:8px;white-space:normal;overflow-wrap:anywhere}
  .supervision-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
  .supervision-draft-item{align-items:stretch;flex-direction:column;gap:6px}
  .supervision-draft-actions{justify-content:flex-start}
  .supervision-section-heading{align-items:flex-start}
 }
+#supervisionWrap .lesson-observations .supervision-summary-table :is(th,td):nth-child(2){text-align:center!important;font-variant-numeric:tabular-nums}
 @media(max-width:420px){
  .supervision-overview{padding:10px}
  .supervision-overview-card{padding:8px}
