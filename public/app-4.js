@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.87';
+const APP_VERSION = '40.1.88';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -4127,7 +4127,7 @@ async function restoreRecoveredStudents(items, token, userId, schoolId) {
   if (FIREBASE_ENABLED && currentSchoolId) {
     if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
     const ref = schoolRef().collection('students');
-    await commitChunks(additions.map(record => batch => batch.restore(ref.doc(String(record.id)), stripImagesForCloud('students', record))));
+    await commitChunks(additions.map(record => batch => batch.restore(ref.doc(String(record.id)), stripImagesForCloud('students', record))), 10);
     if (!isCurrentSession(token, userId, schoolId)) return;
     setLastSyncedNow();
   }
@@ -4336,7 +4336,7 @@ async function saveStudentImport() {
       if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
       const ref = schoolRef().collection('students');
       const ops = plan.changes.map(x => batch => batch.set(ref.doc(String(x.record.id)), stripImagesForCloud('students', x.record), {merge:true}));
-      await commitChunks(ops);
+      await commitChunks(ops, 10);
       if (!isCurrentSession(p.token,p.uid,p.schoolId)) return;
       setLastSyncedNow();
     }
@@ -10231,9 +10231,10 @@ async function deleteSchoolRecord(ref) {
   await batch.commit();
   rememberDeletions([marker]);
 }
-function commitChunks(ops) {
+function commitChunks(ops, maxBatchSize = 220) {
   if (!ops.length) return Promise.resolve();
-  const chunks = cloudChunk(ops, 220);
+  const batchSize = Math.max(1, Math.min(500, Math.floor(Number(maxBatchSize) || 220)));
+  const chunks = cloudChunk(ops, batchSize);
   return chunks.reduce((p, chunk) => p.then(() => {
     const batch = firebase.firestore().batch();
     const markers = [];
@@ -10833,10 +10834,13 @@ function scheduleCloudPush(rawKey) {
 function syncCollectionArray(ref, items, cleanFn, options) {
   // Legacy compatibility helper. It is intentionally UPSERT-ONLY.
   // Missing local IDs never delete Firestore documents.
+  // Student create rules check one deletion-marker path per record, so callers
+  // syncing new pupils must keep each write batch below Firestore's 20-read cap.
   const safeItems = Array.isArray(items) ? items : [];
   return commitChunks(safeItems
     .filter(item => item && item.id)
-    .map(item => batch => batch.set(ref.doc(String(item.id)), cleanFn(item), { merge: true })));
+    .map(item => batch => batch.set(ref.doc(String(item.id)), cleanFn(item), { merge: true })),
+    options?.maxBatchSize || 220);
 }
 
 function syncKeyedCollection(ref, entries, makeData, allowedClassIds) {
@@ -10951,7 +10955,7 @@ function performFieldPush(match) {
     const items = dirtyArrayRecords(match.key, value, allowed);
     pushedIds = items.map(item => String(item.id));
     promise = syncCollectionArray(schoolRef().collection('students'), items,
-      s => stripImagesForCloud('students', s));
+      s => stripImagesForCloud('students', s), { maxBatchSize: 10 });
   } else if (field === 'grades') {
     const allowed = classIdsForCloudSync();
     const entries = dirtyKeyedRecords(match.key, value, allowed);
