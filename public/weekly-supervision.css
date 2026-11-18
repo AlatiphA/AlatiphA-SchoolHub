@@ -94,9 +94,14 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 @media(max-width:720px){
  .supervision-table{table-layout:fixed}
  .supervision-table :is(th,td):first-child{width:112px;min-width:112px;max-width:112px;box-sizing:border-box;padding-inline:8px;white-space:normal;overflow-wrap:anywhere}
- #supervisionWrap .lesson-observations .observation-count-table{width:100%;min-width:0;table-layout:fixed}
- #supervisionWrap .lesson-observations .observation-count-table :is(th,td):first-child{position:static;width:65%;min-width:0;max-width:none;text-align:left;}
- #supervisionWrap .lesson-observations .observation-count-table :is(th,td):nth-child(2){width:35%;min-width:0;text-align:center!important;font-variant-numeric:tabular-nums}
+ /* Use a real two-column grid for this narrow summary. Table column sizing
+    was allowing the count cells to sit against the teacher names. */
+ #supervisionWrap .lesson-observations .observation-count-table{display:block;width:100%;min-width:0;table-layout:auto}
+ #supervisionWrap .lesson-observations .observation-count-table :is(thead,tbody,tfoot){display:block;width:100%}
+ #supervisionWrap .lesson-observations .observation-count-table tr{display:grid;width:100%;grid-template-columns:minmax(0,2fr) minmax(112px,1fr);align-items:stretch;box-sizing:border-box}
+ #supervisionWrap .lesson-observations .observation-count-table :is(th,td){position:static;display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:auto;min-width:0;max-width:none;padding:10px 8px;white-space:normal;overflow-wrap:anywhere;text-align:center!important}
+ #supervisionWrap .lesson-observations .observation-count-table :is(th,td):first-child{justify-content:flex-start;text-align:left!important}
+ #supervisionWrap .lesson-observations .observation-count-table :is(th,td):nth-child(2){justify-content:center;text-align:center!important;font-variant-numeric:tabular-nums}
  .supervision-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
  .supervision-draft-item{align-items:stretch;flex-direction:column;gap:6px}
  .supervision-draft-actions{justify-content:flex-start}
