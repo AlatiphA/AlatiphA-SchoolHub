@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.88';
+const APP_VERSION = '40.1.89';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -3561,16 +3561,16 @@ document.getElementById('addStudentBtn').addEventListener('click', async () => {
   const createKey=JSON.stringify([sessionGeneration,currentUid,currentSchoolId,classId]);
   const createId=studentCreatePending.get(createKey)||uid();studentCreatePending.set(createKey,createId);
   const record={id:createId,classId,name,dob,gender,admissionId,parentPhone:document.getElementById('newStudentPhone').value.trim(),disability:document.getElementById('newStudentDisability')?.value||'',guardianName:document.getElementById('newStudentGuardian')?.value.trim()||'',houseGps:document.getElementById('newStudentHouseGps')?.value.trim()||''};
-  const photoFile=newStudentPhotoInput?.files?.[0]||null,btn=document.getElementById('addStudentBtn'),oldText=btn.textContent,token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;btn.disabled=true;btn.textContent=photoFile?'Preparing photo…':'Saving…';
+  const photoFile=newStudentPhotoInput?.files?.[0]||null,btn=document.getElementById('addStudentBtn'),oldText=btn.textContent,token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;let studentSaved=false;btn.disabled=true;btn.textContent=photoFile?'Preparing photo…':'Saving…';
   try{
     let photoData='';
     if(photoFile){if(photoFile.type&&!photoFile.type.startsWith('image/'))throw new Error('Choose an image file for the student profile picture.');photoData=await fileToDataUrl(photoFile);if(!isDataImage(photoData))throw new Error('The selected profile picture is not a readable image.');if(!isCurrentSession(token,userId,schoolId))return;}
     const localOnly=FIREBASE_ENABLED&&(navigator.onLine===false||offlineAuthenticatedMode);if(FIREBASE_ENABLED&&(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady))throw new Error('School data is still synchronizing.');if(FIREBASE_ENABLED&&currentSchoolId&&!localOnly){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');btn.textContent='Saving…';await schoolRef().collection('students').doc(String(record.id)).set(stripImagesForCloud('students',record));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
     let photoStoragePath='';
     if(photoFile){photoStoragePath=schoolAssetPath(photoFile,'student-photos',record.classId+'/'+record.id);await cacheLocalImageWithMeta(imageCacheKey('student',record.id),photoData,{storagePath:photoStoragePath,sourceUrl:'',updatedAt:new Date().toISOString()});if(!isCurrentSession(token,userId,schoolId))return;record.photo=photoData;record.photoUrl='';record.photoStoragePath=photoStoragePath;}
-    recoverSyncJournal();const latest=DB.get(KEYS.students,[]),existing=latest.findIndex(x=>x.id===record.id);if(existing<0)latest.push(record);else latest[existing]=record;DB.set(KEYS.students,latest,{skipCloudSync:!localOnly});studentCreatePending.delete(createKey);document.getElementById('studentSearchInput').value='';nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';if(newStudentPhotoInput)newStudentPhotoInput.value='';clearNewStudentPhotoPreview();renderStudents();renderClasses();addStudentForm.classList.add('hidden');toggleAddStudentBtn.textContent='Expand';toggleAddStudentBtn.setAttribute('aria-expanded','false');auditAction('create','student',record.id,`Added student: ${record.name}`);
+    recoverSyncJournal();const latest=DB.get(KEYS.students,[]),existing=latest.findIndex(x=>x.id===record.id);if(existing<0)latest.push(record);else latest[existing]=record;DB.set(KEYS.students,latest,{skipCloudSync:!localOnly});studentCreatePending.delete(createKey);studentSaved=true;document.getElementById('studentSearchInput').value='';nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';document.getElementById('newStudentGender').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';if(newStudentPhotoInput)newStudentPhotoInput.value='';clearNewStudentPhotoPreview();renderStudents();renderClasses();addStudentForm.classList.remove('hidden');toggleAddStudentBtn.textContent='Collapse';toggleAddStudentBtn.setAttribute('aria-expanded','true');nameInput.focus({preventScroll:true});nameInput.scrollIntoView({block:'nearest',behavior:'smooth'});auditAction('create','student',record.id,`Added student: ${record.name}`);
     if(photoFile&&FIREBASE_ENABLED&&currentSchoolId){try{const url=await uploadSchoolAsset(photoFile,'student-photos',record.classId+'/'+record.id);if(!isCurrentSession(token,userId,schoolId))return;const saved=DB.get(KEYS.students,[]),current=saved.find(x=>x.id===record.id);if(current){current.photo=photoData;current.photoUrl=url||'';current.photoStoragePath=photoStoragePath;}DB.set(KEYS.students,saved,{skipCloudSync:!localOnly});await studentRef(record.id).set({photoUrl:url||'',photoStoragePath,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});if(!isCurrentSession(token,userId,schoolId))return;await upsertImageManifest('student',record.id,{classId:record.classId,storagePath:photoStoragePath,sourceUrl:url||'',storageUpdatedAt:new Date().toISOString()});if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();renderStudents();}catch(photoError){if(isCurrentSession(token,userId,schoolId)){console.warn('New student photo cloud backup pending:',photoError);alert(`Student added. The photo is saved on this browser; Firebase backup is pending.\n\n${photoError.message||photoError}`);}}}
-  }catch(error){if(isCurrentSession(token,userId,schoolId))alert('Student was NOT added to SchoolHub.\n\n'+(error.message||error));}finally{if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=oldText;}}
+  }catch(error){if(isCurrentSession(token,userId,schoolId))alert('Student was NOT added to SchoolHub.\n\n'+(error.message||error));}finally{if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=studentSaved?'Add next student':oldText;}}
 });
 
 // Keep record IDs across retries, including a lost acknowledgement from the cloud.
@@ -3578,33 +3578,35 @@ const bulkAddPending = new Map();
 function prepareBulkAdd(kind, text, classId, previous) {
   const idField = kind === 'staff' ? 'staffId' : 'admissionId';
   const usedIds = new Map(DB.get(KEYS[kind], []).map(record => [String(record[idField] || '').trim().toLowerCase(), record.id]).filter(([id]) => id));
-  const errors = [], items = [], inputIds = new Set();
+  const errors = [], items = [], invalidLines = [], inputIds = new Set();
+  const rejectLine = (raw, index, message) => { errors.push(`Line ${index + 1}: ${message}`); invalidLines.push(raw.trim()); };
   const reusable = previous ? previous.items.slice() : [];
   text.split(/\r?\n/).forEach((raw, index) => {
     const line = raw.trim();
     if (!line) return;
     const [rawName, ...parts] = line.split(',');
     const name = rawName.trim();
+    const shorthand = parts.length === 1 ? /^(female|male|f|m)\s+(.+)$/i.exec(parts[0].trim()) : null;
     let gender = '', externalId;
     {
-      if (parts.length < 1 || parts.length > 2 || (kind === 'staff' && parts.length !== 2)) { errors.push(`Line ${index + 1}: Use ${kind === 'staff' ? 'Full name, Sex, Staff ID' : 'Full name, Sex, optional Student ID'}.`); return; }
-      const sex = parts[0].trim().toLowerCase();
+      if (parts.length < 1 || parts.length > 2 || (kind === 'staff' && parts.length !== 2 && !shorthand)) { rejectLine(raw, index, `Use ${kind === 'staff' ? 'Full name, Sex, Staff ID' : 'Full name, Sex, optional Student ID'}.`); return; }
+      const sex = (shorthand ? shorthand[1] : parts[0]).trim().toLowerCase();
       gender = sex === 'female' || sex === 'f' ? 'F' : sex === 'male' || sex === 'm' ? 'M' : '';
-      if (!gender) { errors.push(`Line ${index + 1}: Sex is required. Use Female/Male or F/M.`); return; }
-      externalId = (parts[1] || '').trim();
+      if (!gender) { rejectLine(raw, index, 'Sex is required. Use Female/Male or F/M.'); return; }
+      externalId = (shorthand ? shorthand[2] : (parts[1] || '')).trim();
     }
     const key = externalId.toLowerCase();
-    if (!name || (kind === 'staff' && !externalId)) { errors.push(`Line ${index + 1}: ${kind === 'staff' ? 'Name and Staff ID are required.' : 'Name is required.'}`); return; }
+    if (!name || (kind === 'staff' && !externalId)) { rejectLine(raw, index, `${kind === 'staff' ? 'Name and Staff ID are required.' : 'Name is required.'}`); return; }
     const oldIndex = reusable.findIndex(item => item.line === line);
     const old = oldIndex < 0 ? null : reusable.splice(oldIndex, 1)[0];
-    if (key && (inputIds.has(key) || (usedIds.has(key) && usedIds.get(key) !== old?.record.id))) { errors.push(`Line ${index + 1}: ${kind === 'staff' ? 'Staff' : 'Student'} ID ${externalId} is already in use.`); return; }
+    if (key && (inputIds.has(key) || (usedIds.has(key) && usedIds.get(key) !== old?.record.id))) { rejectLine(raw, index, `${kind === 'staff' ? 'Staff' : 'Student'} ID ${externalId} is already in use.`); return; }
     if (key) inputIds.add(key);
     const record = old?.record || (kind === 'staff'
       ? {id:uid(), name, sex:gender, staffId:externalId, role:'Teacher'}
       : {id:uid(), classId, name, gender, admissionId:externalId, parentPhone:''});
     items.push({line, record});
   });
-  return {items, errors};
+  return {items, errors, invalidLines};
 }
 
 async function bulkAddPeople(kind) {
@@ -3618,8 +3620,7 @@ async function bulkAddPeople(kind) {
   const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
   const pendingKey = JSON.stringify([kind, token, userId, schoolId, classId]);
   const plan = prepareBulkAdd(kind, textarea.value, classId, bulkAddPending.get(pendingKey));
-  if (plan.errors.length) { alert(plan.errors.join('\n')); return; }
-  if (!plan.items.length) return;
+  if (!plan.items.length) { if (plan.errors.length) alert(plan.errors.join('\n')); return; }
   bulkAddPending.set(pendingKey, plan);
   const total = plan.items.length, oldText = button.textContent;
   let saved = 0;
@@ -3629,9 +3630,9 @@ async function bulkAddPeople(kind) {
       if(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady)throw Error('School data is still synchronizing.');
       recoverSyncJournal();const latest=DB.get(KEYS.students,[]),ids=new Set(latest.map(record=>record.id));
       DB.set(KEYS.students,latest.concat(plan.items.filter(({record})=>!ids.has(record.id)).map(item=>item.record)));
-      saved=plan.items.length;plan.items.splice(0);textarea.value='';document.getElementById('studentSearchInput').value='';bulkAddPending.delete(pendingKey);
+      saved=plan.items.length;plan.items.splice(0);textarea.value=plan.invalidLines.join('\n');document.getElementById('studentSearchInput').value='';bulkAddPending.delete(pendingKey);
       auditAction('import','students','',`Bulk added ${saved} students locally.`);
-      alert(`Saved ${saved} pupils on this device. Pending upload after account verification.`);return;
+      alert(`Saved ${saved} pupils on this device. Pending upload after account verification.${plan.errors.length?'\n\nThese lines need fixing and remain in the box:\n'+plan.errors.join('\n'):''}`);return;
     }
     while (plan.items.length) {
       if (!isCurrentSession(token, userId, schoolId)) return;
@@ -3650,12 +3651,13 @@ async function bulkAddPeople(kind) {
       DB.set(KEYS[kind], latest.concat(chunk.filter(({record}) => !ids.has(record.id)).map(item => item.record)), {skipCloudSync:true});
       saved += chunk.length;
       plan.items.splice(0, chunk.length);
-      textarea.value = plan.items.map(item => item.line).join('\n');
+      textarea.value = plan.items.map(item => item.line).concat(plan.invalidLines).join('\n');
     }
     bulkAddPending.delete(pendingKey);
     if(!staff)document.getElementById('studentSearchInput').value='';
     auditAction('import', kind, '', `Bulk added ${saved} ${kind} records.`);
-    alert(`Added ${saved} ${staff ? 'staff member(s)' : 'student(s)'} and saved to SchoolHub.`);
+    textarea.value=plan.invalidLines.join('\n');
+    alert(`Added ${saved} ${staff ? 'staff member(s)' : 'student(s)'} and saved to SchoolHub.${plan.errors.length?'\n\nThese lines were not added. Fix them and try again; they remain in the box:\n'+plan.errors.join('\n'):''}`);
   } catch (error) {
     if (isCurrentSession(token, userId, schoolId)) alert(`Confirmed ${saved} of ${total} ${kind} saved. Remaining entries are kept below; click Add All to retry.\n\n` + (error.message || error));
   } finally {
