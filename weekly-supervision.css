@@ -87,7 +87,8 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 #supervisionWrap .lesson-observations .observation-count-table :is(th,td){position:static;display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:auto;min-width:0;max-width:none;padding:10px 8px;white-space:normal;overflow-wrap:anywhere;text-align:center!important}
 #supervisionWrap .lesson-observations .observation-count-table :is(th,td):first-child{justify-content:flex-start;text-align:left!important}
 #supervisionWrap .lesson-observations .observation-count-table :is(th,td):nth-child(2){justify-content:center;text-align:center!important;font-variant-numeric:tabular-nums}
-#supervisionWrap .lesson-observations .observation-count-table thead th{position:sticky!important;top:0;z-index:4;background:var(--surface-alt)}
+#supervisionWrap .lesson-observations .observation-count-table thead{position:sticky;top:0;z-index:5;background:var(--surface-alt)}
+#supervisionWrap .lesson-observations .observation-count-table thead th{position:static!important;z-index:auto;background:var(--surface-alt)}
 #supervisionWrap .lesson-observations .observation-count-table thead th:first-child{justify-content:center;text-align:center!important}
 .supervision-section{margin-top:16px}
 .supervision-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 8px}
