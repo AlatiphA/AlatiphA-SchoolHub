@@ -27,5 +27,6 @@ test('observation counts use a full-width centered count column on desktop and m
     'observation headings must stay visible while the summary scrolls');
   assert.match(css,/\.observation-count-table thead th:first-child\{[^}]*justify-content:center;[^}]*text-align:center!important/s,
     'Teacher heading must be centered while teacher names remain left aligned');
+  assert.match(css,/#supervisionWrap \.lesson-observations \.supervision-report-actions\{[^}]*margin-top:14px/,'report buttons must have a clear gap below the observation table');
   assert.equal(publicCss,css,'the deployed stylesheet must match the source stylesheet');
 });

@@ -90,6 +90,7 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 #supervisionWrap .lesson-observations .observation-count-table thead{position:sticky;top:0;z-index:5;background:var(--surface-alt)}
 #supervisionWrap .lesson-observations .observation-count-table thead th{position:static!important;z-index:auto;background:var(--surface-alt)}
 #supervisionWrap .lesson-observations .observation-count-table thead th:first-child{justify-content:center;text-align:center!important}
+#supervisionWrap .lesson-observations .supervision-report-actions{margin-top:14px}
 .supervision-section{margin-top:16px}
 .supervision-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 8px}
 .supervision-section-heading h3{margin:0}
