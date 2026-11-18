@@ -94,6 +94,9 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 @media(max-width:720px){
  .supervision-table{table-layout:fixed}
  .supervision-table :is(th,td):first-child{width:112px;min-width:112px;max-width:112px;box-sizing:border-box;padding-inline:8px;white-space:normal;overflow-wrap:anywhere}
+ #supervisionWrap .lesson-observations .observation-count-table{width:100%;min-width:0;table-layout:fixed}
+ #supervisionWrap .lesson-observations .observation-count-table :is(th,td):first-child{position:static;width:65%;min-width:0;max-width:none;text-align:left;}
+ #supervisionWrap .lesson-observations .observation-count-table :is(th,td):nth-child(2){width:35%;min-width:0;text-align:center!important;font-variant-numeric:tabular-nums}
  .supervision-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
  .supervision-draft-item{align-items:stretch;flex-direction:column;gap:6px}
  .supervision-draft-actions{justify-content:flex-start}

@@ -570,6 +570,8 @@
       <label>Guardian name<input type="text" id="newStudentGuardian" placeholder="Guardian name"></label>
       <label>Parent phone (optional)<input type="tel" id="newStudentPhone" placeholder="Phone number for WhatsApp"></label>
       <label>House No. / GhanaPost GPS<input type="text" id="newStudentHouseGps" placeholder="e.g. House 12 / NT-123-4567"></label>
+      <label>Passport Photo (optional)<input type="file" id="newStudentPhoto" accept="image/*"></label>
+      <div id="newStudentPhotoPreview" class="new-student-photo-preview" hidden aria-live="polite"></div>
       <p id="addStudentValidation" class="form-validation" role="alert"></p>
       <button id="addStudentBtn" class="btn-primary">Add Student</button>
       <button type="button" id="closeAddStudentBtn" data-close-form="addStudentForm" data-form-toggle="toggleAddStudentBtn" data-dismiss-ui>Close</button>
@@ -1329,7 +1331,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.79</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.80</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">

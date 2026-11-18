@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.79';
+const APP_VERSION = '40.1.80';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -3521,6 +3521,33 @@ if (newStudentDob && newStudentAge) {
 }
 
 const studentCreatePending = new Map();
+let newStudentPhotoPreviewUrl = '';
+const newStudentPhotoInput = document.getElementById('newStudentPhoto');
+const newStudentPhotoPreview = document.getElementById('newStudentPhotoPreview');
+function clearNewStudentPhotoPreview() {
+  if (newStudentPhotoPreviewUrl) URL.revokeObjectURL(newStudentPhotoPreviewUrl);
+  newStudentPhotoPreviewUrl = '';
+  if (newStudentPhotoPreview) { newStudentPhotoPreview.replaceChildren(); newStudentPhotoPreview.hidden = true; }
+}
+if (newStudentPhotoInput && newStudentPhotoPreview) {
+  newStudentPhotoInput.addEventListener('change', () => {
+    clearNewStudentPhotoPreview();
+    const file = newStudentPhotoInput.files && newStudentPhotoInput.files[0];
+    if (!file) return;
+    const image = document.createElement('img');
+    image.className = 'new-student-photo-thumbnail';
+    image.alt = 'Selected student profile picture';
+    newStudentPhotoPreviewUrl = URL.createObjectURL(file);
+    image.src = newStudentPhotoPreviewUrl;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'btn-text';
+    remove.textContent = 'Remove selected photo';
+    remove.addEventListener('click', () => { newStudentPhotoInput.value = ''; clearNewStudentPhotoPreview(); });
+    newStudentPhotoPreview.append(image, remove);
+    newStudentPhotoPreview.hidden = false;
+  });
+}
 document.getElementById('addStudentBtn').addEventListener('click', async () => {
   const classId=document.getElementById('newStudentClassSelect').value;if(!classId){alert('Select a destination class.');return;}if(classId==='__all__'){alert('Select one class before adding students.');return;}if(!requireClassAccess(classId))return;
   const nameInput=document.getElementById('newStudentName'),dobInput=document.getElementById('newStudentDob'),validation=document.getElementById('addStudentValidation'),name=nameInput.value.trim(),dob=dobInput.value.trim();
@@ -3530,10 +3557,16 @@ document.getElementById('addStudentBtn').addEventListener('click', async () => {
   const createKey=JSON.stringify([sessionGeneration,currentUid,currentSchoolId,classId]);
   const createId=studentCreatePending.get(createKey)||uid();studentCreatePending.set(createKey,createId);
   const record={id:createId,classId,name,dob,gender,admissionId,parentPhone:document.getElementById('newStudentPhone').value.trim(),disability:document.getElementById('newStudentDisability')?.value||'',guardianName:document.getElementById('newStudentGuardian')?.value.trim()||'',houseGps:document.getElementById('newStudentHouseGps')?.value.trim()||''};
-  const btn=document.getElementById('addStudentBtn'),oldText=btn.textContent,token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;btn.disabled=true;btn.textContent='Saving…';
-  try{const localOnly=FIREBASE_ENABLED&&(navigator.onLine===false||offlineAuthenticatedMode);if(FIREBASE_ENABLED&&(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady))throw new Error('School data is still synchronizing.');if(FIREBASE_ENABLED&&currentSchoolId&&!localOnly){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');await schoolRef().collection('students').doc(String(record.id)).set(stripImagesForCloud('students',record));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
-    recoverSyncJournal();const latest=DB.get(KEYS.students,[]),existing=latest.findIndex(x=>x.id===record.id);if(existing<0)latest.push(record);else latest[existing]=record;DB.set(KEYS.students,latest,{skipCloudSync:!localOnly});studentCreatePending.delete(createKey);document.getElementById('studentSearchInput').value='';nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';renderStudents();renderClasses();addStudentForm.classList.add('hidden');toggleAddStudentBtn.textContent='Expand';toggleAddStudentBtn.setAttribute('aria-expanded','false');auditAction('create','student',record.id,`Added student: ${record.name}`);
-  }catch(error){alert('Student was NOT added to SchoolHub.\n\n'+(error.message||error));}finally{if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=oldText;}}
+  const photoFile=newStudentPhotoInput?.files?.[0]||null,btn=document.getElementById('addStudentBtn'),oldText=btn.textContent,token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;btn.disabled=true;btn.textContent=photoFile?'Preparing photo…':'Saving…';
+  try{
+    let photoData='';
+    if(photoFile){if(photoFile.type&&!photoFile.type.startsWith('image/'))throw new Error('Choose an image file for the student profile picture.');photoData=await fileToDataUrl(photoFile);if(!isDataImage(photoData))throw new Error('The selected profile picture is not a readable image.');if(!isCurrentSession(token,userId,schoolId))return;}
+    const localOnly=FIREBASE_ENABLED&&(navigator.onLine===false||offlineAuthenticatedMode);if(FIREBASE_ENABLED&&(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady))throw new Error('School data is still synchronizing.');if(FIREBASE_ENABLED&&currentSchoolId&&!localOnly){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');btn.textContent='Saving…';await schoolRef().collection('students').doc(String(record.id)).set(stripImagesForCloud('students',record));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
+    let photoStoragePath='';
+    if(photoFile){photoStoragePath=schoolAssetPath(photoFile,'student-photos',record.classId+'/'+record.id);await cacheLocalImageWithMeta(imageCacheKey('student',record.id),photoData,{storagePath:photoStoragePath,sourceUrl:'',updatedAt:new Date().toISOString()});if(!isCurrentSession(token,userId,schoolId))return;record.photo=photoData;record.photoUrl='';record.photoStoragePath=photoStoragePath;}
+    recoverSyncJournal();const latest=DB.get(KEYS.students,[]),existing=latest.findIndex(x=>x.id===record.id);if(existing<0)latest.push(record);else latest[existing]=record;DB.set(KEYS.students,latest,{skipCloudSync:!localOnly});studentCreatePending.delete(createKey);document.getElementById('studentSearchInput').value='';nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';if(newStudentPhotoInput)newStudentPhotoInput.value='';clearNewStudentPhotoPreview();renderStudents();renderClasses();addStudentForm.classList.add('hidden');toggleAddStudentBtn.textContent='Expand';toggleAddStudentBtn.setAttribute('aria-expanded','false');auditAction('create','student',record.id,`Added student: ${record.name}`);
+    if(photoFile&&FIREBASE_ENABLED&&currentSchoolId){try{const url=await uploadSchoolAsset(photoFile,'student-photos',record.classId+'/'+record.id);if(!isCurrentSession(token,userId,schoolId))return;const saved=DB.get(KEYS.students,[]),current=saved.find(x=>x.id===record.id);if(current){current.photo=photoData;current.photoUrl=url||'';current.photoStoragePath=photoStoragePath;}DB.set(KEYS.students,saved,{skipCloudSync:!localOnly});await studentRef(record.id).set({photoUrl:url||'',photoStoragePath,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});if(!isCurrentSession(token,userId,schoolId))return;await upsertImageManifest('student',record.id,{classId:record.classId,storagePath:photoStoragePath,sourceUrl:url||'',storageUpdatedAt:new Date().toISOString()});if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();renderStudents();}catch(photoError){if(isCurrentSession(token,userId,schoolId)){console.warn('New student photo cloud backup pending:',photoError);alert(`Student added. The photo is saved on this browser; Firebase backup is pending.\n\n${photoError.message||photoError}`);}}}
+  }catch(error){if(isCurrentSession(token,userId,schoolId))alert('Student was NOT added to SchoolHub.\n\n'+(error.message||error));}finally{if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=oldText;}}
 });
 
 // Keep record IDs across retries, including a lost acknowledgement from the cloud.

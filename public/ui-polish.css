@@ -336,6 +336,10 @@
  @media(max-width:900px){#app #view-students #addStudentForm{grid-template-columns:repeat(2,minmax(0,1fr));}}
  @media(max-width:520px){#app #view-students #addStudentForm{grid-template-columns:1fr;} .topbar{flex-wrap:wrap;}.topbar-right{margin-left:auto;}.sync-status-badge{font-size:11px;padding:6px 7px;}}
 }
+#app #view-students #addStudentForm .new-student-photo-preview{grid-column:1/-1;display:flex;align-items:center;gap:12px;min-width:0;padding:10px;border:1px solid var(--rule);border-radius:10px;background:var(--surface);}
+#app #view-students #addStudentForm .new-student-photo-preview[hidden]{display:none;}
+#app #view-students #addStudentForm .new-student-photo-thumbnail{display:block;width:72px;height:90px;flex:0 0 72px;object-fit:cover;border:1px solid var(--rule);border-radius:7px;background:#fff;}
+#app #view-students #addStudentForm .new-student-photo-preview button{width:auto;min-height:40px;margin:0;padding:8px 12px;}
 @media print{.sync-status-badge{display:none!important;}}
 /* Subjects: stable name/action columns and compact mobile controls. */
 @media screen {
