@@ -1,7 +1,7 @@
 /* Separate, school-owned lesson observations; drafts are not official records. */
 (()=>{
  let dialog=null,teacherFilter="",classFilter="";
- const node=(tag,text)=>{const n=document.createElement(tag);if(text!=null)n.textContent=text;return n;};
+ const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!=null)n.textContent=text;if(cls)n.className=cls;return n;};
  const button=(text,fn)=>{const b=node('button',text);b.type='button';b.onclick=fn;return b;};
  const displayTime=value=>{if(!value)return '—';const date=new Date(value);return Number.isNaN(date.getTime())?String(value):new Intl.DateTimeFormat('en-GH',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Accra'}).format(date);};
  const draftKey=(c,record)=>'schoolhub_observation_draft_v1_'+JSON.stringify([c.uid,c.school,record?.id||'new']);

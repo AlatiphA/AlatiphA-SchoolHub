@@ -9,7 +9,11 @@ const publicCss=fs.readFileSync(path.join(root,'public/weekly-supervision.css'),
 const observations=fs.readFileSync(path.join(root,'lesson-observations.js'),'utf8');
 
 test('observation counts use a full-width centered count column on desktop and mobile',()=>{
+  assert.match(observations,/const node=\(tag,text,cls\)=>\{[^}]*if\(cls\)n\.className=cls/,
+    'observation renderer must apply the optional CSS class passed to node()');
   assert.match(observations,/supervision-summary-table observation-count-table/);
+  assert.match(observations,/node\('div',null,'supervision-table-scroll supervision-summary-scroll'\)/);
+  assert.match(observations,/node\('table',null,'supervision-table supervision-summary-table observation-count-table'\)/);
   const layout=css.match(/#supervisionWrap \.lesson-observations \.observation-count-table\{([^}]+)\}/);
   assert.ok(layout,'observation table needs a dedicated full-width layout');
   assert.match(layout[1],/display:block/);
