@@ -817,8 +817,27 @@
 #app .student-excel-steps{margin:0;padding-left:22px;line-height:1.7;}
 #app #studentImportPreview{min-width:0;max-width:100%;overflow-wrap:anywhere;}
 #app #studentImportPreview.hidden{display:none;}
+#app .student-import-summary{margin:8px 0;font-weight:600;}
+#app .student-import-notice{padding:12px;border:1px solid var(--rule);border-radius:10px;background:var(--surface-alt);line-height:1.55;}
+#app .student-import-review-table-scroll{max-height:52vh;max-width:100%;overflow:auto;border:1px solid var(--rule);border-radius:10px;-webkit-overflow-scrolling:touch;}
+#app .student-import-review-table{width:100%;min-width:760px;border-collapse:separate;border-spacing:0;font-size:14px;}
+#app .student-import-review-table th{position:sticky;top:0;z-index:1;background:var(--surface-alt);text-align:left;}
+#app .student-import-review-table th,#app .student-import-review-table td{padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top;overflow-wrap:anywhere;}
+#app .student-import-review-table tr:last-child td{border-bottom:0;}
+#app .student-import-row-status{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap;}
+#app .student-import-row-status.is-ready{background:#e5f2e8;color:#245e37;}
+#app .student-import-row-status.needs-correction{background:#fae9e5;color:#8c3129;}
+#app .student-import-issues{min-width:220px;color:var(--muted);}
+#app .student-import-review-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+#app .student-import-review-actions button{min-height:44px;}
+#app .student-results-pagination{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;margin:12px 0 20px;}
+#app .student-results-pagination[hidden]{display:none;}
+#app .student-results-pagination .hint{margin:0;text-align:center;}
+#app .student-results-pagination button{min-height:44px;max-width:100%;}
+#app .student-details-pagination-status{margin:14px 0 8px;}
+#app #studentDetailsTableMoreBtn{min-height:44px;margin-bottom:12px;}
 #app #view-students > #studentDataToolbar{grid-template-columns:repeat(2,minmax(0,1fr));}
-@media(max-width:600px){#app #view-students .student-onboarding-panel{padding:14px;}#app .student-onboarding-actions{flex-direction:column;align-items:stretch;}#app .student-onboarding-actions>button{width:100%;}#app #view-students .student-add-toolbar .hint{max-width:none;}}
+@media(max-width:600px){#app #view-students .student-onboarding-panel{padding:14px;}#app .student-onboarding-actions{flex-direction:column;align-items:stretch;}#app .student-onboarding-actions>button{width:100%;}#app #view-students .student-add-toolbar .hint{max-width:none;}#app .student-import-review-actions{flex-direction:column;align-items:stretch;}#app .student-import-review-actions button{width:100%;}}
 
 /* Class enrolment summary keeps a full reading width on small screens. */
 #app #view-students > .student-class-summary{grid-column:1/-1;display:block;min-width:0;max-width:100%;box-sizing:border-box;padding:16px;border:1px solid var(--rule);border-radius:14px;background:var(--surface);text-align:left;}

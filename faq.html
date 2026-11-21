@@ -37,7 +37,8 @@ body{padding:0;background:var(--ink);color:var(--paper)}
 <body>
 <main class="standalone-doc">
   <header class="standalone-doc-head"><a href="index.html">← SchoolHub</a><h1>Help & FAQ</h1></header>
-  <div class="standalone-doc-body"><div class="inline-faq-grid">
+  <div class="standalone-doc-body">
+<div class="inline-faq-grid">
       <section class="inline-doc-section"><h2>Current packages, owner controls and automatic updates</h2>
 <details><summary>What are the current SchoolHub packages?</summary><div class="inline-doc-answer"><p>Report credits cost GH₵0.20 per report. Termly unlimited reports cost GH₵50 for the saved school term and academic year. Yearly unlimited reports cost GH₵120 for 12 months from activation. Attendance costs GH₵50 per school term separately. New three-year purchases are suspended; existing valid licences retain their benefits. These service charges are separate from learner school fees.</p></div></details>
 <details><summary>How do manual MoMo payments become active?</summary><div class="inline-doc-answer"><p>The Head Teacher selects a package in Profile → Billing &amp; Credits, pays the displayed MoMo recipient/amount and submits the unique transaction ID online. Awaiting verification grants no access. The owner checks the actual received amount in Owner Administration → Licences → Manual payment verification before approval. Use Refresh payment status to see approval or a rejection reason. Never share a MoMo PIN or password.</p></div></details>
@@ -89,9 +90,9 @@ body{padding:0;background:var(--ink);color:var(--paper)}
       <section class="inline-doc-section">
         <h2>Students: onboarding, search &amp; totals</h2>
         <details><summary>What are the three ways to add students?</summary><div class="inline-doc-answer"><p>Open <strong>Students → Onboarding</strong>. <strong>Add Student</strong> enters one pupil. <strong>Bulk add</strong> accepts one pupil per line. <strong>Excel template</strong> contains template download and spreadsheet import. Expand a method to use it, then Close it when finished.</p></div></details>
-        <details><summary>What format does Bulk add use?</summary><div class="inline-doc-answer"><p>Use <strong>Full name, Sex, optional Student ID</strong>. For example, <code>Ama Mensah, F, 00124</code> or <code>Kojo Mensah, Male</code>. Sex accepts F/M or Female/Male. Choose one class before adding pupils. Correct validation errors before saving.</p></div></details>
-        <details><summary>How do I use the Excel template?</summary><div class="inline-doc-answer"><p>Select one class, expand <strong>Onboarding → Excel template</strong>, download the template and fill in its columns. Keep identifiers as text when leading zeroes matter. Import the spreadsheet and review the preview and validation messages before saving. Template download is separate from exporting existing pupils.</p></div></details>
-        <details><summary>Does Search or Excel export cover the whole school?</summary><div class="inline-doc-answer"><p><strong>Search</strong> uses the selected <strong>Class</strong>. Head Teachers can select <strong>All classes</strong>; Teachers select only an assigned class and have no All classes option. Excel export and Print use the same class and search filters. Clear Search to include every pupil in the selection.</p></div></details>
+        <details><summary>What format does Bulk add use?</summary><div class="inline-doc-answer"><p>Use <strong>Full name, Sex, optional Student ID</strong>. For example, <code>Ama Mensah, F, 00124</code> or <code>Kojo Mensah, Male</code>. Sex accepts F/M or Female/Male. Choose a destination class in the Bulk add form before saving. Correct validation errors before saving.</p></div></details>
+        <details><summary>How do I use the Excel template?</summary><div class="inline-doc-answer"><p>Open <strong>Onboarding → Excel template</strong>, choose its <strong>Destination class</strong>, download the template and fill in its columns. Keep identifiers as text when leading zeroes matter. Import the spreadsheet and review each row. Rows marked <strong>Ready</strong> can be imported immediately; rows marked <strong>Needs correction</strong> show what is missing or duplicated and remain unsaved. Correct those rows in the spreadsheet and choose the corrected file. Template download is separate from exporting existing pupils.</p></div></details>
+        <details><summary>Does Search or Excel export cover the whole school?</summary><div class="inline-doc-answer"><p>Below Onboarding, use <strong>Class</strong> and <strong>Search</strong> together to filter the student results. Head Teachers can select <strong>All classes</strong>; Teachers select only an assigned class and have no All classes option. Excel export and Print use the same class and search filters. Clear Search to include every pupil in the selection.</p></div></details>
         <details><summary>Why do Head Teachers see a table but Teachers see a pie?</summary><div class="inline-doc-answer"><p>The Head Teacher’s class enrolment summary lists classes, class teachers, Male, Female, Sex not set and Total for current accessible pupils. Teachers see a pie and totals for their accessible current pupils. Summary counts are independent of Search and Class filters. Graduates are excluded from this current-pupil summary; Sex not set is retained instead of guessed.</p></div></details>
         <details><summary>Where is Check for missing students?</summary><div class="inline-doc-answer"><p>It is below the student table. It compares available recovery sources; recovery depends on the missing record existing in one of those sources.</p></div></details>
       </section>
@@ -287,7 +288,8 @@ body{padding:0;background:var(--ink);color:var(--paper)}
           <button type="button" class="inline-doc-text-link" data-inline-doc="terms">Terms of Use</button>
         </div>
       </section>
-    </div></div>
+    </div>
+</div>
   <footer class="standalone-doc-foot">© All Rights Reserved · AlatiphA Multimedia · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms of Use</a></footer>
 </main>
 </body>

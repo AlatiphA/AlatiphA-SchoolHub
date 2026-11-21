@@ -1,6 +1,14 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.96';
+const APP_VERSION = '40.1.100';
+const STUDENT_RESULTS_PAGE_SIZE = 50;
+let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
+let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
+let studentTableVisible = true;
+const STAFF_RESULTS_PAGE_SIZE = 50;
+let staffListVisibleCount = STAFF_RESULTS_PAGE_SIZE;
+let staffTableVisibleCount = STAFF_RESULTS_PAGE_SIZE;
+let staffTableVisible = true;
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -3261,9 +3269,17 @@ function renderStudents() {
   installStudentTabUpgrade();
   renderStudentClassSummary();
   const count = document.getElementById('studentSearchCount');
-  const updateCount = visible => { if (count) count.textContent = 'Showing ' + visible + ' of ' + getAccessibleStudents().filter(st => document.getElementById('studentClassSelect')?.value === '__all__' || st.classId === document.getElementById('studentClassSelect')?.value).length + ' students in selected scope'; };
-  updateCount(0);
-  if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('studentList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; return; }
+  const updateCount = (visible, total) => { if (count) count.textContent = total ? 'Showing ' + Math.min(visible, total) + ' of ' + total + ' students in selected results' : ''; };
+  const updatePagination = (total, visible) => {
+    const pagination = document.getElementById('studentListPagination');
+    const status = document.getElementById('studentListPaginationStatus');
+    const more = document.getElementById('studentListMoreBtn');
+    if (pagination) pagination.hidden = total <= visible;
+    if (status) status.textContent = total > visible ? 'Showing ' + visible + ' of ' + total + ' students.' : '';
+    if (more) { more.hidden = total <= visible; more.textContent = 'Show ' + Math.min(STUDENT_RESULTS_PAGE_SIZE, Math.max(0, total - visible)) + ' more students'; }
+  };
+  updateCount(0, 0);
+  if (FIREBASE_ENABLED && !sessionDataReady) { const el = document.getElementById('studentList'); if (el) el.innerHTML = '<li class="empty">Loading your school workspace…</li>'; updatePagination(0, 0); return; }
   const sel = document.getElementById('studentClassSelect');
   fillClassSelect(sel);
   const query = document.getElementById('studentSearchInput').value.trim().toLowerCase();
@@ -3272,16 +3288,15 @@ function renderStudents() {
   list.innerHTML = '';
 
   const classId = sel.value;
-  if (classId && classId !== '__all__' && !requireClassAccess(classId)) { list.innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
-  if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; return; }
+  if (classId && classId !== '__all__' && !requireClassAccess(classId)) { list.innerHTML = '<li class="empty">You do not have access to this class.</li>'; updatePagination(0, 0); return; }
+  if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; updatePagination(0, 0); return; }
   const students = currentStudentTableRows();
-  updateCount(students.length);
+  const pageStudents = students.slice(0, studentListVisibleCount);
+  updateCount(pageStudents.length, students.length);
+  updatePagination(students.length, pageStudents.length);
   if (!students.length) { list.innerHTML = searchMode ? '<li class="empty">No students in the selected classes match your search.</li>' : '<li class="empty">No students yet — add one below.</li>'; return; }
 
-  const classesById = {};
-  DB.get(KEYS.classes, []).forEach(c => { classesById[c.id] = c.name; });
-
-  students.forEach(st => {
+  pageStudents.forEach(st => {
     const li = document.createElement('li');
     if (editingStudentId === st.id) {
       const photoPreview = st.photo
@@ -3509,9 +3524,19 @@ function renderStudents() {
 
 document.getElementById('studentClassSelect').addEventListener('change', e => {
   try { localStorage.setItem(studentClassSelectionKey(), e.target.value || ''); } catch (err) {}
+  studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
+  studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
   renderStudents();
 });
-document.getElementById('studentSearchInput').addEventListener('input', renderStudents);
+document.getElementById('studentSearchInput').addEventListener('input', () => {
+  studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
+  studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
+  renderStudents();
+});
+document.getElementById('studentListMoreBtn')?.addEventListener('click', () => {
+  studentListVisibleCount += STUDENT_RESULTS_PAGE_SIZE;
+  renderStudents();
+});
 
 const toggleAddStudentBtn = document.getElementById('toggleAddStudentBtn');
 const addStudentForm = document.getElementById('addStudentForm');
@@ -3997,7 +4022,6 @@ const STUDENT_TRANSFER_FIELDS = [
   {key:'className', label:'Class'}
 ];
 let pendingStudentImport = null;
-let studentTableVisible = true;
 
 function installStudentOnboardingControls() {
   for (const [buttonId, panelId, title] of [['toggleBulkStudentsBtn','bulkStudentForm','Bulk add'],['toggleStudentExcelBtn','studentExcelForm','Excel template']]) {
@@ -4258,16 +4282,20 @@ function readStudentWorkbook(book) {
     if(matches.length>1) headerErrors.push(`Duplicate column: ${f.label}.`);
     index[f.key]=matches.length?matches[0]:-1;
   });
-  ['name','admissionId','gender','dob','className'].forEach(key=>{if(index[key]<0) headerErrors.push(`${STUDENT_TRANSFER_FIELDS.find(f=>f.key===key).label} column is required.`);});
-  if(headerErrors.length) throw new Error(headerErrors.join(' '));
-  return matrix.filter(r=>r.some(v=>String(v).trim())).map((r,rowIndex)=>{
+  ['name','admissionId','gender','dob','className'].forEach(key=>{if(index[key]<0) headerErrors.push(STUDENT_TRANSFER_FIELDS.find(f=>f.key===key).label + ' column is required.');});
+  const duplicateHeaderErrors = headerErrors.filter(message => message.startsWith('Duplicate column:'));
+  if(duplicateHeaderErrors.length) throw new Error(duplicateHeaderErrors.join(' '));
+  return matrix.map((r,rowIndex)=>({r,row:rowIndex+2})).filter(item=>item.r.some(v=>String(v).trim())).map(({r,row})=>{
     const values={}; STUDENT_TRANSFER_FIELDS.forEach(f=>values[f.key]=index[f.key]>=0?String(r[index[f.key]]??'').trim():'');
-    return {row:rowIndex+2,values};
+    return {row,values,headerErrors:headerErrors.filter(message=>!message.startsWith('Duplicate column:'))};
   });
 }
 
 function planStudentImport(rows, destinationClassId) {
-  if (destinationClassId !== undefined && !getAccessibleClasses().some(c => c.id === destinationClassId)) return {errors:['Select an accessible destination class.'], changes:[]};
+  const accessibleClasses = getAccessibleClasses();
+  const destinationError = destinationClassId !== undefined && !accessibleClasses.some(c => c.id === destinationClassId)
+    ? 'Select an accessible destination class.'
+    : '';
   const existing = DB.get(KEYS.students, []);
   const admissionGroups = new Map();
   existing.forEach(st => {
@@ -4277,44 +4305,64 @@ function planStudentImport(rows, destinationClassId) {
     admissionGroups.get(key).push(st);
   });
   const byAdmission = new Map(Array.from(admissionGroups.entries()).filter(([,items]) => items.length === 1).map(([key,items]) => [key,items[0]]));
-  const seen = new Set(), errors = [], changes = [];
+  const importedIdRows = new Map();
   rows.forEach(item => {
-    const v = item.values;
+    const key = String(item.values?.admissionId || '').trim().toLowerCase();
+    if (!key) return;
+    if (!importedIdRows.has(key)) importedIdRows.set(key, []);
+    importedIdRows.get(key).push(item.row);
+  });
+  const plannedRows = rows.map(item => {
+    const v = item.values || {};
     const sid = String(v.admissionId || '').trim();
     const key = sid.toLowerCase();
-    if (!v.name || !sid || !v.gender || !v.dob || !v.className) { errors.push(`Row ${item.row}: Full Name, Student ID, Sex, Date of Birth and Class are required.`); return; }
-    if (seen.has(key)) { errors.push(`Row ${item.row}: duplicate Student ID ${sid}.`); return; }
-    seen.add(key);
-    const classId = destinationClassId === undefined ? studentClassIdByName(v.className) : destinationClassId;
-    if (destinationClassId !== undefined && studentClassIdByName(v.className) !== destinationClassId) { errors.push(`Row ${item.row}: spreadsheet Class must match the selected destination class.`); return; }
-    if (!classId) { errors.push(`Row ${item.row}: class "${v.className}" does not exist in SchoolHub.`); return; }
-    const g = v.gender.toLowerCase();
+    const issues = [];
+    if (destinationError) issues.push(destinationError);
+    if (item.headerErrors?.length) issues.push(...item.headerErrors);
+    if (!String(v.name || '').trim()) issues.push('Full Name is required.');
+    if (!sid) issues.push('Student ID is required.');
+    if (!String(v.gender || '').trim()) issues.push('Sex is required.');
+    if (!String(v.dob || '').trim()) issues.push('Date of Birth is required.');
+    if (!String(v.className || '').trim()) issues.push('Class is required.');
+    const duplicateRows = importedIdRows.get(key) || [];
+    if (key && duplicateRows.length > 1) issues.push('Student ID ' + sid + ' is repeated in rows ' + duplicateRows.join(', ') + '. Keep one row or give each student a unique ID.');
+    const g = String(v.gender || '').trim().toLowerCase();
     const gender = g === 'male' || g === 'm' ? 'M' : (g === 'female' || g === 'f' ? 'F' : '');
-    if (!gender) { errors.push(`Row ${item.row}: Sex must be Male/Female or M/F.`); return; }
-    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.dob);
-    const parsedDob = dateMatch ? new Date(`${v.dob}T00:00:00Z`) : null;
-    if (!parsedDob || !Number.isFinite(parsedDob.getTime()) || parsedDob.toISOString().slice(0,10) !== v.dob) { errors.push(`Row ${item.row}: Date of Birth must be a valid YYYY-MM-DD date.`); return; }
-    if (Object.values(v).some(value => String(value || '').length > 500)) { errors.push(`Row ${item.row}: one or more fields are too long.`); return; }
-    let disability = v.disability;
+    if (g && !gender) issues.push('Sex must be Male/Female or M/F.');
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v.dob || ''));
+    const parsedDob = dateMatch ? new Date(String(v.dob) + 'T00:00:00Z') : null;
+    if (v.dob && (!parsedDob || !Number.isFinite(parsedDob.getTime()) || parsedDob.toISOString().slice(0,10) !== v.dob)) issues.push('Date of Birth must be a valid YYYY-MM-DD date.');
+    if (Object.values(v).some(value => String(value || '').length > 500)) issues.push('One or more fields are too long.');
+    let disability = String(v.disability || '').trim();
     if (disability) {
       const d = disability.toLowerCase();
       disability = d === 'yes' || d === 'y' ? 'Yes' : (d === 'no' || d === 'n' ? 'No' : '');
-      if (!disability) { errors.push(`Row ${item.row}: Disability must be Yes or No.`); return; }
+      if (!disability) issues.push('Disability must be Yes or No.');
     }
+    const classIdFromFile = studentClassIdByName(String(v.className || '').trim());
+    const classId = destinationClassId === undefined ? classIdFromFile : destinationClassId;
+    if (v.className && !classIdFromFile) issues.push('Class "' + v.className + '" does not exist in SchoolHub.');
+    if (destinationClassId !== undefined && v.className && classIdFromFile !== destinationClassId) issues.push('Spreadsheet Class must match the selected destination class.');
     const duplicates = admissionGroups.get(key) || [];
-    if (duplicates.length > 1) { errors.push(`Row ${item.row}: Student ID ${sid} matches multiple existing students. Correct those records first.`); return; }
+    if (duplicates.length > 1) issues.push('Student ID ' + sid + ' matches multiple existing students. Correct those records first.');
     const current = byAdmission.get(key);
-    if (current && !canAccessClass(current.classId)) { errors.push(`Row ${item.row}: you cannot update this student's current class.`); return; }
+    if (current && !canAccessClass(current.classId)) issues.push('You cannot update this student’s current class.');
+    const rowIssues = Array.from(new Set(issues));
+    if (rowIssues.length) return {row:item.row, values:v, source:item, status:'needs-correction', issues:rowIssues, change:null};
     const merged = current ? Object.assign({}, current) : {id:uid()};
-    merged.name = v.name; merged.admissionId = sid; merged.gender = gender; merged.dob = v.dob; merged.classId = classId;
+    merged.name = String(v.name).trim(); merged.admissionId = sid; merged.gender = gender; merged.dob = v.dob; merged.classId = classId;
     ['guardianName','parentPhone','houseGps'].forEach(k => { if (v[k]) merged[k] = v[k]; });
     if (disability) merged.disability = disability;
-    changes.push({mode:current ? 'Update' : 'Add', record:merged});
+    return {row:item.row, values:v, source:item, status:'ready', issues:[], change:{mode:current ? 'Update' : 'Add', record:merged}};
   });
-  return {errors, changes};
+  return {
+    rows:plannedRows,
+    changes:plannedRows.filter(item => item.change).map(item => item.change),
+    errors:plannedRows.filter(item => item.issues.length).map(item => 'Row ' + item.row + ': ' + item.issues.join(' '))
+  };
 }
 
-function showStudentImportPreview(rows) {
+function showStudentImportPreviewLegacy(rows) {
   const host = document.getElementById('studentImportPreview');
   const destinationClassId = document.getElementById('studentImportClassSelect').value;
   pendingStudentImport = null;
@@ -4336,13 +4384,13 @@ function showStudentImportPreview(rows) {
   host.scrollIntoView({block:'start',behavior:'smooth'});
 }
 
-function clearStudentImport() {
+function clearStudentImportLegacy() {
   pendingStudentImport = null;
   const host = document.getElementById('studentImportPreview');
   if (host) { host.innerHTML=''; host.classList.add('hidden'); }
 }
 
-async function saveStudentImport() {
+async function saveStudentImportLegacy() {
   const p = pendingStudentImport;
   if (!p || !isCurrentSession(p.token,p.uid,p.schoolId)) { clearStudentImport(); return; }
   const latest = DB.get(KEYS.students, []);
@@ -4374,6 +4422,135 @@ async function saveStudentImport() {
   }
 }
 
+function renderStudentImportPreviewPanel() {
+  const host = document.getElementById('studentImportPreview');
+  const pending = pendingStudentImport;
+  if (!host || !pending) return;
+  const rows = pending.plan.rows || [];
+  const readyRows = rows.filter(item => item.status === 'ready');
+  const correctionRows = rows.filter(item => item.status !== 'ready');
+  const addCount = readyRows.filter(item => item.change.mode === 'Add').length;
+  const updateCount = readyRows.length - addCount;
+  const shownRows = rows.slice(0, pending.visibleCount);
+  let markup = '<h3>Review student import</h3>' +
+    '<p class="student-import-summary"><strong>' + readyRows.length + ' ready</strong> (' + addCount + ' to add · ' + updateCount + ' to update) · <strong>' + correctionRows.length + ' need correction</strong></p>';
+  if (pending.notice) markup += '<p class="student-import-notice" role="status">' + escapeHtml(pending.notice) + '</p>';
+  markup += '<p class="hint">Ready rows can be imported now. Rows needing correction are held back and will not block the ready rows.</p>' +
+    '<div class="student-import-review-table-scroll" role="region" aria-label="Student import row review" tabindex="0"><table class="student-import-review-table"><thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Student ID</th><th scope="col">Name</th><th scope="col">Class</th><th scope="col">What to fix</th></tr></thead><tbody>';
+  markup += shownRows.map(item => {
+    const value = item.values || {};
+    const ready = item.status === 'ready';
+    const mode = ready ? ' · ' + item.change.mode : '';
+    const issues = item.issues.length ? item.issues.map(escapeHtml).join(' ') : '—';
+    return '<tr><td>' + item.row + '</td><td><span class="student-import-row-status ' + (ready ? 'is-ready' : 'needs-correction') + '">' +
+      (ready ? 'Ready' + mode : 'Needs correction') + '</span></td><td>' + escapeHtml(value.admissionId || '—') + '</td><td>' +
+      escapeHtml(value.name || '—') + '</td><td>' + escapeHtml(value.className || '—') + '</td><td class="student-import-issues">' + issues + '</td></tr>';
+  }).join('');
+  markup += '</tbody></table></div>';
+  if (rows.length > shownRows.length) {
+    markup += '<p class="hint student-import-page-status">Showing ' + shownRows.length + ' of ' + rows.length + ' rows.</p><button type="button" id="showMoreStudentImportRows">Show next ' +
+      Math.min(100, rows.length - shownRows.length) + ' rows</button>';
+  }
+  markup += '<div class="student-import-review-actions">';
+  markup += '<button type="button" id="applyStudentImport" class="btn-primary"' + (readyRows.length ? '' : ' disabled') + '>' +
+    (readyRows.length ? 'Import ' + readyRows.length + ' ready row(s)' : 'No ready rows to import') + '</button>';
+  if (correctionRows.length) markup += '<button type="button" id="chooseCorrectedStudentImport">Choose corrected file</button>';
+  markup += '<button type="button" id="cancelStudentImport">Clear preview</button></div>';
+  host.classList.remove('hidden');
+  host.innerHTML = markup;
+  const apply = document.getElementById('applyStudentImport');
+  if (apply && readyRows.length) apply.addEventListener('click', saveStudentImport);
+  document.getElementById('cancelStudentImport')?.addEventListener('click', clearStudentImport);
+  document.getElementById('chooseCorrectedStudentImport')?.addEventListener('click', () => document.getElementById('studentImportInput')?.click());
+  document.getElementById('showMoreStudentImportRows')?.addEventListener('click', () => {
+    if (!pendingStudentImport) return;
+    pendingStudentImport.visibleCount += 100;
+    renderStudentImportPreviewPanel();
+  });
+}
+
+function showStudentImportPreview(rows) {
+  const destinationClassId = document.getElementById('studentImportClassSelect').value;
+  const plan = planStudentImport(rows, destinationClassId);
+  pendingStudentImport = {
+    rows,
+    destinationClassId,
+    snapshot:JSON.stringify(DB.get(KEYS.students, [])),
+    token:sessionGeneration,
+    uid:currentUid,
+    schoolId:currentSchoolId,
+    plan,
+    visibleCount:100,
+    notice:''
+  };
+  renderStudentImportPreviewPanel();
+  document.getElementById('studentImportPreview')?.scrollIntoView({block:'start',behavior:'smooth'});
+}
+
+function clearStudentImport() {
+  pendingStudentImport = null;
+  const host = document.getElementById('studentImportPreview');
+  if (host) { host.innerHTML=''; host.classList.add('hidden'); }
+}
+
+async function saveStudentImport() {
+  const pending = pendingStudentImport;
+  if (!pending || !isCurrentSession(pending.token,pending.uid,pending.schoolId)) { clearStudentImport(); return; }
+  const latest = DB.get(KEYS.students, []);
+  if (JSON.stringify(latest) !== pending.snapshot) {
+    alert('Student details changed while this preview was open. Review the import again.');
+    showStudentImportPreview(pending.rows);
+    return;
+  }
+  if (document.getElementById('studentImportClassSelect').value !== pending.destinationClassId) {
+    alert('Destination class changed. Review the import again.');
+    showStudentImportPreview(pending.rows);
+    return;
+  }
+  const readyRows = pending.plan.rows.filter(item => item.status === 'ready');
+  const changes = readyRows.map(item => item.change);
+  if (!changes.length) return;
+  const invalidRows = pending.plan.rows.filter(item => item.status !== 'ready');
+  const map = new Map(latest.map(st => [String(st.id), st]));
+  changes.forEach(change => map.set(String(change.record.id), change.record));
+  const merged = Array.from(map.values());
+  const button = document.getElementById('applyStudentImport');
+  if (button) { button.disabled=true; button.textContent='Saving ready rows…'; }
+  try {
+    if (FIREBASE_ENABLED && currentSchoolId) {
+      if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+      const ref = schoolRef().collection('students');
+      const ops = changes.map(change => batch => batch.set(ref.doc(String(change.record.id)), stripImagesForCloud('students', change.record), {merge:true}));
+      await commitChunks(ops, 10);
+      if (!isCurrentSession(pending.token,pending.uid,pending.schoolId)) return;
+      setLastSyncedNow();
+    }
+    DB.set(KEYS.students, merged, {skipCloudSync:true});
+    auditAction('import','students','', 'Imported ' + changes.length + ' student record(s).');
+    editingStudentId=null; renderStudents(); renderClasses();
+    const added = changes.filter(change => change.mode === 'Add').length;
+    const updated = changes.length - added;
+    if (invalidRows.length) {
+      pendingStudentImport.rows = invalidRows.map(item => item.source).filter(Boolean);
+      pendingStudentImport.plan = {
+        rows:invalidRows,
+        changes:[],
+        errors:invalidRows.map(item => 'Row ' + item.row + ': ' + item.issues.join(' '))
+      };
+      pendingStudentImport.snapshot = JSON.stringify(merged);
+      pendingStudentImport.notice = added + ' added and ' + updated + ' updated. The remaining ' + invalidRows.length + ' row(s) were not saved. Correct them in the spreadsheet, then choose the corrected file to review again.';
+      pendingStudentImport.visibleCount = 100;
+      renderStudentImportPreviewPanel();
+    } else {
+      clearStudentImport();
+      alert('Students import saved to SchoolHub. ' + added + ' added; ' + updated + ' updated.');
+    }
+  } catch (error) {
+    if (button) { button.disabled=false; button.textContent='Import ' + changes.length + ' ready row(s)'; }
+    alert('Ready student rows were NOT saved to SchoolHub. Your existing student list has been left unchanged.\n\n' + (error.message || error));
+  }
+}
+
 function handleStudentImportFile(e) {
   const file = e.target.files && e.target.files[0];
   e.target.value = '';
@@ -4401,7 +4578,7 @@ function currentStudentTableRows() {
   });
 }
 
-function renderStudentDetailsTable() {
+function renderStudentDetailsTableLegacy() {
   installStudentTabUpgrade();
   const list = document.getElementById('studentList');
   if (!list || !list.parentNode) return;
@@ -4410,7 +4587,8 @@ function renderStudentDetailsTable() {
     panel = document.createElement('div');
     panel.id = 'studentDetailsTablePanel';
     panel.className = 'student-details-table-panel';
-    list.parentNode.insertBefore(panel, list.nextSibling);
+    const pagination = document.getElementById('studentListPagination');
+    list.parentNode.insertBefore(panel, pagination ? pagination.nextSibling : list.nextSibling);
   }
   const rows = currentStudentTableRows();
   panel.innerHTML = `<div class="staff-data-toolbar"><strong>Student details table</strong><button type="button" id="toggleStudentTableBtn" aria-controls="studentDetailsTableWrap" aria-expanded="${studentTableVisible}">${studentTableVisible?'Hide table':'Show table'}</button></div>
@@ -4422,6 +4600,45 @@ function renderStudentDetailsTable() {
       (rows.length ? rows.map(st => `<tr><td>${escapeHtml(st.name||'—')}</td><td>${escapeHtml(st.admissionId||'—')}</td><td>${escapeHtml(st.gender==='M'?'Male':st.gender==='F'?'Female':'—')}</td><td>${escapeHtml(st.dob||'—')}</td><td>${escapeHtml(calculateStudentAge(st.dob)||'—')}</td><td>${escapeHtml(st.disability||'—')}</td><td>${escapeHtml(st.guardianName||'—')}</td><td>${escapeHtml(st.parentPhone||'—')}</td><td>${escapeHtml(st.houseGps||'—')}</td><td>${escapeHtml(studentClassName(st)||'—')}</td><td><button type="button" class="table-view-student" data-id="${st.id}">View</button> <button type="button" class="table-edit-student" data-id="${st.id}">Edit</button></td></tr>`).join('') : '<tr><td colspan="11" class="empty">No students to display.</td></tr>') +
       '</tbody></table></div></div>';
   document.getElementById('toggleStudentTableBtn').onclick = () => { studentTableVisible=!studentTableVisible; renderStudentDetailsTable(); };
+  panel.querySelectorAll('.table-view-student').forEach(b => b.onclick=()=>showStudentDetails(b.dataset.id));
+  panel.querySelectorAll('.table-edit-student').forEach(b => b.onclick=()=>{editingStudentId=b.dataset.id; renderStudents();});
+}
+
+function renderStudentDetailsTable() {
+  installStudentTabUpgrade();
+  const list = document.getElementById('studentList');
+  if (!list || !list.parentNode) return;
+  let panel = document.getElementById('studentDetailsTablePanel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'studentDetailsTablePanel';
+    panel.className = 'student-details-table-panel';
+    const pagination = document.getElementById('studentListPagination');
+    list.parentNode.insertBefore(panel, pagination ? pagination.nextSibling : list.nextSibling);
+  }
+  const rows = currentStudentTableRows();
+  const pageRows = rows.slice(0, studentDetailsTableVisibleCount);
+  const rowMarkup = pageRows.map(st => '<tr><td>' + escapeHtml(st.name||'—') + '</td><td>' + escapeHtml(st.admissionId||'—') +
+    '</td><td>' + escapeHtml(st.gender==='M'?'Male':st.gender==='F'?'Female':'—') + '</td><td>' + escapeHtml(st.dob||'—') +
+    '</td><td>' + escapeHtml(calculateStudentAge(st.dob)||'—') + '</td><td>' + escapeHtml(st.disability||'—') +
+    '</td><td>' + escapeHtml(st.guardianName||'—') + '</td><td>' + escapeHtml(st.parentPhone||'—') +
+    '</td><td>' + escapeHtml(st.houseGps||'—') + '</td><td>' + escapeHtml(studentClassName(st)||'—') +
+    '</td><td><button type="button" class="table-view-student" data-id="' + escapeHtml(st.id) + '">View</button> <button type="button" class="table-edit-student" data-id="' + escapeHtml(st.id) + '">Edit</button></td></tr>').join('');
+  const toolbar = '<div class="staff-data-toolbar"><strong>Student details table</strong><button type="button" id="toggleStudentTableBtn" aria-controls="studentDetailsTableWrap" aria-expanded="' +
+    studentTableVisible + '">' + (studentTableVisible?'Hide table':'Show table') + '</button></div>';
+  const table = studentTableVisible
+    ? '<div id="studentDetailsTableWrap"><p class="hint">Scroll sideways to see all student details.</p><div class="table-scroll" tabindex="0"><table class="grades-table student-details-table"><thead><tr>' +
+      '<th>Full Name</th><th>Student ID</th><th>Sex</th><th>DOB</th><th>Age</th><th>Disability</th><th>Guardian Name</th><th>Phone</th><th>House No. / GhanaPost GPS</th><th>Class</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + (rowMarkup || '<tr><td colspan="11" class="empty">No students to display.</td></tr>') + '</tbody></table></div>' +
+      (rows.length > pageRows.length ? '<p class="hint student-details-pagination-status" role="status">Showing ' + pageRows.length + ' of ' + rows.length + ' matching students in this table.</p><button type="button" id="studentDetailsTableMoreBtn">Show ' +
+        Math.min(STUDENT_RESULTS_PAGE_SIZE, rows.length - pageRows.length) + ' more students</button>' : '') + '</div>'
+    : '';
+  panel.innerHTML = toolbar + table;
+  document.getElementById('toggleStudentTableBtn').onclick = () => { studentTableVisible=!studentTableVisible; renderStudentDetailsTable(); };
+  document.getElementById('studentDetailsTableMoreBtn')?.addEventListener('click', () => {
+    studentDetailsTableVisibleCount += STUDENT_RESULTS_PAGE_SIZE;
+    renderStudentDetailsTable();
+  });
   panel.querySelectorAll('.table-view-student').forEach(b => b.onclick=()=>showStudentDetails(b.dataset.id));
   panel.querySelectorAll('.table-edit-student').forEach(b => b.onclick=()=>{editingStudentId=b.dataset.id; renderStudents();});
 }
@@ -4449,7 +4666,7 @@ function printStaffDetailsTableOnly() {
   const columns = StaffTransfer.columns(STAFF_FIELDS);
   const search = String(document.getElementById('staffSearch')?.value || '').trim().toLowerCase();
   const records = DB.get(KEYS.staff,[]).filter(st => !search || columns.some(f=>String(st[f.key]||'').toLowerCase().includes(search)));
-  printDetailsTable('Staff Details', columns, records, (st,key)=>st[key] || (key==='notionalDate'?st.dateOfAppointment||'':''));
+  printDetailsTable('Staff Details', columns, records, (st,key)=>st[key] || '');
 }
 
 /* Keep the student table synchronized whenever the normal student renderer runs. */
@@ -4484,6 +4701,8 @@ const STAFF_FIELDS = [
   { key: 'emisNo', label: 'EMIS No.', type: 'text' },
   { key: 'ssnitNo', label: 'SSNIT No.', type: 'text' },
   { key: 'ghanaCardId', label: 'Ghana Card ID', type: 'text' },
+  { key: 'dateOfAppointment', label: 'Date of Appointment', type: 'date' },
+  { key: 'datePostedToSchool', label: 'Date Posted to School', type: 'date' },
   { key: 'rank', label: 'Rank/Grade', type: 'select', options: [
     ['Pupil Teacher','Pupil Teacher'],
     ['Superintendent II','Superintendent II'],
@@ -4521,7 +4740,6 @@ function canManageStaffWorkspace() {
   return sessionReady && sessionDataReady && (isHeadTeacher() || isActiveGuest());
 }
 
-let staffTableVisible = true;
 function renderStaff() {
   const list = document.getElementById('staffList');
   const count = document.getElementById('staffTableCount');
@@ -4532,15 +4750,19 @@ function renderStaff() {
   const columns = StaffTransfer.columns(STAFF_FIELDS);
   const search = document.getElementById('staffSearch').value.trim().toLowerCase();
   const visible = staff.filter(st => columns.some(f => String(st[f.key] || '').toLowerCase().includes(search)));
-  count.textContent = 'Showing ' + visible.length + ' of ' + staff.length + ' staff';
+  count.textContent = 'Showing ' + Math.min(staffListVisibleCount, visible.length) + ' of ' + visible.length + ' matching staff · ' + staff.length + ' total';
   const header = columns.map(f => '<th scope="col">' + escapeHtml(f.label) + '</th>').join('');
-  const rows = visible.map(st => '<tr>' + columns.map(f => '<td>' + (f.key === 'name' ? '<span class="staff-name-text">' : '') + escapeHtml(String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : '') || '—')) + (f.key === 'name' ? '</span>' : '') + '</td>').join('') +
+  const tableRows = visible.slice(0, staffTableVisibleCount);
+  const rows = tableRows.map(st => '<tr>' + columns.map(f => '<td>' + (f.key === 'name' ? '<span class="staff-name-text">' : '') + escapeHtml(String(st[f.key] || '—')) + (f.key === 'name' ? '</span>' : '') + '</td>').join('') +
     '<td class="staff-table-actions"><button type="button" class="view-staff" data-id="' + escapeHtml(st.id) + '">View</button><button type="button" class="edit-staff" data-id="' + escapeHtml(st.id) + '">Edit</button><button type="button" class="del-staff" data-id="' + escapeHtml(st.id) + '">Delete</button></td></tr>').join('');
   list.innerHTML = visible.length ? '' : '<p class="empty">' + (staff.length ? 'No staff match your search.' : 'No staff yet. Add a staff member above or import a file.') + '</p>';
   const editor = document.createElement('ul');
   editor.className = 'list staff-editor-list';
   list.appendChild(editor);
-  staff.filter(st => visible.includes(st) || editingStaffId === st.id).forEach(st => {
+  const editorRows = visible.slice(0, staffListVisibleCount);
+  const editingRow = visible.find(st => st.id === editingStaffId);
+  if (editingRow && !editorRows.includes(editingRow)) editorRows.push(editingRow);
+  editorRows.forEach(st => {
     const li = document.createElement('li');
     if (editingStaffId === st.id) {
       const fieldInputs = STAFF_FIELDS.map(f =>
@@ -4580,14 +4802,30 @@ function renderStaff() {
     editor.appendChild(li);
   });
 
+  if (visible.length > editorRows.length) {
+    const pagination = document.createElement('div');
+    pagination.className = 'student-results-pagination staff-results-pagination';
+    pagination.innerHTML = '<p class="hint" role="status">Showing ' + editorRows.length + ' of ' + visible.length + ' matching staff.</p><button type="button" id="staffListMoreBtn">Show ' + Math.min(STAFF_RESULTS_PAGE_SIZE, visible.length - editorRows.length) + ' more staff</button>';
+    list.appendChild(pagination);
+    pagination.querySelector('#staffListMoreBtn').addEventListener('click', () => {
+      staffListVisibleCount += STAFF_RESULTS_PAGE_SIZE;
+      renderStaff();
+    });
+  }
+
   const tableSection = document.createElement('div');
-  tableSection.innerHTML = '<div class="staff-data-toolbar"><strong>Staff details table</strong><button type="button" id="toggleStaffTableBtn" aria-controls="staffDetailsTablePanel" aria-expanded="' + staffTableVisible + '">' + (staffTableVisible ? 'Hide table' : 'Show table') + '</button></div><div id="staffDetailsTablePanel"' + (staffTableVisible ? '' : ' hidden') + '><p class="hint">Scroll sideways to see all staff details.</p><div class="table-scroll staff-table-scroll" tabindex="0" role="region" aria-label="Staff details, scroll horizontally for more columns"><table class="grades-table staff-details-table"><caption class="sr-only">Staff details</caption><thead><tr>' + header + '<th scope="col">Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  tableSection.innerHTML = '<div class="staff-data-toolbar"><strong>Staff details table</strong><button type="button" id="toggleStaffTableBtn" aria-controls="staffDetailsTablePanel" aria-expanded="' + staffTableVisible + '">' + (staffTableVisible ? 'Hide table' : 'Show table') + '</button></div><div id="staffDetailsTablePanel"' + (staffTableVisible ? '' : ' hidden') + '><p class="hint">Scroll sideways to see all staff details.</p><div class="table-scroll staff-table-scroll" tabindex="0" role="region" aria-label="Staff details, scroll horizontally for more columns"><table class="grades-table staff-details-table"><caption class="sr-only">Staff details</caption><thead><tr>' + header + '<th scope="col">Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    (visible.length > tableRows.length ? '<p class="hint" role="status">Showing ' + tableRows.length + ' of ' + visible.length + ' matching staff in this table.</p><button type="button" id="staffTableMoreBtn">Show ' + Math.min(STAFF_RESULTS_PAGE_SIZE, visible.length - tableRows.length) + ' more staff</button>' : '') + '</div>';
   list.appendChild(tableSection);
   document.getElementById('toggleStaffTableBtn').addEventListener('click', event => {
     staffTableVisible = !staffTableVisible;
     document.getElementById('staffDetailsTablePanel').hidden = !staffTableVisible;
     event.currentTarget.textContent = staffTableVisible ? 'Hide table' : 'Show table';
     event.currentTarget.setAttribute('aria-expanded', String(staffTableVisible));
+  });
+  tableSection.querySelector('#staffTableMoreBtn')?.addEventListener('click', () => {
+    staffTableVisibleCount += STAFF_RESULTS_PAGE_SIZE;
+    renderStaff();
   });
 
   list.querySelectorAll('.view-staff').forEach(btn => {
@@ -4688,8 +4926,10 @@ function showStaffDetails(staffId) {
     ['EMIS No.', st.emisNo || '—'],
     ['SSNIT No.', st.ssnitNo || '—'],
     ['Ghana Card ID', st.ghanaCardId || '—'],
+    ['Date of Appointment', st.dateOfAppointment || '—'],
+    ['Date Posted to School', st.datePostedToSchool || '—'],
     ['Rank/Grade', st.rank || '—'],
-    ['Notional Date', st.notionalDate || st.dateOfAppointment || '—'],
+    ['Notional Date', st.notionalDate || '—'],
     ['Substantive Date', st.substantiveDate || '—'],
     ['Academic Qualification', st.academicQualification || '—'],
     ['Professional Qualification', st.professionalQualification || '—'],
@@ -4874,7 +5114,7 @@ function exportStaffWorkbook(templateOnly = false) {
   if (typeof XLSX === 'undefined') { alert('Spreadsheet tools are still loading. Please reconnect and try again.'); return; }
   const fields = StaffTransfer.columns(STAFF_FIELDS);
   const staff = templateOnly ? [] : DB.get(KEYS.staff, []);
-  const rows = [fields.map(f => f.label), ...staff.map(st => fields.map(f => String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : ''))))];
+  const rows = [fields.map(f => f.label), ...staff.map(st => fields.map(f => String(st[f.key] || '')))];
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   // Export identifiers, bank accounts and phone numbers as text, including leading zeros.
   Object.keys(sheet).filter(key => key[0] !== '!').forEach(key => { sheet[key].t = 's'; sheet[key].z = '@'; delete sheet[key].f; });
@@ -4984,7 +5224,7 @@ function printStaffDetails() {
   const sections = [];
   for (let i = 0; i < details.length; i += 5) {
     const fields = identity.concat(details.slice(i, i + 5));
-    sections.push('<section><h1>' + escapeHtml(DB.get(KEYS.settings, {}).schoolName || 'School') + '</h1><h2>Staff details — Part ' + (i / 5 + 1) + '</h2><p>' + staff.length + ' staff · ' + escapeHtml(new Date().toLocaleDateString()) + (search ? ' · Search: ' + escapeHtml(search) : '') + '</p><table><thead><tr>' + fields.map(f => '<th>' + escapeHtml(f.label) + '</th>').join('') + '</tr></thead><tbody>' + staff.map(st => '<tr>' + fields.map(f => '<td>' + escapeHtml(String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : '') || '—')) + '</td>').join('') + '</tr>').join('') + '</tbody></table></section>');
+    sections.push('<section><h1>' + escapeHtml(DB.get(KEYS.settings, {}).schoolName || 'School') + '</h1><h2>Staff details — Part ' + (i / 5 + 1) + '</h2><p>' + staff.length + ' staff · ' + escapeHtml(new Date().toLocaleDateString()) + (search ? ' · Search: ' + escapeHtml(search) : '') + '</p><table><thead><tr>' + fields.map(f => '<th>' + escapeHtml(f.label) + '</th>').join('') + '</tr></thead><tbody>' + staff.map(st => '<tr>' + fields.map(f => '<td>' + escapeHtml(String(st[f.key] || '—')) + '</td>').join('') + '</tr>').join('') + '</tbody></table></section>');
   }
   frame.onload = () => {
     frame.contentWindow.addEventListener('afterprint', () => frame.remove(), { once: true });
@@ -5056,7 +5296,11 @@ document.getElementById('checkStaffRecoveryBtn').addEventListener('click', async
   }
 });
 document.getElementById('printStaffBtn').addEventListener('click', printStaffDetails);
-document.getElementById('staffSearch').addEventListener('input', renderStaff);
+document.getElementById('staffSearch').addEventListener('input', () => {
+  staffListVisibleCount = STAFF_RESULTS_PAGE_SIZE;
+  staffTableVisibleCount = STAFF_RESULTS_PAGE_SIZE;
+  renderStaff();
+});
 document.getElementById('exportStaffBtn').addEventListener('click', () => exportStaffWorkbook(false));
 document.getElementById('staffTemplateBtn').addEventListener('click', () => exportStaffWorkbook(true));
 document.getElementById('importStaffBtn').addEventListener('click', () => {
@@ -5355,7 +5599,7 @@ function ensureHeadTeacherStaffRecord() {
     name: fallbackName,
     role: 'Head Teacher',
     dob: '', staffId: '', registeredNo: '', licenseNo: '', ssnitNo: '',
-    ghanaCardId: '', dateOfAppointment: '', rank: '', phone: '',
+    ghanaCardId: '', dateOfAppointment: '', datePostedToSchool: '', rank: '', phone: '',
     signature: '', signatureUrl: '', signatureStoragePath: '',
     createdAt: new Date().toISOString()
   };
@@ -12950,7 +13194,12 @@ function bulkVisibleRecordsV40(kind){
   }
   if(kind==='classes') return isTeacher()?[]:getAccessibleClasses();
   if(kind==='subjects') return subjectArrangeMode?[]:sortSubjectsByOrder(DB.get(KEYS.subjects,[]));
-  if(kind==='staff') return canManageStaffWorkspace()?DB.get(KEYS.staff,[]):[];
+  if(kind==='staff'){
+    if(!canManageStaffWorkspace())return [];
+    const search=String(document.getElementById('staffSearch')?.value||'').trim().toLowerCase();
+    const fields=StaffTransfer.columns(STAFF_FIELDS);
+    return DB.get(KEYS.staff,[]).filter(st=>!search||fields.some(f=>String(st[f.key]||'').toLowerCase().includes(search)));
+  }
   return [];
 }
 function bulkRefreshToolbarV40(kind){
