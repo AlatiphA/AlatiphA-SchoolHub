@@ -41,9 +41,15 @@ test('staff bulk add handles 65 records and defaults their role to Teacher', asy
   await f.run(); assert.equal(f.data.staff.length,65); assert.ok(f.data.staff.every(s=>s.role==='Teacher'));
   assert.equal(f.cloud.size,65);
 });
-test('validates the entire list before saving missing or repeated Staff IDs',async()=>{
-  for (const text of ['Jane','Jane, F, 1\nJohn, M, 1','Jane, F, 1\n, M, 2']) {
-    const f=fixture('staff'); f.input.value=text; await f.run(); assert.equal(f.writes.length,0); assert.equal(f.input.value,text);
+test('staff bulk saves valid rows and retains malformed or repeated-ID rows for correction',async()=>{
+  for (const [text,expectedSaved,remaining] of [
+    ['Jane',0,'Jane'],
+    ['Jane, F, 1\nJohn, M, 1',1,'John, M, 1'],
+    ['Jane, F, 1\n, M, 2',1,', M, 2']
+  ]) {
+    const f=fixture('staff'); f.input.value=text; await f.run();
+    assert.equal(f.writes.length,expectedSaved ? 1 : 0); assert.equal(f.data.staff.length,expectedSaved);
+    assert.equal(f.input.value,remaining);
   }
 });
 test('partial failure retains only unsaved lines, and retry avoids duplicates',async()=>{
@@ -59,9 +65,10 @@ test('duplicate clicks cannot start another save, and session changes stop furth
   const first=f.run(); await f.run(); await first;
   assert.equal(f.writes.length,1); assert.equal(f.data.students.length,0); assert.equal(f.button.disabled,false);
 });
-test('existing Student IDs are rejected without saving any part of the list',async()=>{
+test('existing Student IDs are retained for correction while other rows save',async()=>{
   const f=fixture(); f.data.students.push({id:'existing',admissionId:'ABC'}); f.input.value='Jane, F, abc\nJohn, M, new';
-  await f.run(); assert.equal(f.writes.length,0); assert.equal(f.data.students.length,1);
+  await f.run(); assert.equal(f.writes.length,1); assert.equal(f.data.students.length,2);
+  assert.equal(f.input.value,'Jane, F, abc'); assert.match(f.alerts[0],/already in use/);
 });
 
 test('offline bulk pupils save locally without network confirmation and show the full class',async()=>{
@@ -75,11 +82,11 @@ test('student bulk entry saves sex from full words or letters and keeps optional
  const f=fixture();f.input.value='Jane Doe, Female, 001\nJohn Smith, Male\nAma, f\nKofi, m, 0002';await f.run();
  assert.deepEqual(f.data.students.map(s=>[s.name,s.gender,s.admissionId]),[['Jane Doe','F','001'],['John Smith','M',''],['Ama','F',''],['Kofi','M','0002']]);assert(f.cloud.size===4);
 });
-test('student bulk entry validates sex and column count before saving any row',async()=>{
- for(const bad of ['John','John, 101','John, Other','John, , 002','John, M, 002, extra',', F, 003']){const f=fixture();f.input.value='Valid pupil, F, 001\n'+bad;await f.run();assert.equal(f.data.students.length,0);assert.equal(f.writes.length,0);assert.equal(f.input.value,'Valid pupil, F, 001\n'+bad);assert.match(f.alerts[0],/Line 2:/);}
+test('student bulk saves valid rows and retains invalid sex or column rows for correction',async()=>{
+ for(const bad of ['John','John, 101','John, Other','John, , 002','John, M, 002, extra',', F, 003']){const f=fixture();f.input.value='Valid pupil, F, 001\n'+bad;await f.run();assert.equal(f.data.students.length,1);assert.equal(f.writes.length,1);assert.equal(f.input.value,bad);assert.match(f.alerts[0],/Line 2:/);}
 });
-test('student bulk duplicate IDs are caught case-insensitively with the new format',async()=>{
- const f=fixture();f.input.value='Ama, F, abc\nKofi, M, ABC';await f.run();assert.equal(f.writes.length,0);assert.match(f.alerts[0],/already in use/);
+test('student bulk saves first duplicate ID and retains later case-insensitive duplicate',async()=>{
+ const f=fixture();f.input.value='Ama, F, abc\nKofi, M, ABC';await f.run();assert.equal(f.writes.length,1);assert.equal(f.data.students.length,1);assert.equal(f.input.value,'Kofi, M, ABC');assert.match(f.alerts[0],/already in use/);
 });
 test('gender survives offline entry and a lost-acknowledgement retry',async()=>{
  const offline=fixture();offline.ctx.navigator.onLine=false;offline.input.value='Offline pupil, Female';await offline.run();assert.equal(offline.data.students[0].gender,'F');
@@ -87,7 +94,12 @@ test('gender survives offline entry and a lost-acknowledgement retry',async()=>{
 });
 
 test('staff bulk entry stores sex with leading-zero Staff IDs',async()=>{const f=fixture('staff');f.input.value='Jane, Female, 001\nJohn, m, 002';await f.run();assert.deepEqual(f.data.staff.map(s=>[s.sex,s.staffId]),[['F','001'],['M','002']]);assert(f.data.staff.every(s=>s.gender===undefined));});
-test('staff bulk validates sex and exact column count before writing any row',async()=>{for(const bad of ['Name, 101','Name, Other, 101','Name, , 101','Name, M','Name, F,','Name, M, 1, extra']){const f=fixture('staff');f.input.value='Valid, F, 001\n'+bad;await f.run();assert.equal(f.writes.length,0);assert.equal(f.data.staff.length,0);assert.match(f.alerts[0],/Line 2:/);}});
+test('staff bulk saves valid rows and retains invalid sex or column rows for correction',async()=>{for(const bad of ['Name, 101','Name, Other, 101','Name, , 101','Name, M','Name, F,','Name, M, 1, extra']){const f=fixture('staff');f.input.value='Valid, F, 001\n'+bad;await f.run();assert.equal(f.writes.length,1);assert.equal(f.data.staff.length,1);assert.equal(f.input.value,bad);assert.match(f.alerts[0],/Line 2:/);}});
+test('student shorthand accepts Abu Mama, m 12456875 and leaves other invalid rows to fix',async()=>{
+ const f=fixture(); f.input.value='Abu Mama, m 12456875\nNeeds correction'; await f.run();
+ assert.deepEqual(f.data.students.map(s=>[s.name,s.gender,s.admissionId]),[['Abu Mama','M','12456875']]);
+ assert.equal(f.input.value,'Needs correction'); assert.match(f.alerts[0],/Line 2:/);
+});
 test('staff sex and record IDs survive a lost-acknowledgement retry',async()=>{const f=fixture('staff');f.input.value='Retry staff, Male, 0001';f.ctx.failAt=1;f.ctx.loseAck=true;await f.run();assert.equal(f.data.staff.length,0);f.ctx.failAt=0;await f.run();assert.equal(f.cloud.size,1);assert.equal(f.data.staff[0].sex,'M');assert.equal(f.data.staff[0].staffId,'0001');});
 
 test('bulk destination ignores search class',async()=>{const f=fixture();f.nodes.studentClassSelect={value:'other'};f.input.value='Ama, F';await f.ctx.bulkAddPeople('students');assert.equal(f.data.students[0].classId,'class1');});
