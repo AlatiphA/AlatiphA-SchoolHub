@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.95';
+const APP_VERSION = '40.1.96';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -439,6 +439,11 @@ function updateOfflineModeBanner(message) {
   const offline = navigator.onLine === false || (offlineAuthenticatedMode && !checking);
   const pending = pendingSyncCountForCurrentSchool();
   const writeFailed = pending > 0 && (syncableFields().some(field => syncErrors.has(field.key)) || (typeof operationsHasErrors === 'function' && operationsHasErrors()) || (typeof pendingFeeSyncState === 'function' && !!pendingFeeSyncState().error));
+  const reviewRequired = pending > 0 && syncableFields().some(field => {
+    const failure = syncErrors.get(field.key);
+    const code = String(failure && failure.code || '').split('/').pop().toLowerCase();
+    return ['settings','grades','attendance','teacherAttendance','remarks'].includes(field.field) && dirtyIdsFor(field.key).length > 0 && (code === 'aborted' || code === 'conflict');
+  });
   const hydrationErrorText = typeof cloudHydrationStatusError === 'string' ? cloudHydrationStatusError : '';
   const hydrationFailed = !!hydrationErrorText;
   const failed = writeFailed || hydrationFailed;
@@ -470,7 +475,7 @@ function updateOfflineModeBanner(message) {
       : checking ? 'Checking your account and safely syncing saved changes. Open Sync Center.'
       : pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
       : offline ? 'Offline. No pending record changes. Open Sync Center.' : 'No pending record changes on this device. Open Sync Center.';
-    const automatic=typeof window==='undefined'?null:window.SchoolHubAutomaticSync?.status?.({failed,writeFailed,hydrationFailed,pending,offline,checking,waiting,quietRecovery,loading:!sessionReady||!sessionDataReady||cloudHydrationInProgress});
+    const automatic=typeof window==='undefined'?null:window.SchoolHubAutomaticSync?.status?.({failed,writeFailed,hydrationFailed,reviewRequired,pending,offline,checking,waiting,quietRecovery,loading:!sessionReady||!sessionDataReady||cloudHydrationInProgress});
     if(automatic){statusButton.textContent=automatic.label;statusButton.dataset.state=automatic.state;statusButton.title=automatic.detail+' Open Sync Center.';const detail=document.getElementById('automaticSyncDetail');if(detail&&detail.textContent!==automatic.label+': '+automatic.detail)detail.textContent=automatic.label+': '+automatic.detail;}
     statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
   }
@@ -479,8 +484,10 @@ function updateOfflineModeBanner(message) {
   const title = banner.querySelector('.offline-mode-title');
   const detail = banner.querySelector('.offline-mode-detail');
   if (failed) {
-    if (title) title.textContent = 'Sync needs attention';
-    if (detail) detail.textContent = hydrationErrorText || 'Changes remain saved on this device. Open Sync Center to review and retry.';
+    if (title) title.textContent = reviewRequired ? 'Awaiting conflict review' : 'Sync needs attention';
+    if (detail) detail.textContent = reviewRequired
+      ? 'Your edit remains saved on this device. Open Profile → Sync Center → Review conflicting edits and compare the device and cloud values.'
+      : hydrationErrorText || 'Your changes remain saved on this device. Open Profile → Sync Center → Pending school data to see the item and error. Keep browser data intact.';
   } else if (checking) {
     if (title) title.textContent = reconnecting ? 'Reconnecting…' : 'Checking saved changes…';
     if (detail) detail.textContent = message || 'Checking your account and safely syncing pending changes.';
@@ -10579,9 +10586,7 @@ function pullCloudData(sessionToken, { background = false } = {}) {
       statusButton.dataset.state = 'pending';
       statusButton.textContent = 'Still syncing';
       statusButton.title = 'The initial cloud check is taking longer than expected. Your local data remains available.';
-      const automatic=typeof window==='undefined'?null:window.SchoolHubAutomaticSync?.status?.({failed,writeFailed,hydrationFailed,pending,offline,checking,waiting,quietRecovery,loading:!sessionReady||!sessionDataReady||cloudHydrationInProgress});
-    if(automatic){statusButton.textContent=automatic.label;statusButton.dataset.state=automatic.state;statusButton.title=automatic.detail+' Open Sync Center.';const detail=document.getElementById('automaticSyncDetail');if(detail&&detail.textContent!==automatic.label+': '+automatic.detail)detail.textContent=automatic.label+': '+automatic.detail;}
-    statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
+      updateOfflineModeBanner('The initial cloud check is taking longer than expected. Your local data remains available.');
     }
   }, CORE_HYDRATION_SOFT_WARNING_MS);
   let hydrationDeadlineTimer = null;
@@ -13155,67 +13160,4 @@ async function deleteRecordsV40(kind,selectedIds){
   }
   // A single batch is atomic; never report a partial multi-batch delete as a failure.
   if(ids.length>220){alert('Select at most 220 records per deletion.');return;}
-  const detail=kind==='students'?'Their grades, attendance entries and remarks will also be removed.':kind==='staff'?'Class and Head Teacher signature assignments will be cleared. Historical staff attendance is retained. Teacher login access stays active; use Manage Teachers → Disable to revoke it.':'Only records without linked academic data can be deleted.';
-  if(!cascadeSubjectGrades && !confirm(`Delete ${ids.length} ${kind} record(s)?\n\n${detail}\n\nThis action cannot be undone.`))return;
-  const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;
-  let cloudDeleted=false;deletionBusyV40=true;
-  try{
-    if(FIREBASE_ENABLED&&currentSchoolId){
-      if(navigator.onLine===false || offlineAuthenticatedMode)throw new Error('Reconnect before deleting school records.');
-      if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');
-      if(kind==='subjects'&&cascadeSubjectGrades){
-        const cascadeResult=await safetyCall('deleteSubjectsWithGrades',{subjectIds:ids});
-        if(cascadeResult&&Array.isArray(cascadeResult.deletions))rememberDeletions(cascadeResult.deletions);
-      }else{
-        await checkCloudDeletionDependenciesV40(kind,ids);
-        if(!isCurrentSession(token,userId,schoolId))return;
-        await commitChunks(ids.map(id=>batch=>batch.delete(schoolRef().collection(kind).doc(id))));
-      }
-      cloudDeleted=true;
-      if(!isCurrentSession(token,userId,schoolId))return;
-    }
-    // Use the same cleanup for individual and selected-record deletion.
-    if(kind==='students')removeStudentRelatedRecordsV40(ids);
-    if(kind==='classes')removeEmptyClassRecordsLocalV40(ids);
-    if(kind==='staff'){
-      const classes=DB.get(KEYS.classes,[]);let changed=false;
-      classes.forEach(c=>{if(ids.includes(String(c.classTeacherId))){c.classTeacherId='';changed=true;}});
-      if(changed)DB.set(KEYS.classes,classes);
-      const settings=DB.get(KEYS.settings,{});
-      if(ids.includes(String(settings.headTeacherId))){settings.headTeacherId='';DB.set(KEYS.settings,settings);}
-    }
-    const remaining=DB.get(KEYS[kind],[]).filter(x=>!ids.includes(String(x.id)));
-    if(kind==='subjects'){
-      remaining.forEach((x,i)=>{x.order=i;});
-      if(cascadeSubjectGrades)removeSubjectGradeRefsLocalV40(ids);
-      else pruneEmptySubjectGradeRefsV40(ids);
-    }
-    DB.set(KEYS[kind],remaining,{skipCloudSync:true});
-    if(kind==='classes'){
-      clearSyncDirty(KEYS.classes,ids);
-      // Retire mirrored empty-container jobs after confirmed deletion rather
-      // than repeatedly trying to upload them to a deleted class.
-      if(typeof stagePendingWorkerSync==='function')stagePendingWorkerSync().catch(error=>console.warn('Background queue cleanup will retry on reopening:',error));
-    }
-    auditAction('delete',kind,ids.length===1?ids[0]:'bulk',`Deleted ${ids.length} ${kind} record(s)`);
-    ids.forEach(id=>bulkSelectionsV40[kind].delete(id));
-    if(kind==='students'){renderStudents();renderClasses();}else if(kind==='staff'){renderStaff();renderClasses();}else if(kind==='classes'){renderClasses();renderStudentClassSelect();}else renderSubjects();
-  }catch(error){
-    alert((cloudDeleted?'The selected records were deleted from the cloud, but local cleanup needs attention. Keep this device’s data and retry Sync Now.':'Deletion did not complete. Your local records have been kept.')+'\n\n'+(error.message||error));
-  }finally{deletionBusyV40=false;}
-}
-const _renderClassesBulkV40=renderClasses;renderClasses=function(){_renderClassesBulkV40();setTimeout(()=>installBulkUiV40('classes','classList','li'),0);};
-const _renderStudentsBulkV40=renderStudents;renderStudents=function(){_renderStudentsBulkV40();setTimeout(()=>installBulkUiV40('students','studentList','li'),0);};
-const _renderSubjectsBulkV40=renderSubjects;renderSubjects=function(){_renderSubjectsBulkV40();setTimeout(()=>installBulkUiV40('subjects','subjectList','li.subject-sort-item'),0);};
-const _renderStaffBulkV40=renderStaff;renderStaff=function(){_renderStaffBulkV40();setTimeout(()=>installBulkUiV40('staff','staffList','.staff-editor-list > li'),0);};
-setTimeout(()=>{try{renderClasses();renderStudents();renderSubjects();renderStaff();}catch(e){console.warn('Bulk selection initial render:',e);}},0);
-
-document.getElementById('syncStatusBtn')?.addEventListener('click', () => document.getElementById('profileSyncCenterBtn')?.click());
-
-/* Collapse add forms without discarding entered values or submitting a save. */
-function closeSchoolHubAddForm(formId,toggleId){
- const form=document.getElementById(formId),toggle=document.getElementById(toggleId);
- if(!form||!toggle)return;
- form.classList.add('hidden');toggle.textContent='Expand';toggle.setAttribute('aria-expanded','false');if(toggle.getAttribute?.('aria-label'))toggle.setAttribute('aria-label','Expand '+(['bulkStudentForm','staffBulkAddSection'].includes(formId)?'Bulk add':['studentExcelForm','staffExcelForm'].includes(formId)?'Excel template':formId==='addStaffForm'?'Add Staff':'Add Student'));toggle.focus();
-}
-document.querySelectorAll('[data-close-form]').forEach(button=>button.addEventListener('click',()=>closeSchoolHubAddForm(button.dataset.closeForm,button.dataset.formToggle)));
+  const detail=kind==='students'?'Their grades, attendance entries and remarks will also be removed.':kind==='staff'?'Class and Head Teacher signature assignments will be cleared. Historical staff attendance
