@@ -1155,3 +1155,63 @@
 @media(max-width:600px){.manual-billing .fee-actions button{width:100%;}.manual-billing .billing-section{padding:12px;}}
 
 .sync-status-badge[data-state='paused']::before{background:#69766e;}
+
+/* v40 Students results layout: full-width search and paired export actions. */
+#app #view-students > .student-results-filters{
+  grid-template-columns:minmax(0,1fr);
+  gap:10px;
+  width:100%;
+  box-sizing:border-box;
+}
+#app #view-students > .student-results-filters > label,
+#app #view-students > .student-results-filters input,
+#app #view-students > .student-results-filters select{
+  display:block;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+#app #view-students > #studentDataToolbar{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  align-items:stretch;
+  justify-content:stretch;
+  gap:10px;
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+}
+#app #view-students > #studentDataToolbar > button{
+  width:100%;
+  max-width:none;
+  min-width:0;
+  min-height:44px;
+  white-space:normal;
+}
+#app #view-students > #studentDataToolbar > .hint,
+#app #view-students > #studentDataToolbar > #studentImportPreview,
+#app #view-students > #studentDataToolbar > #studentRecoveryPreview,
+#app #view-students > #studentDataToolbar > #checkStudentRecoveryBtn{
+  grid-column:1 / -1;
+}
+#app #view-students > #studentDataToolbar > .hint{
+  width:100%;
+  margin:0;
+}
+@media(max-width:600px){
+  #app #view-students > #studentDataToolbar{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    flex-direction:initial;
+    align-items:stretch;
+    gap:8px;
+  }
+  #app #view-students > #studentDataToolbar > button{
+    width:100%;
+    min-width:0;
+    padding-inline:8px;
+    font-size:14px;
+    line-height:1.35;
+  }
+}
