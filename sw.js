@@ -1,15 +1,15 @@
 // AlatiphA SchoolHub service worker: cache static assets only.
-const RELEASE_VERSION = '40.1.89';
+const RELEASE_VERSION = '40.1.90';
 const CACHE_NAME = 'schoolhub-cache-v40-private-images-1-release-' + RELEASE_VERSION;
 // Install a complete cold-start shell before retiring the previous cache.
 // Runtime-only library caching loses Firebase when an update activates after
 // the current page already loaded those libraries through the old worker.
 const VENDOR_SHELL = [
- 'https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js',
- 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js',
- 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js',
- 'https://www.gstatic.com/firebasejs/12.19.0/firebase-storage-compat.js',
- 'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions-compat.js',
+ 'https://www.gstatic.com/firebasejs/13.4.0/firebase-app-compat.js',
+ 'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth-compat.js',
+ 'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore-compat.js',
+ 'https://www.gstatic.com/firebasejs/13.4.0/firebase-storage-compat.js',
+ 'https://www.gstatic.com/firebasejs/13.4.0/firebase-functions-compat.js',
  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'

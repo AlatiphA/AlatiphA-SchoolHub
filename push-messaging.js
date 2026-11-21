@@ -12,7 +12,7 @@
  }
  let sdkLoading;
  async function messaging(){
-  if(!firebase.messaging){if(!sdkLoading)sdkLoading=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://www.gstatic.com/firebasejs/12.19.0/firebase-messaging-compat.js';script.onload=resolve;script.onerror=()=>{sdkLoading=null;script.remove();reject(Error('Could not load push support. Check your connection.'));};document.head.append(script);});await sdkLoading;}
+  if(!firebase.messaging){if(!sdkLoading)sdkLoading=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://www.gstatic.com/firebasejs/13.4.0/firebase-messaging-compat.js';script.onload=resolve;script.onerror=()=>{sdkLoading=null;script.remove();reject(Error('Could not load push support. Check your connection.'));};document.head.append(script);});await sdkLoading;}
   if(!(await firebase.messaging.isSupported()))throw Error('Push is not supported in this browser.');
   if(!settings?.appId||!settings?.messagingSenderId)throw Error('The project owner needs to finish Push setup.');
   const name='schoolhub-push',config={...globalThis.FIREBASE_CONFIG,appId:settings.appId,messagingSenderId:settings.messagingSenderId};

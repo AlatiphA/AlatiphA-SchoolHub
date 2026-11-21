@@ -24,12 +24,12 @@ test('email sign in and sign up stay primary while Google appears below them', (
   assert.equal((root.match(/id="authSubmitBtn"/g) || []).length, 1);
 });
 
-test('Firebase compat browser SDKs are consistently upgraded to 12.19.0', () => {
+test('Firebase compat browser SDKs are consistently upgraded to 13.4.0', () => {
   for (const module of ['app', 'auth', 'firestore', 'storage', 'functions']) {
-    assert.ok(root.includes(`https://www.gstatic.com/firebasejs/12.19.0/firebase-${module}-compat.js`), module);
+    assert.ok(root.includes(`https://www.gstatic.com/firebasejs/13.4.0/firebase-${module}-compat.js`), module);
   }
   assert.ok(!root.includes('firebasejs/12.17.1/'));
-  assert.equal((root.match(/firebasejs\/12\.19\.0\//g) || []).length, 5);
+  assert.equal((root.match(/firebasejs\/13\.4\.0\//g) || []).length, 5);
 });
 
 test('hosting mirror and existing Google sign-in behavior remain intact', () => {

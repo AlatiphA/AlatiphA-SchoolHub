@@ -5,10 +5,10 @@
   async function firebaseServices(){
     if(!services)services=(async()=>{
       root.importScripts('./firebase-config.js',
-        'https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js',
-        'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js',
-        'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js',
-        'https://www.gstatic.com/firebasejs/12.19.0/firebase-functions-compat.js');
+        'https://www.gstatic.com/firebasejs/13.4.0/firebase-app-compat.js',
+        'https://www.gstatic.com/firebasejs/13.4.0/firebase-auth-compat.js',
+        'https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore-compat.js',
+        'https://www.gstatic.com/firebasejs/13.4.0/firebase-functions-compat.js');
       if(!root.FIREBASE_CONFIG?.apiKey||root.FIREBASE_CONFIG.apiKey==='YOUR_API_KEY')return null;
       if(!root.firebase.apps.length)root.firebase.initializeApp(root.FIREBASE_CONFIG);
       const auth=root.firebase.auth();
