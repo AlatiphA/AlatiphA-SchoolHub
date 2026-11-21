@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.90';
+const APP_VERSION = '40.1.91';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -3620,19 +3620,31 @@ async function bulkAddPeople(kind) {
   const token = sessionGeneration, userId = currentUid, schoolId = currentSchoolId;
   const pendingKey = JSON.stringify([kind, token, userId, schoolId, classId]);
   const plan = prepareBulkAdd(kind, textarea.value, classId, bulkAddPending.get(pendingKey));
-  if (!plan.items.length) { if (plan.errors.length) alert(plan.errors.join('\n')); return; }
+  const feedback = document.getElementById(staff ? 'bulkStaffValidation' : 'bulkStudentValidation');
+  if (feedback) { feedback.textContent = ''; feedback.classList.remove('show'); }
+  if (plan.errors.length) {
+    const message = 'Some rows need correction. Valid rows will still be added; rows with errors remain in this box.\n' + plan.errors.join('\n');
+    if (feedback) { feedback.textContent = message; feedback.classList.add('show'); }
+    if (!plan.items.length) { alert(message); return; }
+  }
+  if (!plan.items.length) return;
   bulkAddPending.set(pendingKey, plan);
   const total = plan.items.length, oldText = button.textContent;
   let saved = 0;
   button.disabled = true; textarea.disabled = true;
   try {
-    if(!staff&&FIREBASE_ENABLED&&(navigator.onLine===false||offlineAuthenticatedMode)){
-      if(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady)throw Error('School data is still synchronizing.');
-      recoverSyncJournal();const latest=DB.get(KEYS.students,[]),ids=new Set(latest.map(record=>record.id));
-      DB.set(KEYS.students,latest.concat(plan.items.filter(({record})=>!ids.has(record.id)).map(item=>item.record)));
-      saved=plan.items.length;plan.items.splice(0);textarea.value=plan.invalidLines.join('\n');document.getElementById('studentSearchInput').value='';bulkAddPending.delete(pendingKey);
-      auditAction('import','students','',`Bulk added ${saved} students locally.`);
-      alert(`Saved ${saved} pupils on this device. Pending upload after account verification.${plan.errors.length?'\n\nThese lines need fixing and remain in the box:\n'+plan.errors.join('\n'):''}`);return;
+    if (FIREBASE_ENABLED && (navigator.onLine === false || offlineAuthenticatedMode)) {
+      if (!sessionReady || currentStatus !== 'active' || cloudHydrationInProgress || !sessionDataReady) throw Error('School data is still synchronizing.');
+      recoverSyncJournal();
+      const latest = DB.get(KEYS[kind], []), ids = new Set(latest.map(record => record.id));
+      DB.set(KEYS[kind], latest.concat(plan.items.filter(({record}) => !ids.has(record.id)).map(item => item.record)));
+      saved = plan.items.length; plan.items.splice(0); textarea.value = plan.invalidLines.join('\n');
+      const searchField = document.getElementById(staff ? 'staffSearch' : 'studentSearchInput'); if (searchField) searchField.value = '';
+      bulkAddPending.delete(pendingKey);
+      auditAction('import', kind, '', `Bulk added ${saved} ${kind} locally.`);
+      let message = 'Saved ' + saved + (staff ? ' staff member(s)' : ' pupils') + ' on this device. Pending upload after account verification.';
+      if (plan.invalidLines.length) message += ' ' + plan.invalidLines.length + ' row(s) still need correction below.';
+      alert(message); return;
     }
     while (plan.items.length) {
       if (!isCurrentSession(token, userId, schoolId)) return;
@@ -3654,12 +3666,16 @@ async function bulkAddPeople(kind) {
       textarea.value = plan.items.map(item => item.line).concat(plan.invalidLines).join('\n');
     }
     bulkAddPending.delete(pendingKey);
-    if(!staff)document.getElementById('studentSearchInput').value='';
+    const searchField = document.getElementById(staff ? 'staffSearch' : 'studentSearchInput'); if (searchField) searchField.value = '';
     auditAction('import', kind, '', `Bulk added ${saved} ${kind} records.`);
     textarea.value=plan.invalidLines.join('\n');
     alert(`Added ${saved} ${staff ? 'staff member(s)' : 'student(s)'} and saved to SchoolHub.${plan.errors.length?'\n\nThese lines were not added. Fix them and try again; they remain in the box:\n'+plan.errors.join('\n'):''}`);
   } catch (error) {
-    if (isCurrentSession(token, userId, schoolId)) alert(`Confirmed ${saved} of ${total} ${kind} saved. Remaining entries are kept below; click Add All to retry.\n\n` + (error.message || error));
+    if (isCurrentSession(token, userId, schoolId)) {
+      const message = `Confirmed ${saved} of ${total} ${kind} saved. Remaining entries are kept below; click Add All to retry.\n\n` + (error.message || error);
+      if (feedback) { feedback.textContent = message; feedback.classList.add('show'); }
+      alert(message);
+    }
   } finally {
     button.disabled = false; textarea.disabled = false; button.textContent = oldText;
     if (isCurrentSession(token, userId, schoolId)) {
@@ -4029,8 +4045,7 @@ function installStudentTabUpgrade() {
       <button type="button" id="printStudentsBtn">Print / Save as PDF</button>
       <p class="hint" style="width:100%">Search, Excel export and Print use the selected class and any search text. ${isTeacher() ? 'Teachers can select only their assigned classes.' : 'Choose All classes to include every class you can access.'} Clear Search to include every pupil in that selection.</p>
       <p id="studentSearchCount" class="hint" style="width:100%" aria-live="polite"></p>`;
-    const classSelect = document.getElementById('studentClassSelect');
-    const toolbarAnchor = (classSelect && classSelect.parentNode) ? classSelect.parentNode : search.parentNode;
+    const toolbarAnchor = search.parentNode;
     toolbarAnchor.parentNode.insertBefore(toolbar, toolbarAnchor.nextSibling);
     document.getElementById('exportStudentsBtn').addEventListener('click', () => exportStudentsWorkbook(false));
     document.getElementById('printStudentsBtn').addEventListener('click', printStudentsDetailsTable);

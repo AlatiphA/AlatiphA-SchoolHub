@@ -9,7 +9,9 @@ function fixture(kind = 'students') {
   const input = {value:'', disabled:false}, button = {textContent:'Add All', disabled:false};
   nodes[kind === 'staff' ? 'bulkStaffInput' : 'bulkStudentInput'] = input;
   nodes[kind === 'staff' ? 'bulkAddStaffBtn' : 'bulkAddStudentsBtn'] = button;
-  nodes.bulkStudentClassSelect = {value:'class1'}; nodes.studentSearchInput={value:'Filter'};
+  const makeFeedback=()=>{const classes=new Set();return {textContent:'',classList:{add:name=>classes.add(name),remove:name=>classes.delete(name),contains:name=>classes.has(name)}};};
+  nodes.bulkStudentClassSelect = {value:'class1'}; nodes.studentSearchInput={value:'Filter'}; nodes.staffSearch={value:'Filter'};
+  nodes.bulkStudentValidation=makeFeedback(); nodes.bulkStaffValidation=makeFeedback();
   const ctx = {Map, Set, JSON, FIREBASE_ENABLED:true,navigator:{onLine:true},offlineAuthenticatedMode:false,sessionReady:true,currentStatus:'active', sessionGeneration:1, currentUid:'head', currentSchoolId:'school', sessionDataReady:true, cloudHydrationInProgress:false,
     KEYS:{students:'students',staff:'staff'}, DB:{get:(key)=>data[key],set:(key,value)=>data[key]=value},
     document:{getElementById:id=>nodes[id]}, uid:()=>`id-${++sequence}`,
@@ -40,6 +42,20 @@ test('staff bulk add handles 65 records and defaults their role to Teacher', asy
   const f=fixture('staff'); f.input.value=Array.from({length:65},(_,i)=>`Staff ${i}, Female, 00${i}`).join('\n');
   await f.run(); assert.equal(f.data.staff.length,65); assert.ok(f.data.staff.every(s=>s.role==='Teacher'));
   assert.equal(f.cloud.size,65);
+});
+test('staff bulk saves valid rows while invalid rows remain for correction',async()=>{
+ const f=fixture('staff');f.input.value='Good staff, F, 0001\nBad staff, Other, 0002';await f.run();
+ assert.equal(f.data.staff.length,1);assert.equal(f.input.value,'Bad staff, Other, 0002');
+ assert.match(f.nodes.bulkStaffValidation.textContent,/Line 2:/);assert(f.nodes.bulkStaffValidation.classList.contains('show'));
+});
+test('staff shorthand accepts a space-separated sex and leading-zero ID',async()=>{
+ const f=fixture('staff');f.input.value='Abu Mama, m 001245';await f.run();
+ assert.deepEqual(f.data.staff.map(s=>[s.name,s.sex,s.staffId]),[['Abu Mama','M','001245']]);
+});
+test('offline bulk staff saves locally and retains invalid rows for later sync',async()=>{
+ const f=fixture('staff');f.ctx.navigator.onLine=false;f.input.value='Offline staff, F, 001\nBad staff';await f.run();
+ assert.equal(f.data.staff.length,1);assert.equal(f.cloud.size,0);assert.equal(f.input.value,'Bad staff');
+ assert.equal(f.nodes.staffSearch.value,'');assert(f.alerts.some(x=>x.includes('Pending upload')));assert.equal(f.button.disabled,false);
 });
 test('staff bulk saves valid rows and retains malformed or repeated-ID rows for correction',async()=>{
   for (const [text,expectedSaved,remaining] of [

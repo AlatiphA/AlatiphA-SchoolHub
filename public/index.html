@@ -348,15 +348,6 @@
   <!-- STAFF -->
   <section id="view-staff" class="view hidden">
     <h2>Staff</h2>
-    <div class="staff-data-toolbar">
-      <label for="staffSearch">Search staff<input id="staffSearch" type="search" placeholder="Name, Staff ID, role or other details"></label>
-      <div class="staff-data-actions">
-        <button type="button" id="exportStaffBtn" class="btn-primary">Export Excel</button>
-        <button type="button" id="printStaffBtn" class="btn-secondary">Print / Save as PDF</button>
-      </div>
-    </div>
-    <p class="hint">Excel exports include all staff details except signatures and account links. Print the current search results, then choose Save as PDF in the print dialog.</p>
-    <p id="staffTableCount" class="hint" role="status"></p>
     <section id="staffOnboarding" class="staff-onboarding-group" aria-labelledby="staffOnboardingTitle">
       <h3 id="staffOnboardingTitle">Onboarding</h3>
     <div class="staff-add-toolbar">
@@ -478,7 +469,8 @@
       <label>Full name, Sex, Staff ID
         <textarea id="bulkStaffInput" rows="5" placeholder="Jane Doe, Female, 001234&#10;John Smith, Male, 001235" aria-describedby="bulkStaffHint"></textarea>
       </label>
-      <p id="bulkStaffHint" class="hint">Name, sex and Staff ID are required. Use Female/Male or F/M. Staff IDs must be unique. New staff are added as Teachers; use Edit to update their role and other details. Larger lists are saved in smaller groups.</p>
+      <p id="bulkStaffHint" class="hint">Name, sex and Staff ID are required. Use Female/Male or F/M, for example, “Ama Mensah, F 001234”. Staff IDs must be unique. Rows with errors stay here while valid rows are added. Larger lists are saved in smaller groups.</p>
+      <p id="bulkStaffValidation" class="form-validation" role="alert"></p>
       <div class="staff-onboarding-actions"><button type="button" id="bulkAddStaffBtn" class="btn-primary">Add All</button><button type="button" id="closeBulkStaffBtn" data-close-form="staffBulkAddSection" data-form-toggle="toggleBulkStaffBtn" data-dismiss-ui>Close</button></div>
     </div>
     <div class="staff-add-toolbar">
@@ -493,6 +485,15 @@
       <button type="button" id="closeStaffExcelBtn" data-close-form="staffExcelForm" data-form-toggle="toggleStaffExcelBtn" data-dismiss-ui>Close</button>
     </div>
     </section>
+    <div class="staff-data-toolbar">
+      <label for="staffSearch">Search staff<input id="staffSearch" type="search" placeholder="Name, Staff ID, role or other details"></label>
+      <div class="staff-data-actions">
+        <button type="button" id="exportStaffBtn" class="btn-primary">Export Excel</button>
+        <button type="button" id="printStaffBtn" class="btn-secondary">Print / Save as PDF</button>
+      </div>
+    </div>
+    <p class="hint">Excel exports include all staff details except signatures and account links. Print the current search results, then choose Save as PDF in the print dialog.</p>
+    <p id="staffTableCount" class="hint" role="status"></p>
     <div id="staffList"></div>
     <p class="hint">Assign a staff member as a Class Teacher from the Classes tab, and as Head Teacher from Setup — their uploaded signature will then appear automatically on report cards.</p>
     <div id="staffRecoveryTools" class="staff-recovery-tools">
@@ -530,9 +531,6 @@
       <summary id="studentSummaryHeading">Class enrolment summary</summary>
       <div id="studentClassSummaryContent"></div>
     </details>
-    <label class="student-search-label"><span class="student-search-heading">Search</span>
-      <input type="text" id="studentSearchInput" placeholder="Search by name or ID...">
-    </label>
     <label>Class
       <select id="studentClassSelect"></select>
     </label>
@@ -603,6 +601,9 @@
       <button type="button" id="closeStudentExcelBtn" data-close-form="studentExcelForm" data-form-toggle="toggleStudentExcelBtn" data-dismiss-ui>Close</button>
     </div>
     </section>
+    <label class="student-search-label"><span class="student-search-heading">Search</span>
+      <input type="text" id="studentSearchInput" placeholder="Search by name or ID...">
+    </label>
     <ul id="studentList" class="list"></ul>
     <div id="studentRecoveryTools" class="student-recovery-tools">
       <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
@@ -1332,7 +1333,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.90</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.91</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
