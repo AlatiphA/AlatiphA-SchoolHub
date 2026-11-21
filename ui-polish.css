@@ -862,6 +862,9 @@
 
 /* Search heading follows the same type scale as the class summary heading. */
 #app #view-students .student-search-heading{display:block;font-size:16px;font-weight:700;line-height:1.5;margin:0 0 8px;}
+#app #view-students > .student-results-filters{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 22px;align-items:end;min-width:0;margin:0 0 12px;}
+#app #view-students > .student-results-filters>label{min-width:0;margin:0;}
+@media(max-width:600px){#app #view-students > .student-results-filters{grid-template-columns:minmax(0,1fr);gap:10px;margin-bottom:12px;}}
 
 #app .student-class-summary>summary{font-size:16px;}
 

@@ -531,9 +531,6 @@
       <summary id="studentSummaryHeading">Class enrolment summary</summary>
       <div id="studentClassSummaryContent"></div>
     </details>
-    <label>Class
-      <select id="studentClassSelect"></select>
-    </label>
     <p id="liveStudentUpdateStatus" class="hint" role="status" aria-live="polite">Checking the pupil-update connection…</p>
     <section id="studentOnboarding" class="student-onboarding-group" aria-labelledby="studentOnboardingTitle">
       <h3 id="studentOnboardingTitle">Onboarding</h3>
@@ -601,9 +598,14 @@
       <button type="button" id="closeStudentExcelBtn" data-close-form="studentExcelForm" data-form-toggle="toggleStudentExcelBtn" data-dismiss-ui>Close</button>
     </div>
     </section>
-    <label class="student-search-label"><span class="student-search-heading">Search</span>
-      <input type="text" id="studentSearchInput" placeholder="Search by name or ID...">
-    </label>
+    <div class="student-results-filters" aria-label="Filter student results">
+      <label>Class
+        <select id="studentClassSelect"></select>
+      </label>
+      <label class="student-search-label"><span class="student-search-heading">Search</span>
+        <input type="text" id="studentSearchInput" placeholder="Search by name or ID...">
+      </label>
+    </div>
     <ul id="studentList" class="list"></ul>
     <div id="studentRecoveryTools" class="student-recovery-tools">
       <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
@@ -1022,9 +1024,9 @@
       <section class="inline-doc-section">
         <h2>Students: onboarding, search &amp; totals</h2>
         <details><summary>What are the three ways to add students?</summary><div class="inline-doc-answer"><p>Open <strong>Students → Onboarding</strong>. <strong>Add Student</strong> enters one pupil. <strong>Bulk add</strong> accepts one pupil per line. <strong>Excel template</strong> contains template download and spreadsheet import. Expand a method to use it, then Close it when finished.</p></div></details>
-        <details><summary>What format does Bulk add use?</summary><div class="inline-doc-answer"><p>Use <strong>Full name, Sex, optional Student ID</strong>. For example, <code>Ama Mensah, F, 00124</code> or <code>Kojo Mensah, Male</code>. Sex accepts F/M or Female/Male. Choose one class before adding pupils. Correct validation errors before saving.</p></div></details>
-        <details><summary>How do I use the Excel template?</summary><div class="inline-doc-answer"><p>Select one class, expand <strong>Onboarding → Excel template</strong>, download the template and fill in its columns. Keep identifiers as text when leading zeroes matter. Import the spreadsheet and review the preview and validation messages before saving. Template download is separate from exporting existing pupils.</p></div></details>
-        <details><summary>Does Search or Excel export cover the whole school?</summary><div class="inline-doc-answer"><p><strong>Search</strong> uses the selected <strong>Class</strong>. Head Teachers can select <strong>All classes</strong>; Teachers select only an assigned class and have no All classes option. Excel export and Print use the same class and search filters. Clear Search to include every pupil in the selection.</p></div></details>
+        <details><summary>What format does Bulk add use?</summary><div class="inline-doc-answer"><p>Use <strong>Full name, Sex, optional Student ID</strong>. For example, <code>Ama Mensah, F, 00124</code> or <code>Kojo Mensah, Male</code>. Sex accepts F/M or Female/Male. Choose a destination class in the Bulk add form before saving. Correct validation errors before saving.</p></div></details>
+        <details><summary>How do I use the Excel template?</summary><div class="inline-doc-answer"><p>Open <strong>Onboarding → Excel template</strong>, choose its <strong>Destination class</strong>, download the template and fill in its columns. Keep identifiers as text when leading zeroes matter. Import the spreadsheet and review the preview and validation messages before saving. Template download is separate from exporting existing pupils.</p></div></details>
+        <details><summary>Does Search or Excel export cover the whole school?</summary><div class="inline-doc-answer"><p>Below Onboarding, use <strong>Class</strong> and <strong>Search</strong> together to filter the student results. Head Teachers can select <strong>All classes</strong>; Teachers select only an assigned class and have no All classes option. Excel export and Print use the same class and search filters. Clear Search to include every pupil in the selection.</p></div></details>
         <details><summary>Why do Head Teachers see a table but Teachers see a pie?</summary><div class="inline-doc-answer"><p>The Head Teacher’s class enrolment summary lists classes, class teachers, Male, Female, Sex not set and Total for current accessible pupils. Teachers see a pie and totals for their accessible current pupils. Summary counts are independent of Search and Class filters. Graduates are excluded from this current-pupil summary; Sex not set is retained instead of guessed.</p></div></details>
         <details><summary>Where is Check for missing students?</summary><div class="inline-doc-answer"><p>It is below the student table. It compares available recovery sources; recovery depends on the missing record existing in one of those sources.</p></div></details>
       </section>
@@ -1333,7 +1335,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.91</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.93</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
