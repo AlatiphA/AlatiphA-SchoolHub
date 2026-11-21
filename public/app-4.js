@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.97';
+const APP_VERSION = '40.1.98';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -4449,7 +4449,7 @@ function printStaffDetailsTableOnly() {
   const columns = StaffTransfer.columns(STAFF_FIELDS);
   const search = String(document.getElementById('staffSearch')?.value || '').trim().toLowerCase();
   const records = DB.get(KEYS.staff,[]).filter(st => !search || columns.some(f=>String(st[f.key]||'').toLowerCase().includes(search)));
-  printDetailsTable('Staff Details', columns, records, (st,key)=>st[key] || (key==='notionalDate'?st.dateOfAppointment||'':''));
+  printDetailsTable('Staff Details', columns, records, (st,key)=>st[key] || '');
 }
 
 /* Keep the student table synchronized whenever the normal student renderer runs. */
@@ -4484,6 +4484,8 @@ const STAFF_FIELDS = [
   { key: 'emisNo', label: 'EMIS No.', type: 'text' },
   { key: 'ssnitNo', label: 'SSNIT No.', type: 'text' },
   { key: 'ghanaCardId', label: 'Ghana Card ID', type: 'text' },
+  { key: 'dateOfAppointment', label: 'Date of Appointment', type: 'date' },
+  { key: 'datePostedToSchool', label: 'Date Posted to School', type: 'date' },
   { key: 'rank', label: 'Rank/Grade', type: 'select', options: [
     ['Pupil Teacher','Pupil Teacher'],
     ['Superintendent II','Superintendent II'],
@@ -4534,7 +4536,7 @@ function renderStaff() {
   const visible = staff.filter(st => columns.some(f => String(st[f.key] || '').toLowerCase().includes(search)));
   count.textContent = 'Showing ' + visible.length + ' of ' + staff.length + ' staff';
   const header = columns.map(f => '<th scope="col">' + escapeHtml(f.label) + '</th>').join('');
-  const rows = visible.map(st => '<tr>' + columns.map(f => '<td>' + (f.key === 'name' ? '<span class="staff-name-text">' : '') + escapeHtml(String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : '') || '—')) + (f.key === 'name' ? '</span>' : '') + '</td>').join('') +
+  const rows = visible.map(st => '<tr>' + columns.map(f => '<td>' + (f.key === 'name' ? '<span class="staff-name-text">' : '') + escapeHtml(String(st[f.key] || '—')) + (f.key === 'name' ? '</span>' : '') + '</td>').join('') +
     '<td class="staff-table-actions"><button type="button" class="view-staff" data-id="' + escapeHtml(st.id) + '">View</button><button type="button" class="edit-staff" data-id="' + escapeHtml(st.id) + '">Edit</button><button type="button" class="del-staff" data-id="' + escapeHtml(st.id) + '">Delete</button></td></tr>').join('');
   list.innerHTML = visible.length ? '' : '<p class="empty">' + (staff.length ? 'No staff match your search.' : 'No staff yet. Add a staff member above or import a file.') + '</p>';
   const editor = document.createElement('ul');
@@ -4688,8 +4690,10 @@ function showStaffDetails(staffId) {
     ['EMIS No.', st.emisNo || '—'],
     ['SSNIT No.', st.ssnitNo || '—'],
     ['Ghana Card ID', st.ghanaCardId || '—'],
+    ['Date of Appointment', st.dateOfAppointment || '—'],
+    ['Date Posted to School', st.datePostedToSchool || '—'],
     ['Rank/Grade', st.rank || '—'],
-    ['Notional Date', st.notionalDate || st.dateOfAppointment || '—'],
+    ['Notional Date', st.notionalDate || '—'],
     ['Substantive Date', st.substantiveDate || '—'],
     ['Academic Qualification', st.academicQualification || '—'],
     ['Professional Qualification', st.professionalQualification || '—'],
@@ -4874,7 +4878,7 @@ function exportStaffWorkbook(templateOnly = false) {
   if (typeof XLSX === 'undefined') { alert('Spreadsheet tools are still loading. Please reconnect and try again.'); return; }
   const fields = StaffTransfer.columns(STAFF_FIELDS);
   const staff = templateOnly ? [] : DB.get(KEYS.staff, []);
-  const rows = [fields.map(f => f.label), ...staff.map(st => fields.map(f => String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : ''))))];
+  const rows = [fields.map(f => f.label), ...staff.map(st => fields.map(f => String(st[f.key] || '')))];
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   // Export identifiers, bank accounts and phone numbers as text, including leading zeros.
   Object.keys(sheet).filter(key => key[0] !== '!').forEach(key => { sheet[key].t = 's'; sheet[key].z = '@'; delete sheet[key].f; });
@@ -4984,7 +4988,7 @@ function printStaffDetails() {
   const sections = [];
   for (let i = 0; i < details.length; i += 5) {
     const fields = identity.concat(details.slice(i, i + 5));
-    sections.push('<section><h1>' + escapeHtml(DB.get(KEYS.settings, {}).schoolName || 'School') + '</h1><h2>Staff details — Part ' + (i / 5 + 1) + '</h2><p>' + staff.length + ' staff · ' + escapeHtml(new Date().toLocaleDateString()) + (search ? ' · Search: ' + escapeHtml(search) : '') + '</p><table><thead><tr>' + fields.map(f => '<th>' + escapeHtml(f.label) + '</th>').join('') + '</tr></thead><tbody>' + staff.map(st => '<tr>' + fields.map(f => '<td>' + escapeHtml(String(st[f.key] || (f.key === 'notionalDate' ? st.dateOfAppointment || '' : '') || '—')) + '</td>').join('') + '</tr>').join('') + '</tbody></table></section>');
+    sections.push('<section><h1>' + escapeHtml(DB.get(KEYS.settings, {}).schoolName || 'School') + '</h1><h2>Staff details — Part ' + (i / 5 + 1) + '</h2><p>' + staff.length + ' staff · ' + escapeHtml(new Date().toLocaleDateString()) + (search ? ' · Search: ' + escapeHtml(search) : '') + '</p><table><thead><tr>' + fields.map(f => '<th>' + escapeHtml(f.label) + '</th>').join('') + '</tr></thead><tbody>' + staff.map(st => '<tr>' + fields.map(f => '<td>' + escapeHtml(String(st[f.key] || '—')) + '</td>').join('') + '</tr>').join('') + '</tbody></table></section>');
   }
   frame.onload = () => {
     frame.contentWindow.addEventListener('afterprint', () => frame.remove(), { once: true });
@@ -5355,7 +5359,7 @@ function ensureHeadTeacherStaffRecord() {
     name: fallbackName,
     role: 'Head Teacher',
     dob: '', staffId: '', registeredNo: '', licenseNo: '', ssnitNo: '',
-    ghanaCardId: '', dateOfAppointment: '', rank: '', phone: '',
+    ghanaCardId: '', dateOfAppointment: '', datePostedToSchool: '', rank: '', phone: '',
     signature: '', signatureUrl: '', signatureStoragePath: '',
     createdAt: new Date().toISOString()
   };
