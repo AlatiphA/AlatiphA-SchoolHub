@@ -7,11 +7,12 @@
  function editing(){capture();return !!document.querySelector('dialog[open],[role="dialog"]:not(.hidden):not([hidden]),.modal:not(.hidden),#profileDropdown:not(.hidden)')||controls().some(e=>baseline.get(e)!==value(e));}
  function status(info={}){
   const result=(label,state,detail)=>({label,state,detail});
-  if(info.hydrationFailed&&!info.writeFailed)return result('Updates paused','error','School data could not be refreshed. Saved work is retained; reconnect or use Sync Center to retry.');
-  if(info.failed)return result('Needs review','error','A saved change or connection needs attention. Open Sync Center; keep browser data intact.');
+  if(info.hydrationFailed&&!info.writeFailed)return result('Updates paused','paused','School data could not be refreshed. Saved work is retained; reconnect or use Sync Center to retry.');
+  if(info.reviewRequired)return result('Awaiting review','error','Another device changed a saved record. Your edit remains on this device. Open Sync Center → Review conflicting edits to compare values.');
+  if(info.failed)return result('Sync needs attention','error','A saved upload or refresh needs attention. Your data remains on this device. Open Sync Center → Pending school data for the exact item and error.');
   if(navigator.onLine===false||info.offline)return result('Offline','offline','Saved work stays on this device. Updates resume after connection and account verification.');
-  if(info.pending)return result(info.pending+' pending','pending','Saved on this device; waiting for cloud confirmation.');
-  if(editing())return result('Updates paused','paused','Finish or save your edits, or close the open dialog/menu, to resume automatic updates.');
+  if(info.pending)return result(info.pending+' pending','pending',editing()?'Saved on this device. Background refresh pauses while you edit; close or save the open form to resume it.':'Saved on this device; waiting for cloud confirmation.');
+  if(editing())return result('Paused while editing','paused','Finish or save your edits, or close the open dialog/menu, to resume automatic updates.');
   if(info.waiting||info.checking&&!info.quietRecovery)return result('Reconnecting','pending','Checking school access before receiving or sending updates.');
   if(info.loading)return result('Connecting','pending','Loading and verifying school data before updates can be confirmed.');
   if(lastFailure)return result('Updates paused','paused','The last refresh failed. Saved work is retained; SchoolHub will retry automatically.');

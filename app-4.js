@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.95';
+const APP_VERSION = '40.1.96';
 window.SchoolHubUpdates?.init(APP_VERSION);
 
 /* ---------- storage helpers ---------- */
@@ -439,6 +439,11 @@ function updateOfflineModeBanner(message) {
   const offline = navigator.onLine === false || (offlineAuthenticatedMode && !checking);
   const pending = pendingSyncCountForCurrentSchool();
   const writeFailed = pending > 0 && (syncableFields().some(field => syncErrors.has(field.key)) || (typeof operationsHasErrors === 'function' && operationsHasErrors()) || (typeof pendingFeeSyncState === 'function' && !!pendingFeeSyncState().error));
+  const reviewRequired = pending > 0 && syncableFields().some(field => {
+    const failure = syncErrors.get(field.key);
+    const code = String(failure && failure.code || '').split('/').pop().toLowerCase();
+    return ['settings','grades','attendance','teacherAttendance','remarks'].includes(field.field) && dirtyIdsFor(field.key).length > 0 && (code === 'aborted' || code === 'conflict');
+  });
   const hydrationErrorText = typeof cloudHydrationStatusError === 'string' ? cloudHydrationStatusError : '';
   const hydrationFailed = !!hydrationErrorText;
   const failed = writeFailed || hydrationFailed;
@@ -470,7 +475,7 @@ function updateOfflineModeBanner(message) {
       : checking ? 'Checking your account and safely syncing saved changes. Open Sync Center.'
       : pending ? pending + ' record change(s) saved on this device and waiting for cloud confirmation. Open Sync Center.'
       : offline ? 'Offline. No pending record changes. Open Sync Center.' : 'No pending record changes on this device. Open Sync Center.';
-    const automatic=typeof window==='undefined'?null:window.SchoolHubAutomaticSync?.status?.({failed,writeFailed,hydrationFailed,pending,offline,checking,waiting,quietRecovery,loading:!sessionReady||!sessionDataReady||cloudHydrationInProgress});
+    const automatic=typeof window==='undefined'?null:window.SchoolHubAutomaticSync?.status?.({failed,writeFailed,hydrationFailed,reviewRequired,pending,offline,checking,waiting,quietRecovery,loading:!sessionReady||!sessionDataReady||cloudHydrationInProgress});
     if(automatic){statusButton.textContent=automatic.label;statusButton.dataset.state=automatic.state;statusButton.title=automatic.detail+' Open Sync Center.';const detail=document.getElementById('automaticSyncDetail');if(detail&&detail.textContent!==automatic.label+': '+automatic.detail)detail.textContent=automatic.label+': '+automatic.detail;}
     statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
   }
@@ -479,8 +484,10 @@ function updateOfflineModeBanner(message) {
   const title = banner.querySelector('.offline-mode-title');
   const detail = banner.querySelector('.offline-mode-detail');
   if (failed) {
-    if (title) title.textContent = 'Sync needs attention';
-    if (detail) detail.textContent = hydrationErrorText || 'Changes remain saved on this device. Open Sync Center to review and retry.';
+    if (title) title.textContent = reviewRequired ? 'Awaiting conflict review' : 'Sync needs attention';
+    if (detail) detail.textContent = reviewRequired
+      ? 'Your edit remains saved on this device. Open Profile → Sync Center → Review conflicting edits and compare the device and cloud values.'
+      : hydrationErrorText || 'Your changes remain saved on this device. Open Profile → Sync Center → Pending school data to see the item and error. Keep browser data intact.';
   } else if (checking) {
     if (title) title.textContent = reconnecting ? 'Reconnecting…' : 'Checking saved changes…';
     if (detail) detail.textContent = message || 'Checking your account and safely syncing pending changes.';
@@ -10579,9 +10586,7 @@ function pullCloudData(sessionToken, { background = false } = {}) {
       statusButton.dataset.state = 'pending';
       statusButton.textContent = 'Still syncing';
       statusButton.title = 'The initial cloud check is taking longer than expected. Your local data remains available.';
-      const automatic=typeof window==='undefined'?null:window.SchoolHubAutomaticSync?.status?.({failed,writeFailed,hydrationFailed,pending,offline,checking,waiting,quietRecovery,loading:!sessionReady||!sessionDataReady||cloudHydrationInProgress});
-    if(automatic){statusButton.textContent=automatic.label;statusButton.dataset.state=automatic.state;statusButton.title=automatic.detail+' Open Sync Center.';const detail=document.getElementById('automaticSyncDetail');if(detail&&detail.textContent!==automatic.label+': '+automatic.detail)detail.textContent=automatic.label+': '+automatic.detail;}
-    statusButton.setAttribute('aria-label', statusButton.textContent + '. ' + statusButton.title);
+      updateOfflineModeBanner('The initial cloud check is taking longer than expected. Your local data remains available.');
     }
   }, CORE_HYDRATION_SOFT_WARNING_MS);
   let hydrationDeadlineTimer = null;

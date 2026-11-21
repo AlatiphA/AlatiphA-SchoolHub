@@ -103,6 +103,11 @@ body.supervision-open{overflow:hidden}.supervision-overlay{position:fixed;inset:
 .supervision-draft-actions button{flex:0 0 auto}
 .supervision-check-choice>span{min-width:0;overflow-wrap:anywhere}
 .supervision-record-details>.supervision-table-scroll{margin-top:10px}
+#supervisionWrap .supervision-view-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:14px 0}
+#supervisionWrap .supervision-view-tab{box-sizing:border-box;width:100%;min-width:0;min-height:48px;background:var(--surface-alt);font-weight:600;line-height:1.3}
+#supervisionWrap .supervision-view-tab[aria-pressed="true"]{background:var(--gold);border-color:var(--gold);color:var(--bg)}
+#supervisionWrap .supervision-view-panel{min-width:0}
+#supervisionWrap .supervision-view-panel[hidden]{display:none!important}
 @media(max-width:720px){
  .supervision-table{table-layout:fixed}
  .supervision-table :is(th,td):first-child{width:112px;min-width:112px;max-width:112px;box-sizing:border-box;padding-inline:8px;white-space:normal;overflow-wrap:anywhere}
