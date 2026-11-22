@@ -1112,8 +1112,23 @@
 #app #view-fees .fee-overview-heading h3 { margin:0 0 4px; }
 #app #view-fees .fee-overview-heading p { margin:0; color:var(--muted); }
 #app #view-fees .fee-overview-heading button { flex:0 0 auto; margin:0; }
-#app #view-fees .fee-overview-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); margin:14px 0 0; }
+#app #view-fees .fee-overview-kpis { grid-template-columns:repeat(5,minmax(0,1fr)); margin:14px 0 0; }
 #app #view-fees .fee-overview-kpis > div { background:var(--surface); }
+#app #view-fees #feesWrap > .fee-work-area { margin:14px 0; padding:16px; background:var(--surface); }
+#app #view-fees #feesWrap > .fee-work-area > summary { padding:2px 0; font-size:1.05em; }
+#app #view-fees #feesWrap > .fee-work-area[open] > summary { padding-bottom:12px; border-bottom:1px solid var(--rule); }
+#app #view-fees .fee-copy-setup { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:end; margin:12px 0 18px; }
+#app #view-fees .fee-copy-setup label { min-width:0; }
+#app #view-fees .fee-copy-setup button { width:auto; margin:0; }
+#app #view-fees .fee-item-review { margin:18px 0 8px; padding:16px; border:1px solid var(--rule); border-radius:12px; background:var(--surface); }
+#app #view-fees .fee-item-review[hidden] { display:none; }
+#app #view-fees .fee-item-review h4 { margin-top:0; }
+#app #view-fees .fee-item-review-total { padding:12px; border-radius:10px; background:var(--surface-alt); }
+#app #view-fees .fee-item-target-list { margin:12px 0; }
+#app #view-fees .fee-item-target-list ul { max-height:320px; overflow:auto; padding-left:24px; }
+#app #view-fees .fee-item-review .fee-actions { display:flex; flex-wrap:wrap; gap:8px; }
+#app #view-fees .fee-item-review .fee-actions button { margin:0; }
+#app #view-fees .fee-item-review .fee-actions button:disabled { opacity:.55; cursor:not-allowed; }
 #app #view-fees .fee-pupil-balances { margin:0 0 24px; }
 #app #view-fees .fee-row-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; white-space:normal; }
 #app #view-fees .fee-row-actions button { width:auto; margin:0; padding:8px 10px; font-size:.9em; }
@@ -1137,10 +1152,15 @@
 #app #view-fees .fee-payment-balance { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:10px 0 16px; padding:12px 14px; border:1px solid var(--rule); border-radius:12px; background:var(--surface-alt); }
 #app #view-fees .fee-payment-balance > span { margin:0; }
 #app #view-fees .fee-payment-balance button { width:auto; flex:0 0 auto; margin:0; }
+@media(max-width:900px){#app #view-fees .fee-overview-kpis { grid-template-columns:repeat(3,minmax(0,1fr)); }}
 @media(max-width:700px){
   #app #view-fees .fee-overview-heading { align-items:stretch; flex-direction:column; }
   #app #view-fees .fee-overview-heading button { width:100%; }
   #app #view-fees .fee-overview-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #app #view-fees .fee-copy-setup { grid-template-columns:minmax(0,1fr); }
+  #app #view-fees .fee-copy-setup button { width:100%; }
+  #app #view-fees .fee-item-review .fee-actions { flex-direction:column; }
+  #app #view-fees .fee-item-review .fee-actions button { width:100%; }
   #app #view-fees .fee-balance-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
   #app #view-fees .fee-balance-controls .fee-inline-check { margin:4px 0; }
   #app #view-fees #feeBalanceClear { width:100%; margin:0; }
