@@ -1204,7 +1204,7 @@
         <details><summary>How do I create a backup?</summary><div class="inline-doc-answer"><p>Go to <strong>Setup → Backup &amp; Restore → Export Backup (.json)</strong>. Store the downloaded JSON file somewhere safe. This is a <strong>core-record backup</strong>; it excludes FIS, inventory, Supervision and Observation, notifications and cloud image files. Import into a signed-in school requires the online Head Teacher and a matching school identity. Older files without a school identity must be reviewed in a separate guest test workspace. Import loads core records and queues supported changes; it is not a full cloud restore and does not automatically delete cloud records absent from the file.</p></div></details>
         <details><summary>Can SchoolHub recover missing students or staff?</summary><div class="inline-doc-answer"><p>Recovery tools can compare the current list with available browser snapshots/saved copies and cloud records. Recovery only works when the missing record exists in one of those sources.</p></div></details>
         <details><summary>How do I start a new term?</summary><div class="inline-doc-answer"><p>Use <strong>Term History</strong> to start the next term/year while preserving the school structure and historical records.</p></div></details>
-        <details><summary>What is Academic Year Rollover?</summary><div class="inline-doc-answer"><p>At year end, the Head Teacher reviews each student as <strong>Promote</strong>, <strong>Repeat</strong>, <strong>Graduate/Complete</strong>, or <strong>Transfer/Leave</strong>. The rollover creates a year-end backup/archive and starts the new academic year at Term 1.</p></div></details>
+        <details><summary>What is Academic Year Rollover?</summary><div class="inline-doc-answer"><p>At year end, review the suggested class map and apply it or decide student by student. SchoolHub uses one shared class list across years, so do not rename or delete class records to move learners; their IDs keep past records linked. Review all Promote, Repeat, Graduate/Complete and Transfer/Leave choices. SchoolHub makes a year-end snapshot before updating the student roster and starting the next consecutive academic year at Term 1. Past attendance, grades, remarks, weekly supervision and lesson observations are not rewritten. Check the summary and resolve pending sync work before applying.</p></div></details>
         <details><summary>What is Restore Year-End Backup?</summary><div class="inline-doc-answer"><p>It is an emergency reversal tool for a SchoolHub academic-year rollover JSON. SchoolHub validates the backup and restores the backed-up roster/settings without unnecessarily deleting later grades, attendance, remarks, staff, classes, subjects or calendar data.</p></div></details>
       </section>
 
@@ -1345,7 +1345,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.100</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.101</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">

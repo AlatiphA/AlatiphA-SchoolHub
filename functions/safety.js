@@ -281,15 +281,26 @@ function register({onCall,HttpsError,db,admin}) {
    if(archive.exists){if(archive.data().operationFingerprint&&archive.data().operationFingerprint!==operationFingerprint)fail('already-exists','This year was already rolled over with different reviewed decisions. Refresh before continuing.');if(settings.lastYearRollover?.id===archiveId&&settings.currentYear===toYear)return {completed:true,repeated:true};fail('already-exists','This year already has an archive. Review it before another rollover.');}
    if(settings.currentTerm!==input.expectedTerm)fail('aborted','The current term changed after preparation. Restart the rollover review.');
    if(settings.currentYear!==fromYear)fail('aborted','The current year changed. Reload and review.');
-   const activeRoster=Object.fromEntries(data.students.filter(s=>s.isActive!==false).map(s=>[s.id,s.classId]));
+   const activeRoster=Object.fromEntries(data.students.filter(s=>s.isActive!==false).map(s=>[s.id,input.expectedClasses!==undefined?String(s.classId||''):s.classId]));
    if(!equal(input.expectedRoster,activeRoster))fail('aborted','The student roster or class placements changed after review. Restart the rollover.');
    const classIds=new Set(data.classes.map(c=>c.id));
+   if(input.expectedClasses!==undefined){
+    if(!object(input.expectedClasses))fail('failed-precondition','Refresh SchoolHub and prepare the rollover again so the reviewed classes can be checked.');
+    const currentClasses=Object.fromEntries(data.classes.map(c=>[String(c.id),String(c.name||'')]).sort((a,b)=>a[0].localeCompare(b[0])));
+    if(!equal(input.expectedClasses,currentClasses))fail('aborted','The class list changed after review. Restart the rollover and review the current classes.');
+   }
+   if(input.classMappings!==undefined){
+    if(!object(input.classMappings))fail('invalid-argument','Invalid class mapping review.');
+    for(const [source,destination] of Object.entries(input.classMappings))if(!classIds.has(source)||typeof destination!=='string'||(destination&&!classIds.has(destination)))
+     fail('failed-precondition','A reviewed class mapping is no longer available. Restart the rollover.');
+   }
    for(const s of data.students.filter(s=>s.isActive!==false)){
     const d=Object.hasOwn(decisions,s.id)?decisions[s.id]:null;if(!d||!['promote','repeat','graduate','leave'].includes(d.decision)||(d.decision==='promote'&&!classIds.has(d.destinationClassId)))fail('failed-precondition','Review every current student and destination.');
+    if(d.decision==='repeat'&&!classIds.has(s.classId))fail('failed-precondition','A student is assigned to a class that no longer exists. Choose a valid destination or restore the class, then review again.');
    }
    students=data.students.map(s=>rolloverStudent(s,decisions[s.id],fromYear,toYear,stamp));
    nextSettings={...settings,currentYear:toYear,currentTerm:'Term 1',attendanceOutOf:'',nextTermBegins:'',lastYearRollover:{id:archiveId,fromYear,toYear,at:stamp}};
-   snapshot={app:'AlatiphA SchoolHub',type:'academic-year-rollover',schoolId:u.schoolId,fromYear,toYear,createdAt:stamp,data:{...data,settings}};
+   snapshot={app:'AlatiphA SchoolHub',type:'academic-year-rollover',schoolId:u.schoolId,fromYear,toYear,createdAt:stamp,rolloverPlan:{decisions,appliedClassMappings:object(input.classMappings)?input.classMappings:{}},data:{...data,settings}};
   }else{
    snapshot=input.snapshot;
    if(!snapshot||snapshot.app!=='AlatiphA SchoolHub'||!Array.isArray(snapshot.data?.classes)||!/^\d{4}\/\d{4}$/.test(snapshot.fromYear||'')||!/^\d{4}\/\d{4}$/.test(snapshot.toYear||'')||Number(snapshot.fromYear.slice(5))!==Number(snapshot.fromYear.slice(0,4))+1||Number(snapshot.toYear.slice(0,4))!==Number(snapshot.fromYear.slice(5))||Number(snapshot.toYear.slice(5))!==Number(snapshot.toYear.slice(0,4))+1||snapshot.data?.settings?.currentYear!==snapshot.fromYear||snapshot.schoolId!==u.schoolId||snapshot.type!=='academic-year-rollover'||!Array.isArray(snapshot.data?.students)||!object(snapshot.data?.settings))fail('invalid-argument','A complete backup from this school is required.');

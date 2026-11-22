@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.100';
+const APP_VERSION = '40.1.101';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1316,7 +1316,7 @@ function tourSlidesForHeadTeacher() {
   },
   {
     "title": "14. Backups and year end",
-    "body": "Export core records from Setup → Backup & Restore and keep the file safely. This is not a full backup of fees, stock, supervision or cloud images. Use Term History for a new term and Academic Year Rollover for promotions, repeats, completions and transfers. Restore Year-End Backup is its emergency reversal tool."
+    "body": "Export core records from Setup → Backup & Restore and keep the file safely. This is not a full backup of fees, stock, supervision or cloud images. For year end, prepare destination classes, review and apply the class map or each student's decision, then confirm the next year and Term 1. SchoolHub snapshots supported academic records before changing the active roster; existing class records, teacher assignments, past attendance, grades, weekly supervision and lesson observations remain in place. Resolve pending sync work first. Restore Year-End Backup is the emergency recovery tool."
   },
   {
     "title": "You’re ready",
@@ -2263,16 +2263,28 @@ function rolloverStudents() {
   return DB.get(KEYS.students, []).filter(student => student && student.id && student.isActive !== false);
 }
 
-function rolloverClassOptions(selectedId, includeBlank) {
-  const classes = DB.get(KEYS.classes, []);
-  let html = includeBlank ? '<option value="">Select class</option>' : '';
-  html += classes.map(c => `<option value="${escapeHtml(c.id)}" ${c.id === selectedId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
+function rolloverClassSnapshot(classes = DB.get(KEYS.classes, [])) {
+  const entries = (Array.isArray(classes) ? classes : [])
+    .filter(c => c && c.id !== undefined && c.id !== null && String(c.id))
+    .map(c => [String(c.id), String(c.name || '')])
+    .sort((a, b) => a[0].localeCompare(b[0]));
+  return Object.fromEntries(entries);
+}
+
+function rolloverRosterSnapshot(students = rolloverStudents()) {
+  return Object.fromEntries(students
+    .map(student => [String(student.id), String(student.classId || '')])
+    .sort((a, b) => a[0].localeCompare(b[0])));
+}
+
+function rolloverClassOptions(selectedId, includeBlank, classes = DB.get(KEYS.classes, [])) {
+  let html = includeBlank ? '<option value="">Choose a next-year class</option>' : '';
+  html += classes.map(c => `<option value="${escapeHtml(c.id)}" ${String(c.id) === String(selectedId || '') ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('');
   return html;
 }
 
-function rolloverDefaultDestination(classId) {
-  const classes = DB.get(KEYS.classes, []);
-  const index = classes.findIndex(c => c.id === classId);
+function rolloverDefaultDestination(classId, classes = DB.get(KEYS.classes, [])) {
+  const index = classes.findIndex(c => String(c.id) === String(classId));
   return index >= 0 && index < classes.length - 1 ? classes[index + 1].id : '';
 }
 
@@ -2282,20 +2294,23 @@ function buildYearRolloverDraft() {
   const toYear = nextAcademicYearLabel(fromYear);
   const classes = DB.get(KEYS.classes, []);
   const students = rolloverStudents();
-  const decisions = {};
-  students.forEach(student => {
-    const destination = rolloverDefaultDestination(student.classId);
-    decisions[student.id] = destination
-      ? { decision: 'promote', destinationClassId: destination }
-      : { decision: '', destinationClassId: '' };
-  });
+  const decisions = Object.fromEntries(students.map(student => [String(student.id), { decision:'', destinationClassId:'' }]));
+  const classDestinations = Object.fromEntries(classes
+    .filter(c => c && c.id !== undefined && c.id !== null)
+    .map(c => [String(c.id), rolloverDefaultDestination(c.id, classes)]));
+  const expectedRoster = Object.fromEntries(students.map(student => [String(student.id), String(student.classId || '')]).sort((a,b) => a[0].localeCompare(b[0])));
+  const expectedClasses = Object.fromEntries(classes.filter(c => c && c.id !== undefined && c.id !== null)
+    .map(c => [String(c.id), String(c.name || '')]).sort((a,b) => a[0].localeCompare(b[0])));
   return {
     fromYear,
     fromTerm:settings.currentTerm,
     toYear,
     classes,
+    classDestinations,
+    appliedClassMappings:{},
     decisions,
-    expectedRoster:Object.fromEntries(students.map(s=>[String(s.id),s.classId])),
+    expectedRoster,
+    expectedClasses,
     createdAt: new Date().toISOString()
   };
 }
@@ -2307,10 +2322,12 @@ function rolloverDecisionLabel(value) {
 function rolloverCounts(draft) {
   const counts = { promote:0, repeat:0, graduate:0, leave:0, strike:0, unresolved:0 };
   const students = rolloverStudents();
+  const classIds = new Set(DB.get(KEYS.classes, []).map(c => String(c.id)));
   students.forEach(student => {
     const d = draft.decisions[student.id] || {};
     if (!['promote','repeat','graduate','leave'].includes(d.decision)) { counts.unresolved++; return; }
-    if (d.decision === 'promote' && !d.destinationClassId) { counts.unresolved++; return; }
+    if (d.decision === 'promote' && !classIds.has(String(d.destinationClassId || ''))) { counts.unresolved++; return; }
+    if (d.decision === 'repeat' && !classIds.has(String(student.classId || ''))) { counts.unresolved++; return; }
     counts[d.decision]++;
   });
   return counts;
@@ -2334,54 +2351,92 @@ function renderYearRollover() {
 
   const draft = yearRolloverDraft;
   const students = rolloverStudents();
-  const classes = DB.get(KEYS.classes, []);
+  const classes = Array.isArray(draft.classes) ? draft.classes : [];
   const byClass = classes.map(c => ({
     classInfo: c,
-    students: students.filter(s => s.classId === c.id)
-  })).filter(group => group.students.length);
+    students: students.filter(s => String(s.classId) === String(c.id))
+  }));
+  const knownClassIds = new Set(classes.map(c => String(c.id)));
+  const unplacedStudents = students.filter(s => !knownClassIds.has(String(s.classId || '')));
+  if (unplacedStudents.length) byClass.push({
+    classInfo:{id:'__missing_class__',name:'Unassigned / missing class'},
+    students:unplacedStudents,
+    missingClass:true
+  });
   const counts = rolloverCounts(draft);
 
   host.classList.remove('hidden');
   openBtn.textContent = 'Restart Rollover';
 
   let html = `
+    <div class="year-rollover-guide" aria-label="Year rollover steps">
+      <div><strong>1. Check classes</strong><span>SchoolHub uses one shared class list across years. Rollover maps students between existing classes; do not rename or delete classes to move learners. Their IDs keep past records linked.</span></div>
+      <div><strong>2. Review the class map</strong><span>Choose a next class for each current class and apply it, or make individual student decisions below. Nothing is decided until you apply a class map or choose a student decision.</span></div>
+      <div><strong>3. Check and apply</strong><span>Download the year-end backup, review every student and confirm the new year starts at Term 1.</span></div>
+    </div>
     <div class="year-rollover-period">
       <label>Current Academic Year
         <input type="text" value="${escapeHtml(draft.fromYear)}" readonly>
       </label>
       <label>New Academic Year
-        <input type="text" id="rolloverNewYear" value="${escapeHtml(draft.toYear)}" placeholder="e.g. 2027/2028">
+        <input type="text" id="rolloverNewYear" value="${escapeHtml(draft.toYear)}" readonly aria-describedby="rolloverNewYearHint">
+        <small id="rolloverNewYearHint" class="hint">The next consecutive year is filled in automatically. The rollover begins at Term 1.</small>
       </label>
     </div>
     <div class="rollover-safety-note">
-      <strong>Safe rollover:</strong> previous grades, attendance, remarks and calendar records remain under ${escapeHtml(draft.fromYear || 'the current year')}. Only each student's current enrolment/class is changed.
+      <strong>What changes:</strong> each student's current class or enrolment status and the school's current academic year and term.<br>
+      <strong>What stays in place:</strong> class records and IDs, subjects, staff assignments, past attendance, grades, remarks, weekly supervision checks and lesson observations. A year-end snapshot of the supported academic records is saved before the change. Supervision and observation records are left untouched.
     </div>`;
 
   byClass.forEach(group => {
-    html += `<section class="rollover-class-card">
+    const classId = String(group.classInfo.id);
+    const destination = draft.classDestinations?.[classId] || '';
+    const applied = Boolean(draft.appliedClassMappings?.[classId]);
+    const destinationClass = classes.find(c => String(c.id) === String(destination));
+    const mapStatus = applied
+      ? `Applied to ${group.students.length} student${group.students.length === 1 ? '' : 's'}. Review student exceptions below.`
+      : destination
+        ? `Suggested from the Setup class order: ${destination === classId ? 'same class (repeat)' : (destinationClass?.name || 'selected class')}. Not applied yet.`
+        : 'No next class suggested. Choose a class or decide each student individually.';
+    html += `<section class="rollover-class-card" data-rollover-class-card="${escapeHtml(classId)}">
       <div class="rollover-class-head">
         <div><h4>${escapeHtml(group.classInfo.name)}</h4><span>${group.students.length} active student${group.students.length === 1 ? '' : 's'}</span></div>
-        <button type="button" class="btn-text rollover-mark-class" data-class="${escapeHtml(group.classInfo.id)}">Mark All Promote</button>
+      </div>`;
+    if (group.missingClass) {
+      html += '<p class="rollover-missing-class form-validation">These students are assigned to a class that is not in Setup. Choose a valid destination for each student; repeating here is unavailable until the missing class is restored.</p>';
+    } else {
+      html += `<div class="rollover-class-map">
+        <label>Next-year class for ${escapeHtml(group.classInfo.name)}
+          <select class="rollover-class-destination" data-class="${escapeHtml(classId)}">${rolloverClassOptions(destination, true, classes)}</select>
+        </label>
+        <button type="button" class="btn-secondary rollover-apply-class-map" data-class="${escapeHtml(classId)}" ${!destination || !group.students.length ? 'disabled' : ''}>${destination === classId ? 'Apply as repeat' : 'Apply to all students'}</button>
       </div>
-      <div class="table-scroll"><table class="grades-table rollover-table">
+      <p class="rollover-class-map-status hint" data-class="${escapeHtml(classId)}">${escapeHtml(mapStatus)}</p>`;
+    }
+    if (group.students.length) {
+      html += `<div class="table-scroll"><table class="grades-table rollover-table">
         <thead><tr><th>Student</th><th>Decision</th><th>Destination</th></tr></thead><tbody>`;
-    group.students.forEach(student => {
-      const d = draft.decisions[student.id] || {};
-      html += `<tr data-student="${escapeHtml(student.id)}">
-        <td><strong>${escapeHtml(student.name || 'Unnamed student')}</strong><div class="meta">${escapeHtml(student.admissionId || '')}</div></td>
-        <td><select class="rollover-decision" data-student="${escapeHtml(student.id)}">
-          <option value="" ${!d.decision ? 'selected' : ''}>Choose a decision</option>
-          <option value="promote" ${d.decision === 'promote' ? 'selected' : ''}>Promote</option>
-          <option value="repeat" ${d.decision === 'repeat' ? 'selected' : ''}>Repeat</option>
-          <option value="graduate" ${d.decision === 'graduate' ? 'selected' : ''}>Graduate / Complete</option>
-          <option value="leave" ${d.decision === 'leave' ? 'selected' : ''}>Transfer / Leave</option>
-        </select></td>
-        <td><select class="rollover-destination" data-student="${escapeHtml(student.id)}" ${d.decision === 'promote' ? '' : 'disabled'}>
-          ${rolloverClassOptions(d.destinationClassId || '', true)}
-        </select></td>
-      </tr>`;
-    });
-    html += '</tbody></table></div></section>';
+      group.students.forEach(student => {
+        const d = draft.decisions[student.id] || {};
+        html += `<tr data-student="${escapeHtml(student.id)}">
+          <td><strong>${escapeHtml(student.name || 'Unnamed student')}</strong><div class="meta">${escapeHtml(student.admissionId || '')}</div></td>
+          <td><select class="rollover-decision" data-student="${escapeHtml(student.id)}">
+            <option value="" ${!d.decision ? 'selected' : ''}>Choose a decision</option>
+            <option value="promote" ${d.decision === 'promote' ? 'selected' : ''}>Promote</option>
+            ${group.missingClass ? '' : `<option value="repeat" ${d.decision === 'repeat' ? 'selected' : ''}>Repeat</option>`}
+            <option value="graduate" ${d.decision === 'graduate' ? 'selected' : ''}>Graduate / Complete</option>
+            <option value="leave" ${d.decision === 'leave' ? 'selected' : ''}>Transfer / Leave</option>
+          </select></td>
+          <td><select class="rollover-destination" data-student="${escapeHtml(student.id)}" ${d.decision === 'promote' ? '' : 'disabled'}>
+            ${rolloverClassOptions(d.destinationClassId || '', true, classes)}
+          </select></td>
+        </tr>`;
+      });
+      html += '</tbody></table></div>';
+    } else {
+      html += '<p class="rollover-empty-class hint">No active students are currently assigned to this class. The class itself will remain in Setup.</p>';
+    }
+    html += '</section>';
   });
 
   html += `<div class="rollover-review-card">
@@ -2400,20 +2455,20 @@ function renderYearRollover() {
 
   host.innerHTML = html;
 
-  const newYearInput = document.getElementById('rolloverNewYear');
-  newYearInput.addEventListener('input', () => { draft.toYear = newYearInput.value.trim(); });
-
   host.querySelectorAll('.rollover-decision').forEach(select => {
     select.addEventListener('change', () => {
       const studentId = select.dataset.student;
-      const student = students.find(s => s.id === studentId);
+      const student = students.find(s => String(s.id) === String(studentId));
       if (!student) return;
       const decision = select.value;
       const current = draft.decisions[studentId] || {};
       current.decision = decision;
       if (decision === 'repeat') current.destinationClassId = student.classId;
-      else if (decision === 'promote' && !current.destinationClassId) current.destinationClassId = rolloverDefaultDestination(student.classId);
+      else if (decision === 'promote' && !current.destinationClassId) current.destinationClassId = draft.appliedClassMappings?.[String(student.classId)]
+        ? draft.classDestinations[String(student.classId)]
+        : rolloverDefaultDestination(student.classId, classes);
       else if (decision === 'graduate' || decision === 'leave') current.destinationClassId = '';
+      else if (!decision) current.destinationClassId = '';
       draft.decisions[studentId] = current;
       renderYearRollover();
     });
@@ -2427,15 +2482,38 @@ function renderYearRollover() {
     });
   });
 
-  host.querySelectorAll('.rollover-mark-class').forEach(button => {
+  host.querySelectorAll('.rollover-class-destination').forEach(select => {
+    select.addEventListener('change', () => {
+      const classId = select.dataset.class;
+      draft.classDestinations[classId] = select.value;
+      draft.appliedClassMappings[classId] = false;
+      const card = select.closest('[data-rollover-class-card]');
+      const button = card?.querySelector('.rollover-apply-class-map');
+      const status = card?.querySelector('.rollover-class-map-status');
+      const target = classes.find(c => String(c.id) === select.value);
+      if (button) {
+        button.disabled = !select.value || !groupCountForClass(classId, students);
+        button.textContent = select.value === classId ? 'Apply as repeat' : 'Apply to all students';
+      }
+      if (status) status.textContent = select.value
+        ? `Selected ${target?.name || 'class'}; not applied yet.`
+        : 'No next class selected. Choose a class or decide each student individually.';
+    });
+  });
+
+  host.querySelectorAll('.rollover-apply-class-map').forEach(button => {
     button.addEventListener('click', () => {
-      const classId = button.dataset.class;
-      const destination = rolloverDefaultDestination(classId);
-      students.filter(s => s.classId === classId).forEach(student => {
-        draft.decisions[student.id] = destination
-          ? { decision:'promote', destinationClassId:destination }
-          : { decision:'graduate', destinationClassId:'' };
+      const classId = String(button.dataset.class || '');
+      const destination = String(draft.classDestinations?.[classId] || '');
+      if (!destination) return;
+      const hasExistingChoices = students.some(student => String(student.classId) === classId && draft.decisions[student.id]?.decision);
+      if (hasExistingChoices && !confirm('Applying this class map will replace the current decisions for every student in this class, including individual changes. Continue?')) return;
+      students.filter(s => String(s.classId) === classId).forEach(student => {
+        draft.decisions[student.id] = destination === classId
+          ? { decision:'repeat', destinationClassId:classId }
+          : { decision:'promote', destinationClassId:destination };
       });
+      draft.appliedClassMappings[classId] = true;
       renderYearRollover();
     });
   });
@@ -2443,9 +2521,15 @@ function renderYearRollover() {
   document.getElementById('downloadRolloverBackupBtn').addEventListener('click', downloadYearRolloverBackup);
   document.getElementById('reviewYearRolloverBtn').addEventListener('click', showYearRolloverReview);
   document.getElementById('cancelYearRolloverBtn').addEventListener('click', () => {
+    const decided = Object.values(draft.decisions || {}).some(d => d && d.decision);
+    if (decided && !confirm('Discard the decisions in this year rollover review? No school records have been changed.')) return;
     yearRolloverDraft = null;
     renderYearRollover();
   });
+}
+
+function groupCountForClass(classId, students = rolloverStudents()) {
+  return students.filter(student => String(student.classId) === String(classId)).length;
 }
 
 function buildYearEndSnapshot(draft) {
@@ -2458,6 +2542,8 @@ function buildYearEndSnapshot(draft) {
     fromYear: draft.fromYear,
     toYear: draft.toYear,
     decisions: JSON.parse(JSON.stringify(draft.decisions || {})),
+    classMappingSuggestions: JSON.parse(JSON.stringify(draft.classDestinations || {})),
+    appliedClassMappings: JSON.parse(JSON.stringify(draft.appliedClassMappings || {})),
     data: {
       settings: DB.get(KEYS.settings, {}),
       classes: DB.get(KEYS.classes, []),
@@ -2490,17 +2576,29 @@ function downloadYearRolloverBackup() {
 function showYearRolloverReview() {
   if (!yearRolloverDraft) return;
   const draft = yearRolloverDraft;
-  draft.toYear = String(document.getElementById('rolloverNewYear')?.value || draft.toYear || '').trim();
+  draft.toYear = nextAcademicYearLabel(draft.fromYear);
   const review = document.getElementById('yearRolloverReview');
   const counts = rolloverCounts(draft);
   const validYear = draft.toYear === nextAcademicYearLabel(draft.fromYear);
   const unresolved = counts.unresolved + (validYear ? 0 : 1);
+  const classes = Array.isArray(draft.classes) ? draft.classes : [];
+  const classPlan = classes.map(classInfo => {
+    const classId = String(classInfo.id);
+    const destinationId = draft.classDestinations?.[classId] || '';
+    const destination = classes.find(item => String(item.id) === String(destinationId));
+    const used = Boolean(draft.appliedClassMappings?.[classId]);
+    const target = destination?.name || (groupCountForClass(classId) ? 'Individual student decisions' : 'No active students');
+    return `<li><strong>${escapeHtml(classInfo.name)}</strong> → ${escapeHtml(target)}${used ? ' <span>Applied</span>' : destination ? ' <span>Suggested only</span>' : ''}</li>`;
+  }).join('') + (rolloverStudents().some(student => !classes.some(classInfo => String(classInfo.id) === String(student.classId || '')))
+    ? '<li><strong>Unassigned / missing class</strong> → individual student decisions required</li>' : '');
 
   review.innerHTML = `<div class="rollover-confirm-card">
     <h4>Review Rollover</h4>
     <p><strong>${escapeHtml(draft.fromYear || 'Current year')} → ${escapeHtml(draft.toYear || 'New year not set')}</strong></p>
     <p>${counts.promote} promoted · ${counts.repeat} repeated · ${counts.graduate} completed · ${counts.leave} leaving</p>
-    ${unresolved ? '<p class="form-validation">Resolve every destination and enter a different Academic Year before applying.</p>' : '<p class="hint">A full year-end snapshot will be created before any student is moved.</p>'}
+    <p><strong>New term:</strong> Term 1</p>
+    <p><strong>Class plan</strong></p><ul class="rollover-review-map">${classPlan}</ul>
+    ${unresolved ? `<p class="form-validation">${counts.unresolved} student decision(s) remain. Resolve each one before applying.</p>` : '<p class="hint">A year-end snapshot will be archived before the student roster and school year are updated. Past attendance, grades, supervision checks and lesson observations remain unchanged.</p>'}
     <button type="button" id="applyYearRolloverBtn" class="btn-primary" ${unresolved ? 'disabled' : ''}>Apply Rollover</button>
   </div>`;
 
@@ -2596,7 +2694,7 @@ function rolloverUpdatedStudents(draft) {
 async function applyYearRollover() {
   if (!yearRolloverDraft || !requireHeadTeacher('apply an academic year rollover')) return;
   const draft = yearRolloverDraft;
-  draft.toYear = String(document.getElementById('rolloverNewYear')?.value || draft.toYear || '').trim();
+  draft.toYear = nextAcademicYearLabel(draft.fromYear);
   const counts = rolloverCounts(draft);
   if (counts.unresolved) { alert('Resolve every student decision and destination first.'); return; }
   if (!/^\d{4}\/\d{4}$/.test(draft.fromYear)||draft.toYear !== nextAcademicYearLabel(draft.fromYear)) {
@@ -2606,11 +2704,16 @@ async function applyYearRollover() {
   if (String(settings.currentYear || '').trim() !== draft.fromYear) {
     alert('The current Academic Year changed after this rollover was prepared. Restart the rollover.'); return;
   }
+  if ((draft.fromTerm !== undefined && String(settings.currentTerm || '') !== String(draft.fromTerm || '')) ||
+      (draft.expectedRoster && JSON.stringify(rolloverRosterSnapshot()) !== JSON.stringify(draft.expectedRoster)) ||
+      (draft.expectedClasses && JSON.stringify(rolloverClassSnapshot()) !== JSON.stringify(draft.expectedClasses))) {
+    alert('The current term, class list or student class placements changed after review. Restart the rollover and review the latest school data.'); return;
+  }
   if (settings.currentTerm && settings.currentTerm !== 'Term 3') {
     const continueEarly = confirm(`Current term is ${settings.currentTerm}, not Term 3. Continue with end-of-year rollover anyway?`);
     if (!continueEarly) return;
   }
-  if (!confirm(`Apply rollover from ${draft.fromYear} to ${draft.toYear}?\n\nThis will update the current class/enrolment status of ${rolloverStudents().length} students. A year-end snapshot is created first.`)) return;
+  if (!confirm(`Apply rollover from ${draft.fromYear} to ${draft.toYear}?\n\nThis will update the current class/enrolment status of ${rolloverStudents().length} students and start Term 1. A year-end snapshot is created first. Past attendance, grades, supervision checks and lesson observations remain unchanged.`)) return;
 
   const applyBtn = document.getElementById('applyYearRolloverBtn');
   if (applyBtn) { applyBtn.disabled = true; applyBtn.textContent = 'Applying…'; }
@@ -2626,11 +2729,12 @@ async function applyYearRollover() {
     if (FIREBASE_ENABLED && currentSchoolId) {
       await flushPendingCloudWrites();
       if(typeof hasPendingSchoolHubSync==='function'&&hasPendingSchoolHubSync())throw new Error('Resolve pending saves and sync errors before changing the academic year.');
-      await safetyCall('applySchoolYearChange', {mode:'rollover',fromYear:draft.fromYear,toYear:draft.toYear,decisions:draft.decisions,expectedRoster:draft.expectedRoster,expectedTerm:draft.fromTerm});
+      const appliedClassMappings = Object.fromEntries(Object.entries(draft.classDestinations || {}).filter(([classId]) => draft.appliedClassMappings?.[classId]));
+      await safetyCall('applySchoolYearChange', {mode:'rollover',fromYear:draft.fromYear,toYear:draft.toYear,decisions:draft.decisions,expectedRoster:draft.expectedRoster,expectedClasses:draft.expectedClasses,classMappings:appliedClassMappings,expectedTerm:draft.fromTerm});
       await pullCloudData();
       yearRolloverDraft = null;
       loadSettingsForm(); renderStudents(); renderClasses(); renderYearRollover();
-      alert('Academic Year Rollover complete. The archive and roster were saved atomically.');
+      alert('Academic Year Rollover complete. The year-end archive and roster were saved together. Past attendance, grades, supervision checks and lesson observations remain unchanged.');
       return;
     }
 
@@ -2677,7 +2781,7 @@ async function applyYearRollover() {
     renderStudents();
     renderClasses();
     renderYearRollover();
-    alert(`Academic Year Rollover complete.\n\n${draft.fromYear} → ${draft.toYear}\nPromoted: ${counts.promote}\nRepeated: ${counts.repeat}\nCompleted: ${counts.graduate}\nLeaving: ${counts.leave}\n\nPrevious academic-year records remain preserved.`);
+    alert(`Academic Year Rollover complete.\n\n${draft.fromYear} → ${draft.toYear} · Term 1\nPromoted: ${counts.promote}\nRepeated: ${counts.repeat}\nCompleted: ${counts.graduate}\nLeaving: ${counts.leave}\n\nPast attendance, grades, supervision checks and lesson observations remain unchanged.`);
   } catch (error) {
     console.error('Academic year rollover failed:', error);
     alert('The rollover was NOT completed.\n\nA local year-end snapshot was preserved before changes were attempted.\n\n' + (error.message || error));
@@ -2694,9 +2798,21 @@ if (openYearRolloverBtn) {
       alert('Set the current Academic Year in Setup before starting rollover.');
       return;
     }
+    if (!nextAcademicYearLabel(settings.currentYear)) {
+      alert('Set the current Academic Year in the consecutive YYYY/YYYY format before starting rollover.');
+      return;
+    }
+    if (!['Term 1','Term 2','Term 3'].includes(settings.currentTerm)) {
+      alert('Choose the current term in Setup before starting rollover.');
+      return;
+    }
     if (!DB.get(KEYS.classes, []).length || !rolloverStudents().length) {
       alert('Add classes and active students before starting rollover.');
       return;
+    }
+    if (yearRolloverDraft) {
+      const decided = Object.values(yearRolloverDraft.decisions || {}).some(d => d && d.decision);
+      if (!confirm(decided ? 'Start over and discard the current rollover decisions? No school records have been changed.' : 'Start a new rollover review? The current review will be replaced.')) return;
     }
     yearRolloverDraft = buildYearRolloverDraft();
     renderYearRollover();

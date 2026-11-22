@@ -1454,11 +1454,21 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
 .year-rollover-heading .hint{margin:0;max-width:720px}
 #yearRolloverWorkspace{margin-top:18px}
 .year-rollover-period{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:14px}
+.year-rollover-guide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 16px}
+.year-rollover-guide>div{display:flex;flex-direction:column;gap:6px;min-width:0;padding:13px;border:1px solid var(--rule);border-radius:12px;background:var(--surface-alt);line-height:1.45}
+.year-rollover-guide strong{font-size:.9rem}
+.year-rollover-guide span{font-size:.82rem;color:var(--muted)}
 .rollover-safety-note{padding:12px 14px;border:1px solid var(--gold);border-radius:12px;background:color-mix(in srgb,var(--gold) 8%,var(--surface));line-height:1.5;margin-bottom:16px}
 .rollover-class-card{border:1px solid var(--rule);border-radius:16px;background:var(--surface-alt);padding:14px;margin:14px 0}
 .rollover-class-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
 .rollover-class-head h4{margin:0}
 .rollover-class-head span{font-size:.8rem;color:var(--muted)}
+.rollover-class-map{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px;margin-top:12px}
+.rollover-class-map label{min-width:0}
+.rollover-class-map select{width:100%;min-width:0}
+.rollover-class-map button{white-space:nowrap}
+.rollover-class-map-status{margin:8px 0 10px}
+.rollover-empty-class{margin:12px 0 0}
 .rollover-table{width:100%}
 .rollover-table td:first-child{min-width:180px}
 .rollover-table select{width:100%;min-width:150px}
@@ -1470,12 +1480,18 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
 .rollover-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .rollover-confirm-card{margin-top:14px;padding:16px;border:1px solid var(--gold);border-radius:14px;background:var(--surface-alt)}
 .rollover-confirm-card h4{margin-top:0}
+.rollover-review-map{margin:8px 0 16px;padding-left:22px}
+.rollover-review-map li{padding:4px 0}
+.rollover-review-map span{font-size:.78rem;color:var(--muted)}
 @media(max-width:700px){
   .year-rollover-heading{display:block}
   .year-rollover-heading button{width:100%;margin-top:12px}
   .year-rollover-period{grid-template-columns:1fr}
+  .year-rollover-guide{grid-template-columns:1fr}
   .rollover-class-head{align-items:flex-start;flex-direction:column}
   .rollover-class-head button{width:100%}
+  .rollover-class-map{grid-template-columns:1fr}
+  .rollover-class-map button{width:100%;white-space:normal}
   .rollover-review-card{grid-template-columns:repeat(2,minmax(0,1fr))}
   .rollover-actions{flex-direction:column;align-items:stretch}
   .rollover-actions button{width:100%}
