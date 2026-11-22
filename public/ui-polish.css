@@ -1090,6 +1090,7 @@
  #feePrintDialog .fee-parent-details{grid-template-columns:1fr 1fr;gap:3px 12px;margin:8px 0;}
  #feePrintDialog .fee-kpis{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin:8px 0;}
  #feePrintDialog .fee-kpis>div{padding:5px;border-radius:0;}
+
  #feePrintDialog :is(.fee-statement,.fee-reminder-notice)>p{margin:6px 0;}
  #feePrintDialog :is(.fee-statement,.fee-reminder-notice)>h4{font-size:10pt;margin:8px 0 4px;break-after:avoid;}
  #feePrintDialog .fee-summary-table{font-size:8pt;margin:4px 0 8px;}
@@ -1101,6 +1102,26 @@
 #app #view-fees #feesWrap label[hidden]{display:none!important;}
 
 #app #view-fees :is(#feeStatementCsv,#feeStatementPrint,#feeStatementBatchPrint)[hidden]{display:none!important;}
+
+/* Fees & Receipts: keep the key totals and pupil payment actions in view. */
+#app #view-fees .fee-overview {
+  margin:16px 0 22px; padding:16px; border:1px solid var(--rule);
+  border-radius:14px; background:var(--surface-alt);
+}
+#app #view-fees .fee-overview-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+#app #view-fees .fee-overview-heading h3 { margin:0 0 4px; }
+#app #view-fees .fee-overview-heading p { margin:0; color:var(--muted); }
+#app #view-fees .fee-overview-heading button { flex:0 0 auto; margin:0; }
+#app #view-fees .fee-overview-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); margin:14px 0 0; }
+#app #view-fees .fee-overview-kpis > div { background:var(--surface); }
+#app #view-fees .fee-pupil-balances { margin:0 0 24px; }
+#app #view-fees .fee-row-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; white-space:normal; }
+#app #view-fees .fee-row-actions button { width:auto; margin:0; padding:8px 10px; font-size:.9em; }
+@media(max-width:700px){
+  #app #view-fees .fee-overview-heading { align-items:stretch; flex-direction:column; }
+  #app #view-fees .fee-overview-heading button { width:100%; }
+  #app #view-fees .fee-overview-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 
 /* Mobile attendance uses compact scrolling columns instead of a blanket table width. */
 @media screen and (max-width:900px){
