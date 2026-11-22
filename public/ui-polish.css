@@ -1117,10 +1117,32 @@
 #app #view-fees .fee-pupil-balances { margin:0 0 24px; }
 #app #view-fees .fee-row-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; white-space:normal; }
 #app #view-fees .fee-row-actions button { width:auto; margin:0; padding:8px 10px; font-size:.9em; }
+#app #view-fees .fee-balance-controls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) auto auto; gap:10px; align-items:end; margin:14px 0 8px; }
+#app #view-fees .fee-balance-controls > label:not(.fee-inline-check) { min-width:0; margin:0; }
+#app #view-fees .fee-balance-controls select { min-width:0; }
+#app #view-fees .fee-balance-controls .fee-inline-check { display:flex; align-items:center; gap:8px; margin:0 4px 10px; white-space:nowrap; }
+#app #view-fees #feeBalanceClear { margin:0 0 4px; white-space:nowrap; }
+#app #view-fees #feeBalanceScope { margin:4px 0 8px; }
+#app #view-fees .fee-recent-payments { margin:22px 0 0; padding-top:16px; border-top:1px solid var(--rule); }
+#app #view-fees .fee-recent-payments h4 { margin:0 0 4px; }
+#app #view-fees .fee-recent-payments > .fee-note { margin:0 0 12px; }
+#app #view-fees .fee-recent-list { display:grid; gap:8px; }
+#app #view-fees .fee-recent-payment { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 14px; border:1px solid var(--rule); border-radius:12px; background:var(--surface-alt); }
+#app #view-fees .fee-recent-payment-person { display:flex; flex-direction:column; gap:3px; min-width:0; }
+#app #view-fees .fee-recent-payment-person small { color:var(--muted); overflow-wrap:anywhere; }
+#app #view-fees .fee-recent-payment-action { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex:0 0 auto; }
+#app #view-fees .fee-payment-status { padding:3px 8px; border-radius:999px; color:var(--success,#287a49); background:var(--success-soft,#e7f3eb); font-size:.86em; }
+#app #view-fees .fee-payment-status.is-voided { color:var(--danger,#a63232); background:var(--danger-soft,#f8e8e8); }
+#app #view-fees .fee-recent-payment button { margin:0; }
 @media(max-width:700px){
   #app #view-fees .fee-overview-heading { align-items:stretch; flex-direction:column; }
   #app #view-fees .fee-overview-heading button { width:100%; }
   #app #view-fees .fee-overview-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #app #view-fees .fee-balance-controls { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #app #view-fees .fee-balance-controls .fee-inline-check { margin:4px 0; }
+  #app #view-fees #feeBalanceClear { width:100%; margin:0; }
+  #app #view-fees .fee-recent-payment { align-items:stretch; flex-direction:column; gap:8px; }
+  #app #view-fees .fee-recent-payment-action { justify-content:space-between; flex-wrap:wrap; }
 }
 
 /* Mobile attendance uses compact scrolling columns instead of a blanket table width. */
