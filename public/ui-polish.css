@@ -1134,6 +1134,9 @@
 #app #view-fees .fee-payment-status { padding:3px 8px; border-radius:999px; color:var(--success,#287a49); background:var(--success-soft,#e7f3eb); font-size:.86em; }
 #app #view-fees .fee-payment-status.is-voided { color:var(--danger,#a63232); background:var(--danger-soft,#f8e8e8); }
 #app #view-fees .fee-recent-payment button { margin:0; }
+#app #view-fees .fee-payment-balance { display:flex; justify-content:space-between; align-items:center; gap:12px; margin:10px 0 16px; padding:12px 14px; border:1px solid var(--rule); border-radius:12px; background:var(--surface-alt); }
+#app #view-fees .fee-payment-balance > span { margin:0; }
+#app #view-fees .fee-payment-balance button { width:auto; flex:0 0 auto; margin:0; }
 @media(max-width:700px){
   #app #view-fees .fee-overview-heading { align-items:stretch; flex-direction:column; }
   #app #view-fees .fee-overview-heading button { width:100%; }
@@ -1143,6 +1146,8 @@
   #app #view-fees #feeBalanceClear { width:100%; margin:0; }
   #app #view-fees .fee-recent-payment { align-items:stretch; flex-direction:column; gap:8px; }
   #app #view-fees .fee-recent-payment-action { justify-content:space-between; flex-wrap:wrap; }
+  #app #view-fees .fee-payment-balance { align-items:stretch; flex-direction:column; }
+  #app #view-fees .fee-payment-balance button { width:100%; }
 }
 
 /* Mobile attendance uses compact scrolling columns instead of a blanket table width. */
