@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1b2d24">
+  <meta name="referrer" content="no-referrer">
+  <title>Parent Portal · AlatiphA SchoolHub</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="parent-portal.css">
+</head>
+<body class="parent-portal-page">
+  <main id="parentPortalApp" class="parent-portal-shell">
+    <header class="parent-portal-header">
+      <a href="./" class="parent-brand"><img src="icon.svg" alt=""><span>AlatiphA SchoolHub</span></a>
+      <a href="./" class="parent-staff-link">School staff sign in</a>
+    </header>
+    <section class="parent-portal-intro">
+      <p class="parent-eyebrow">Family access</p>
+      <h1>Parent Portal</h1>
+      <p>See your linked learner’s attendance, grades, report comments and fee balance.</p>
+    </section>
+    <div id="parentPortalStatus" class="parent-status" role="status" aria-live="polite">Connecting securely…</div>
+    <section id="parentPortalAuth" class="parent-card" hidden>
+      <h2 id="parentAuthTitle">Sign in</h2>
+      <p class="parent-muted">Use the verified email address provided to your school.</p>
+      <form id="parentAuthForm" class="parent-form">
+        <label>Email address<input id="parentEmail" type="email" autocomplete="email" required></label>
+        <label>Password<input id="parentPassword" type="password" autocomplete="current-password" minlength="6" required></label>
+        <label id="parentConfirmWrap" hidden>Confirm password<input id="parentConfirmPassword" type="password" autocomplete="new-password" minlength="6"></label>
+        <button id="parentAuthSubmit" class="parent-primary" type="submit">Sign in</button>
+      </form>
+      <div class="parent-auth-actions">
+        <button id="parentAuthMode" class="parent-link-button" type="button">Create parent account</button>
+        <button id="parentForgotPassword" class="parent-link-button" type="button">Forgot password?</button>
+      </div>
+    </section>
+    <section id="parentPortalVerify" class="parent-card" hidden>
+      <h2>Verify your email</h2>
+      <p id="parentVerifyText" class="parent-muted">Use the link sent to your inbox, then return here and check again.</p>
+      <div class="parent-actions"><button id="parentResendVerification" class="parent-secondary" type="button">Resend verification email</button><button id="parentCheckVerification" class="parent-primary" type="button">I’ve verified my email</button></div>
+      <button id="parentVerifySignOut" class="parent-link-button" type="button">Use a different account</button>
+    </section>
+    <section id="parentPortalClaim" class="parent-card" hidden>
+      <h2>Link your learner</h2>
+      <p class="parent-muted">Ask the school for an invitation code. It only works with the verified email address it was issued to.</p>
+      <label>Invitation code<input id="parentInviteCode" type="text" inputmode="text" autocomplete="off" maxlength="200" placeholder="Paste the code from your school"></label>
+      <button id="parentClaimInvite" class="parent-primary" type="button">Link learner</button>
+      <button id="parentClaimSignOut" class="parent-link-button" type="button">Sign out</button>
+    </section>
+    <section id="parentPortalData" hidden>
+      <div class="parent-account-bar"><span id="parentSignedInEmail"></span><button id="parentRefresh" class="parent-secondary" type="button">Refresh</button><button id="parentPrint" class="parent-secondary" type="button">Print / Save report</button><button id="parentSignOut" class="parent-link-button" type="button">Sign out</button></div>
+      <div id="parentLearnerCards" class="parent-learner-list"></div>
+    </section>
+    <footer class="parent-portal-footer"><a href="privacy.html">Privacy</a><span>Parent access is read-only and provided by your school.</span></footer>
+  </main>
+  <script src="https://www.gstatic.com/firebasejs/13.4.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/13.4.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/13.4.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/13.4.0/firebase-functions-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="parent-portal.js"></script>
+</body>
+</html>

@@ -157,6 +157,10 @@ service cloud.firestore {
       match /identityEmails/{emailHash} {
         allow read, write: if false;
       }
+      // Parent links and invitation hashes are only accessed by trusted callables.
+      // Parent clients receive learner-specific, sanitized responses from the server.
+      match /parentPortalAccess/{parentUid} { allow read, write: if false; }
+      match /parentPortalInvites/{inviteHash} { allow read, write: if false; }
       match /profileRecovery/{backupId} {
         allow read: if isHeadTeacher(schoolId);
         allow write: if false;

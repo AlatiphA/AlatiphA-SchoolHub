@@ -367,3 +367,6 @@ if(manualPayments)Object.assign(exports,manualPayments.register({onCall,HttpsErr
 
 const ownerAccess = require('./owner-access');
 if(ownerAccess)Object.assign(exports,ownerAccess.register({onCall:rawOnCall,onDocumentWritten:require('firebase-functions/v2/firestore').onDocumentWritten,HttpsError,db:rawDb,admin}));
+
+const parentPortal = require('./parent-portal');
+if(parentPortal)Object.assign(exports,parentPortal.register({onCall,HttpsError,db,admin}));

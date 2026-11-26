@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="school-operations.css?v=v40-private-images-1">
 <link rel="stylesheet" href="ui-polish.css?v=school-calendar-current-day-week-start-1">
 <link rel="stylesheet" href="communications.css?v=communication-templates-1">
+<link rel="stylesheet" href="parent-portal.css?v=parent-portal-v1">
 <script src="firebase-config.js"></script>
 
 <script>
@@ -85,7 +86,7 @@
   </div>
   <footer class="auth-footer" aria-label="SchoolHub information">
     <div class="auth-footer-brand"><strong>AlatiphA SchoolHub</strong><p>More time for teaching. One place for your school.</p></div>
-    <nav aria-label="Help and policies"><button type="button" class="auth-footer-link" data-inline-doc="faq">Help &amp; FAQ</button><button type="button" class="auth-footer-link" data-inline-doc="privacy">Privacy</button><button type="button" class="auth-footer-link" data-inline-doc="terms">Terms of Use</button></nav>
+    <nav aria-label="Help and policies"><button type="button" class="auth-footer-link" data-inline-doc="faq">Help &amp; FAQ</button><button type="button" class="auth-footer-link" data-inline-doc="privacy">Privacy</button><button type="button" class="auth-footer-link" data-inline-doc="terms">Terms of Use</button><a class="auth-footer-link" href="parent.html">Parent Portal</a></nav>
     <section class="auth-footer-support" aria-label="Support"><strong>Support</strong><a href="mailto:alatipha@ymail.com">alatipha@ymail.com</a><a href="tel:0243443688">0243443688</a></section>
     <span>© All Rights Reserved · AlatiphA Multimedia</span>
   </footer>
@@ -622,6 +623,13 @@
       <button type="button" id="checkStudentRecoveryBtn" class="btn-secondary">Check for missing students</button>
       <div id="studentRecoveryPreview" class="staff-import-preview hidden" aria-live="polite"></div>
     </div>
+  </section>
+
+  <!-- PARENT PORTAL MANAGEMENT (Head Teacher only) -->
+  <section id="view-parent-portal" class="view hidden">
+    <h2>Parent Portal</h2>
+    <p class="hint">Invite a parent or guardian to view only their linked learner’s attendance, grades and report comments, and fee balance. Invitations are tied to a verified email and expire after seven days.</p>
+    <div id="parentPortalManager" class="parent-portal-manager"></div>
   </section>
 
   <!-- SUBJECTS -->
@@ -1348,7 +1356,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.110</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.111</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
@@ -1394,6 +1402,7 @@
 <script src="app-4.js?v=school-calendar-current-day-week-start-1"></script>
 <script src="fees.js?v=v40-private-images-1"></script>
 <script src="school-operations.js?v=v40-private-images-1"></script>
+<script src="parent-portal.js?v=parent-portal-v1"></script>
 <script src="live-class-sync.js?v=v40-private-images-1"></script>
 <script src="live-student-sync.js?v=v40-private-images-1-student-live-3"></script>
 <script src="live-grade-sync.js?v=v40-grade-live-2"></script>
