@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.109';
+const APP_VERSION = '40.1.110';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1096,6 +1096,17 @@ function showView(name) {
   if (FIREBASE_ENABLED && !sessionReady) return;
   if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'billing', 'fees', 'manage-teachers', 'communications'].indexOf(name) !== -1) {
     name = 'home';
+  }
+  const schoolCalendarView = document.getElementById('view-school-calendar');
+  if (name === 'school-calendar' && schoolCalendarView && schoolCalendarView.classList.contains('hidden')) {
+    const settings = DB.get(KEYS.settings, {});
+    const today = new Date();
+    schoolCalendarTabState = {
+      term: String(settings.currentTerm || 'Term 1'),
+      year: String(settings.currentYear || today.getFullYear()),
+      month: new Date(today.getFullYear(), today.getMonth(), 1)
+    };
+    editingSchoolCalendarTabDate = '';
   }
   views.forEach(v => {
     document.getElementById('view-' + v).classList.toggle('hidden', v !== name);
@@ -6260,6 +6271,24 @@ function renderTeacherAttendanceForm() {
 let editingSchoolCalendarDate = null;
 let schoolCalendarTabState = null;
 let editingSchoolCalendarTabDate = '';
+const SCHOOL_CALENDAR_WEEK_START_KEY = 'schoolhub_calendar_week_start';
+
+function schoolCalendarWeekStartsMonday() {
+  try { return localStorage.getItem(SCHOOL_CALENDAR_WEEK_START_KEY) === 'monday'; }
+  catch (_) { return false; }
+}
+
+function schoolCalendarInitialMonth(term, year) {
+  const settings = DB.get(KEYS.settings, {});
+  const today = new Date();
+  if (String(settings.currentTerm || 'Term 1') === String(term)
+      && String(settings.currentYear || today.getFullYear()) === String(year)) {
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  }
+  const termDates = schoolCalendarTabDates(term, year);
+  const start = termDates && parseDateOnly(termDates.start);
+  return start ? new Date(start.getFullYear(), start.getMonth(), 1) : new Date(today.getFullYear(), today.getMonth(), 1);
+}
 
 function schoolCalendarTabDates(term, year) {
   const settings = DB.get(KEYS.settings, {});
@@ -6299,9 +6328,7 @@ function renderSchoolCalendarTab() {
   if (!schoolCalendarTabState) {
     const term = String(settings.currentTerm || 'Term 1');
     const year = String(settings.currentYear || new Date().getFullYear());
-    const termDates = schoolCalendarTabDates(term, year);
-    const initial = termDates ? parseDateOnly(termDates.start) : new Date();
-    schoolCalendarTabState = { term, year, month: new Date(initial.getFullYear(), initial.getMonth(), 1) };
+    schoolCalendarTabState = { term, year, month: schoolCalendarInitialMonth(term, year) };
   }
   if (termList.indexOf(schoolCalendarTabState.term) < 0) termList.unshift(schoolCalendarTabState.term);
   const term = schoolCalendarTabState.term;
@@ -6314,8 +6341,11 @@ function renderSchoolCalendarTab() {
   const records = schoolCalendarRecordsForTerm(term, year);
   const byDate = new Map(records.map(item => [item.date, item.record || {}]));
   const isCurrentPeriod = String(settings.currentTerm || 'Term 1') === String(term) && String(settings.currentYear || '') === String(year);
-  const offset = (monthStart.getDay() + 6) % 7;
-  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const weekStartsMonday = schoolCalendarWeekStartsMonday();
+  const offset = (monthStart.getDay() + (weekStartsMonday ? 6 : 0)) % 7;
+  const weekdays = weekStartsMonday
+    ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const daysInMonth = monthEnd.getDate();
   let schoolDays = 0, closedDays = 0, eventDays = 0;
   for (let day = 1; day <= daysInMonth; day++) {
@@ -6334,7 +6364,8 @@ function renderSchoolCalendarTab() {
   html += '</select></label><label>School year<select id="schoolCalendarTabYear">';
   schoolCalendarTabYears(term).forEach(value => { html += '<option value="' + escapeHtml(value) + '"' + (value === year ? ' selected' : '') + '>' + escapeHtml(value) + '</option>'; });
   html += '</select></label><div class="school-calendar-period"><span>Term opens</span><strong>' + escapeHtml(termDates ? schoolCalendarTabDateLabel(termDates.start) : 'Set in Setup') + '</strong><span>Term closes</span><strong>' + escapeHtml(termDates ? schoolCalendarTabDateLabel(termDates.end) : 'Set in Setup') + '</strong></div></div>';
-  html += '<div class="school-calendar-month-head"><button type="button" id="schoolCalendarPrevMonth" aria-label="Previous month">‹</button><h3>' + escapeHtml(monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })) + '</h3><button type="button" id="schoolCalendarNextMonth" aria-label="Next month">›</button></div>';
+  html += '<div class="school-calendar-month-head"><button type="button" id="schoolCalendarPrevMonth" aria-label="Previous month">‹</button><h3>' + escapeHtml(monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })) + '</h3><button type="button" id="schoolCalendarToday" class="school-calendar-today">Today</button><button type="button" id="schoolCalendarNextMonth" aria-label="Next month">›</button></div>';
+  html += '<div class="school-calendar-week-start" role="group" aria-label="First day of the week"><span>Week starts</span><button type="button" data-school-week-start="sunday" aria-pressed="' + (!weekStartsMonday) + '">Sunday</button><button type="button" data-school-week-start="monday" aria-pressed="' + weekStartsMonday + '">Monday</button></div>';
   html += '<div class="school-calendar-month-stats"><span><strong>' + schoolDays + '</strong> school days</span><span><strong>' + closedDays + '</strong> holidays / closures</span><span><strong>' + eventDays + '</strong> key events</span></div>';
   html += '<div class="school-calendar-grid" role="grid" aria-label="School calendar for ' + escapeHtml(monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })) + '">';
   weekdays.forEach(day => { html += '<div class="school-calendar-weekday" role="columnheader">' + day + '</div>'; });
@@ -6355,8 +6386,9 @@ function renderSchoolCalendarTab() {
     if (clickable) classes.push('is-openable');
     const label = record.note || (type ? calendarLabel(type) : (inTerm && isWeekdayDate(date) ? 'School day' : ''));
     const content = '<span class="school-calendar-day-number">' + day + '</span>' + (label ? '<span class="school-calendar-day-note">' + escapeHtml(label) + '</span>' : '');
-    if (clickable) html += '<button type="button" role="gridcell" class="' + classes.join(' ') + '" data-school-date="' + key + '" aria-label="Open attendance for ' + escapeHtml(schoolCalendarTabDateLabel(key) + (record.note ? ', ' + record.note : '')) + '">' + content + '</button>';
-    else html += '<div role="gridcell" class="' + classes.join(' ') + '"' + (label ? ' aria-label="' + escapeHtml(schoolCalendarTabDateLabel(key) + ', ' + label) + '"' : '') + '>' + content + '</div>';
+    const todayAttribute = key === todayKey ? ' aria-current="date"' : '';
+    if (clickable) html += '<button type="button" role="gridcell" class="' + classes.join(' ') + '" data-school-date="' + key + '"' + todayAttribute + ' aria-label="Open attendance for ' + escapeHtml(schoolCalendarTabDateLabel(key) + (record.note ? ', ' + record.note : '')) + '">' + content + '</button>';
+    else html += '<div role="gridcell" class="' + classes.join(' ') + '"' + todayAttribute + (label ? ' aria-label="' + escapeHtml(schoolCalendarTabDateLabel(key) + ', ' + label) + '"' : '') + '>' + content + '</div>';
   }
   const trailing = (7 - ((offset + daysInMonth) % 7)) % 7;
   for (let blank = 0; blank < trailing; blank++) html += '<div class="school-calendar-empty" role="gridcell"></div>';
@@ -6400,19 +6432,29 @@ function renderSchoolCalendarTab() {
     const years = schoolCalendarTabYears(schoolCalendarTabState.term);
     if (!years.includes(schoolCalendarTabState.year)) schoolCalendarTabState.year = years[0];
     editingSchoolCalendarTabDate = '';
-    const nextDates = schoolCalendarTabDates(schoolCalendarTabState.term, schoolCalendarTabState.year);
-    if (nextDates) { const start = parseDateOnly(nextDates.start); schoolCalendarTabState.month = new Date(start.getFullYear(), start.getMonth(), 1); }
+    schoolCalendarTabState.month = schoolCalendarInitialMonth(schoolCalendarTabState.term, schoolCalendarTabState.year);
     renderSchoolCalendarTab();
   });
   document.getElementById('schoolCalendarTabYear').addEventListener('change', event => {
     schoolCalendarTabState.year = event.target.value;
     editingSchoolCalendarTabDate = '';
-    const nextDates = schoolCalendarTabDates(term, event.target.value);
-    if (nextDates) { const start = parseDateOnly(nextDates.start); schoolCalendarTabState.month = new Date(start.getFullYear(), start.getMonth(), 1); }
+    schoolCalendarTabState.month = schoolCalendarInitialMonth(term, event.target.value);
     renderSchoolCalendarTab();
   });
   document.getElementById('schoolCalendarPrevMonth').addEventListener('click', () => { schoolCalendarTabState.month = new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1); renderSchoolCalendarTab(); });
   document.getElementById('schoolCalendarNextMonth').addEventListener('click', () => { schoolCalendarTabState.month = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1); renderSchoolCalendarTab(); });
+  document.getElementById('schoolCalendarToday').addEventListener('click', () => {
+    const today = new Date();
+    schoolCalendarTabState.term = String(settings.currentTerm || 'Term 1');
+    schoolCalendarTabState.year = String(settings.currentYear || today.getFullYear());
+    schoolCalendarTabState.month = new Date(today.getFullYear(), today.getMonth(), 1);
+    editingSchoolCalendarTabDate = '';
+    renderSchoolCalendarTab();
+  });
+  wrap.querySelectorAll('[data-school-week-start]').forEach(button => button.addEventListener('click', () => {
+    try { localStorage.setItem(SCHOOL_CALENDAR_WEEK_START_KEY, button.dataset.schoolWeekStart); } catch (_) {}
+    renderSchoolCalendarTab();
+  }));
   wrap.querySelectorAll('[data-school-date]').forEach(button => button.addEventListener('click', () => {
     const selectedDate = button.dataset.schoolDate;
     showView('attendance');
