@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.105';
+const APP_VERSION = '40.1.106';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1087,7 +1087,7 @@ function saveAttendanceTabState(mode) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['operations', 'app-settings', 'help-about', 'supervision', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
+const views = ['operations', 'app-settings', 'help-about', 'supervision', 'school-calendar', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
 function showView(name) {
   if (!enforceGuestTrial()) return;
   // Never render role-sensitive views while an authenticated session is still
@@ -1132,6 +1132,7 @@ function showView(name) {
   if (name === 'setup') { refreshHeadTeacherSelect(); renderCloudSyncStatus(); renderYearRollover(); renderYearEndRestorePreview(); }
   if (name === 'students') renderStudentClassSelect();
   if (name === 'attendance') renderAttendanceView();
+  if (name === 'school-calendar') renderSchoolCalendarTab();
   if (name === 'grades') renderGradesClassSelect();
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
@@ -1172,6 +1173,7 @@ function sectionTitle(name) {
   if(name==='help-about')return 'Help & About';
   if(name==='fees')return 'Fees & Receipts';
   if(name==='supervision')return 'Supervision and Observation';
+  if(name==='school-calendar')return 'School Calendar';
   if(name==='operations')return 'Stores, Assets & Liabilities';
   const titles = {
     setup: 'Setup', staff: 'Staff', classes: 'Classes', students: 'Students', subjects: 'Subjects',
@@ -1220,6 +1222,7 @@ const QUICK_ACCESS_CARDS = [
     icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="9" y2="17"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="15" y1="15" x2="15" y2="17"/>' },
   {view:'operations',title:'Stores, Assets & Liabilities',description:'School stock, property, supplier bills and stock requests',icon:'<path d="M3 7h18v14H3zM3 7l9-5 9 5M12 7v14"/>'},
   {view:'supervision',title:'Supervision and Observation',description:'Weekly checks and classroom observations',icon:'<path d="M4 4h16v16H4zM7 8h10M7 12h10M7 16h6"/>'},
+  {view:'school-calendar',title:'School Calendar',description:'Term dates, key dates and school days',icon:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M8 14h3M14 14h2M8 17h3"/>'},
   { view: 'billing', title: 'Billing & Credits', description: 'Buy and manage school report credits',
     icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 14h4"/><circle cx="17" cy="14" r="1"/>' },
   { view: 'activity', title: 'Activity Log', description: 'See who changed school data and when',
@@ -1234,7 +1237,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','supervision','activity','history'];
+  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','supervision','school-calendar','activity','history'];
   const cards = QUICK_ACCESS_CARDS.slice().sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view)).filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
@@ -5593,6 +5596,7 @@ function calendarLabel(type) {
   if (type === 'strike') return 'Strike';
   if (type === 'weekend') return 'Weekend';
   if (type === 'outside') return 'Outside Term';
+  if (type === 'event') return 'School Event';
   return 'School Open';
 }
 
@@ -5601,7 +5605,8 @@ function attendanceDayType(term, year, date) {
   if (!parsed) return 'outside';
   if (!isWeekdayDate(parsed)) return 'weekend';
   const rec = calendarRecord(term, year, date);
-  return rec && rec.type ? String(rec.type).toLowerCase() : 'open';
+  const type = rec && rec.type ? String(rec.type).toLowerCase() : 'open';
+  return type === 'event' ? 'open' : type;
 }
 
 function attendanceDateToday() {
@@ -6250,6 +6255,226 @@ function renderTeacherAttendanceForm() {
 }
 
 let editingSchoolCalendarDate = null;
+let schoolCalendarTabState = null;
+let editingSchoolCalendarTabDate = '';
+
+function schoolCalendarTabDates(term, year) {
+  const settings = DB.get(KEYS.settings, {});
+  const item = settings.termDates && settings.termDates[termYearKey(term, year)];
+  if (item && item.start && item.end && parseDateOnly(item.start) && parseDateOnly(item.end)) {
+    return { start: dateOnlyString(parseDateOnly(item.start)), end: dateOnlyString(parseDateOnly(item.end)) };
+  }
+  return String(settings.currentTerm || 'Term 1') === String(term) && String(settings.currentYear || '') === String(year)
+    ? getTermDates(term, year) : null;
+}
+
+function schoolCalendarTabYears(term) {
+  const settings = DB.get(KEYS.settings, {});
+  const years = new Set();
+  if (settings.currentYear) years.add(String(settings.currentYear));
+  Object.keys(settings.termDates || {}).forEach(key => {
+    const prefix = String(term) + '__';
+    if (key.indexOf(prefix) === 0 && key.slice(prefix.length)) years.add(key.slice(prefix.length));
+  });
+  Object.values(DB.get(KEYS.schoolCalendar, {})).forEach(record => {
+    if (record && String(record.term || '') === String(term) && record.year) years.add(String(record.year));
+  });
+  if (!years.size) years.add(String(new Date().getFullYear()));
+  return Array.from(years).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+}
+
+function schoolCalendarTabDateLabel(value) {
+  const date = parseDateOnly(value);
+  return date ? date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set';
+}
+
+function renderSchoolCalendarTab() {
+  const wrap = document.getElementById('schoolCalendarTabWrap');
+  if (!wrap) return;
+  const settings = DB.get(KEYS.settings, {});
+  const termList = Array.from(new Set([settings.currentTerm || 'Term 1', 'Term 1', 'Term 2', 'Term 3']));
+  if (!schoolCalendarTabState) {
+    const term = String(settings.currentTerm || 'Term 1');
+    const year = String(settings.currentYear || new Date().getFullYear());
+    const termDates = schoolCalendarTabDates(term, year);
+    const initial = termDates ? parseDateOnly(termDates.start) : new Date();
+    schoolCalendarTabState = { term, year, month: new Date(initial.getFullYear(), initial.getMonth(), 1) };
+  }
+  if (termList.indexOf(schoolCalendarTabState.term) < 0) termList.unshift(schoolCalendarTabState.term);
+  const term = schoolCalendarTabState.term;
+  const year = schoolCalendarTabState.year;
+  const month = schoolCalendarTabState.month || new Date();
+  const monthStart = new Date(month.getFullYear(), month.getMonth(), 1);
+  const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const monthStartKey = dateOnlyString(monthStart), monthEndKey = dateOnlyString(monthEnd);
+  const termDates = schoolCalendarTabDates(term, year);
+  const records = schoolCalendarRecordsForTerm(term, year);
+  const byDate = new Map(records.map(item => [item.date, item.record || {}]));
+  const isCurrentPeriod = String(settings.currentTerm || 'Term 1') === String(term) && String(settings.currentYear || '') === String(year);
+  const offset = (monthStart.getDay() + 6) % 7;
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const daysInMonth = monthEnd.getDate();
+  let schoolDays = 0, closedDays = 0, eventDays = 0;
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(month.getFullYear(), month.getMonth(), day), key = dateOnlyString(date);
+    const inTerm = !termDates || (key >= termDates.start && key <= termDates.end);
+    if (!inTerm || !isWeekdayDate(date)) continue;
+    const type = String((byDate.get(key) || {}).type || '').toLowerCase();
+    if (type === 'holiday' || type === 'midterm' || type === 'strike') closedDays++;
+    else schoolDays++;
+    if (type === 'event') eventDays++;
+  }
+
+  let html = '<div class="school-calendar-view">';
+  html += '<div class="school-calendar-controls"><label>Term<select id="schoolCalendarTabTerm">';
+  termList.forEach(value => { html += '<option value="' + escapeHtml(value) + '"' + (value === term ? ' selected' : '') + '>' + escapeHtml(value) + '</option>'; });
+  html += '</select></label><label>School year<select id="schoolCalendarTabYear">';
+  schoolCalendarTabYears(term).forEach(value => { html += '<option value="' + escapeHtml(value) + '"' + (value === year ? ' selected' : '') + '>' + escapeHtml(value) + '</option>'; });
+  html += '</select></label><div class="school-calendar-period"><span>Term opens</span><strong>' + escapeHtml(termDates ? schoolCalendarTabDateLabel(termDates.start) : 'Set in Setup') + '</strong><span>Term closes</span><strong>' + escapeHtml(termDates ? schoolCalendarTabDateLabel(termDates.end) : 'Set in Setup') + '</strong></div></div>';
+  html += '<div class="school-calendar-month-head"><button type="button" id="schoolCalendarPrevMonth" aria-label="Previous month">‹</button><h3>' + escapeHtml(monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })) + '</h3><button type="button" id="schoolCalendarNextMonth" aria-label="Next month">›</button></div>';
+  html += '<div class="school-calendar-month-stats"><span><strong>' + schoolDays + '</strong> school days</span><span><strong>' + closedDays + '</strong> holidays / closures</span><span><strong>' + eventDays + '</strong> key events</span></div>';
+  html += '<div class="school-calendar-grid" role="grid" aria-label="School calendar for ' + escapeHtml(monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })) + '">';
+  weekdays.forEach(day => { html += '<div class="school-calendar-weekday" role="columnheader">' + day + '</div>'; });
+  for (let blank = 0; blank < offset; blank++) html += '<div class="school-calendar-empty" role="gridcell"></div>';
+  const todayKey = attendanceDateToday();
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = new Date(month.getFullYear(), month.getMonth(), day), key = dateOnlyString(date);
+    const record = byDate.get(key) || {}, type = String(record.type || '').toLowerCase();
+    const inTerm = !termDates || (key >= termDates.start && key <= termDates.end);
+    const closed = type === 'holiday' || type === 'midterm' || type === 'strike';
+    const clickable = isWeekdayDate(date) && inTerm && !closed && isCurrentPeriod;
+    const classes = ['school-calendar-day'];
+    if (!isWeekdayDate(date)) classes.push('is-weekend');
+    if (!inTerm) classes.push('is-outside-term');
+    if (closed) classes.push('is-closed');
+    if (record.note) classes.push('has-note');
+    if (key === todayKey) classes.push('is-today');
+    if (clickable) classes.push('is-openable');
+    const label = record.note || (type ? calendarLabel(type) : (inTerm && isWeekdayDate(date) ? 'School day' : ''));
+    const content = '<span class="school-calendar-day-number">' + day + '</span>' + (label ? '<span class="school-calendar-day-note">' + escapeHtml(label) + '</span>' : '');
+    if (clickable) html += '<button type="button" role="gridcell" class="' + classes.join(' ') + '" data-school-date="' + key + '" aria-label="Open attendance for ' + escapeHtml(schoolCalendarTabDateLabel(key) + (record.note ? ', ' + record.note : '')) + '">' + content + '</button>';
+    else html += '<div role="gridcell" class="' + classes.join(' ') + '"' + (label ? ' aria-label="' + escapeHtml(schoolCalendarTabDateLabel(key) + ', ' + label) + '"' : '') + '>' + content + '</div>';
+  }
+  const trailing = (7 - ((offset + daysInMonth) % 7)) % 7;
+  for (let blank = 0; blank < trailing; blank++) html += '<div class="school-calendar-empty" role="gridcell"></div>';
+  html += '</div><p class="hint school-calendar-help">Select an open weekday in the current term to go straight to its attendance register.</p>';
+
+  const agenda = records.filter(item => item.date >= monthStartKey && item.date <= monthEndKey);
+  const termItems = [];
+  if (termDates && termDates.start >= monthStartKey && termDates.start <= monthEndKey) termItems.push({ date: termDates.start, title: 'Term opens' });
+  if (termDates && termDates.end >= monthStartKey && termDates.end <= monthEndKey) termItems.push({ date: termDates.end, title: 'Term closes' });
+  const agendaItems = termItems.map(item => ({ date: item.date, title: item.title })).concat(agenda.map(item => ({ date: item.date, title: item.record.note || calendarLabel(String(item.record.type || '').toLowerCase()), item: true })));
+  agendaItems.sort((a, b) => a.date.localeCompare(b.date));
+  html += '<div class="school-calendar-agenda"><h3>Key dates this month</h3>';
+  if (!agendaItems.length) html += '<p class="hint">No key dates have been added for this month.</p>';
+  agendaItems.forEach(item => {
+    html += '<div class="school-calendar-agenda-row"><time datetime="' + escapeHtml(item.date) + '">' + escapeHtml(schoolCalendarTabDateLabel(item.date)) + '</time><span>' + escapeHtml(item.title) + '</span>';
+    if (item.item && isHeadTeacher()) html += '<span class="school-calendar-row-actions"><button type="button" data-edit-school-date="' + escapeHtml(item.date) + '">Edit</button><button type="button" data-remove-school-date="' + escapeHtml(item.date) + '">Remove</button></span>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  if (isHeadTeacher()) {
+    const editRecord = editingSchoolCalendarTabDate ? calendarRecord(term, year, editingSchoolCalendarTabDate) : null;
+    let editorDate = editingSchoolCalendarTabDate || dateOnlyString(monthStart);
+    if (!editingSchoolCalendarTabDate && termDates) {
+      if (editorDate < termDates.start) editorDate = termDates.start;
+      if (editorDate > termDates.end) editorDate = termDates.end;
+    }
+    html += '<div class="school-calendar-editor"><h3>' + (editingSchoolCalendarTabDate ? 'Edit key date' : 'Add a key date') + '</h3>';
+    html += '<div class="school-calendar-editor-fields"><label>Date<input id="schoolCalendarTabDate" type="date" value="' + escapeHtml(editorDate) + '"></label><label>Type<select id="schoolCalendarTabType">';
+    const selectedType = String(editRecord && editRecord.type || 'event').toLowerCase();
+    [['event', 'School event (school open)'], ['holiday', 'Holiday'], ['midterm', 'Midterm break'], ['strike', 'Strike day']].forEach(option => { html += '<option value="' + option[0] + '"' + (selectedType === option[0] ? ' selected' : '') + '>' + option[1] + '</option>'; });
+    html += '</select></label></div><label>Event name or note<input id="schoolCalendarTabNote" type="text" maxlength="160" placeholder="e.g. Fees due, sports day or Independence Day" value="' + escapeHtml(editRecord && editRecord.note || '') + '"></label><div class="school-calendar-editor-actions"><button type="button" id="schoolCalendarTabSave" class="btn-primary">' + (editingSchoolCalendarTabDate ? 'Save changes' : 'Add to calendar') + '</button>';
+    if (editingSchoolCalendarTabDate) html += '<button type="button" id="schoolCalendarTabCancel" class="btn-secondary">Cancel edit</button>';
+    html += '</div></div>';
+  } else html += '<p class="hint school-calendar-readonly">School calendar dates are managed by the Head Teacher. You can still open an available school day to take attendance.</p>';
+  html += '</div>';
+  wrap.innerHTML = html;
+
+  document.getElementById('schoolCalendarTabTerm').addEventListener('change', event => {
+    schoolCalendarTabState.term = event.target.value;
+    const years = schoolCalendarTabYears(schoolCalendarTabState.term);
+    if (!years.includes(schoolCalendarTabState.year)) schoolCalendarTabState.year = years[0];
+    editingSchoolCalendarTabDate = '';
+    const nextDates = schoolCalendarTabDates(schoolCalendarTabState.term, schoolCalendarTabState.year);
+    if (nextDates) { const start = parseDateOnly(nextDates.start); schoolCalendarTabState.month = new Date(start.getFullYear(), start.getMonth(), 1); }
+    renderSchoolCalendarTab();
+  });
+  document.getElementById('schoolCalendarTabYear').addEventListener('change', event => {
+    schoolCalendarTabState.year = event.target.value;
+    editingSchoolCalendarTabDate = '';
+    const nextDates = schoolCalendarTabDates(term, event.target.value);
+    if (nextDates) { const start = parseDateOnly(nextDates.start); schoolCalendarTabState.month = new Date(start.getFullYear(), start.getMonth(), 1); }
+    renderSchoolCalendarTab();
+  });
+  document.getElementById('schoolCalendarPrevMonth').addEventListener('click', () => { schoolCalendarTabState.month = new Date(monthStart.getFullYear(), monthStart.getMonth() - 1, 1); renderSchoolCalendarTab(); });
+  document.getElementById('schoolCalendarNextMonth').addEventListener('click', () => { schoolCalendarTabState.month = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1); renderSchoolCalendarTab(); });
+  wrap.querySelectorAll('[data-school-date]').forEach(button => button.addEventListener('click', () => {
+    const selectedDate = button.dataset.schoolDate;
+    showView('attendance');
+    setAttendanceMode('students');
+    const dateInput = document.getElementById('attendanceDate');
+    if (dateInput) { dateInput.value = selectedDate; renderAttendanceForm(); }
+  }));
+  wrap.querySelectorAll('[data-edit-school-date]').forEach(button => button.addEventListener('click', () => { editingSchoolCalendarTabDate = button.dataset.editSchoolDate; renderSchoolCalendarTab(); }));
+  wrap.querySelectorAll('[data-remove-school-date]').forEach(button => button.addEventListener('click', async () => {
+    if (!requireHeadTeacher('change the school calendar')) return;
+    if (typeof window.canSaveLiveCalendarData === 'function' && !window.canSaveLiveCalendarData()) return;
+    const date = button.dataset.removeSchoolDate, key = calendarKey(term, year, date);
+    try {
+      if (FIREBASE_ENABLED && currentSchoolId) {
+        if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+        await schoolCalendarRef(key).delete();
+        setLastSyncedNow();
+      }
+      const all = DB.get(KEYS.schoolCalendar, {});
+      delete all[key];
+      DB.set(KEYS.schoolCalendar, all, { skipCloudSync: true });
+      auditAction('delete', 'schoolCalendar', key, 'Removed calendar date for ' + date);
+      editingSchoolCalendarTabDate = '';
+      refreshAttendanceAfterCalendarChange();
+      renderSchoolCalendarTab();
+    } catch (error) { alert('The calendar date was NOT removed. Existing data has been left unchanged.\n\n' + (error.message || error)); }
+  }));
+  const saveButton = document.getElementById('schoolCalendarTabSave');
+  if (saveButton) saveButton.addEventListener('click', async () => {
+    if (!requireHeadTeacher('change the school calendar')) return;
+    if (typeof window.canSaveLiveCalendarData === 'function' && !window.canSaveLiveCalendarData()) return;
+    const date = document.getElementById('schoolCalendarTabDate').value;
+    const type = document.getElementById('schoolCalendarTabType').value;
+    const note = document.getElementById('schoolCalendarTabNote').value.trim();
+    if (!date) { alert('Choose a date for this calendar item.'); return; }
+    if (type === 'event' && !note) { alert('Add a short name for this school event.'); return; }
+    const selectedTermDates = schoolCalendarTabDates(term, year);
+    if (selectedTermDates && (date < selectedTermDates.start || date > selectedTermDates.end)) { alert('Choose a date inside the selected term dates.'); return; }
+    const key = calendarKey(term, year, date), previousDate = editingSchoolCalendarTabDate;
+    const previousKey = previousDate ? calendarKey(term, year, previousDate) : '';
+    const record = { term, year, date, type, note, updatedAt: new Date().toISOString() };
+    try {
+      if (FIREBASE_ENABLED && currentSchoolId) {
+        if (cloudHydrationInProgress || !sessionDataReady) throw new Error('School data is still synchronizing.');
+        const batch = firebase.firestore().batch();
+        batch.set(schoolCalendarRef(key), { term, year, date, type, note, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        if (previousKey && previousKey !== key) batch.delete(schoolCalendarRef(previousKey));
+        await batch.commit();
+        setLastSyncedNow();
+      }
+      const all = DB.get(KEYS.schoolCalendar, {});
+      if (previousKey && previousKey !== key) delete all[previousKey];
+      all[key] = record;
+      DB.set(KEYS.schoolCalendar, all, { skipCloudSync: true });
+      auditAction(previousDate ? 'update' : 'create', 'schoolCalendar', key, (previousDate ? 'Updated ' : 'Added ') + calendarLabel(type) + ' on ' + date + (note ? ': ' + note : ''));
+      editingSchoolCalendarTabDate = '';
+      const savedDate = parseDateOnly(date);
+      schoolCalendarTabState.month = new Date(savedDate.getFullYear(), savedDate.getMonth(), 1);
+      refreshAttendanceAfterCalendarChange();
+      renderSchoolCalendarTab();
+    } catch (error) { alert('The calendar item was NOT saved. Existing data has been left unchanged.\n\n' + (error.message || error)); }
+  });
+  const cancelButton = document.getElementById('schoolCalendarTabCancel');
+  if (cancelButton) cancelButton.addEventListener('click', () => { editingSchoolCalendarTabDate = ''; renderSchoolCalendarTab(); });
+}
 
 function renderSchoolCalendar() {
   const wrap = document.getElementById('schoolCalendarWrap');
@@ -6265,7 +6490,7 @@ function renderSchoolCalendar() {
   let html = `<div class="attendance-summary-pills"><div class="attendance-summary-pill"><span>Times Open</span><strong>${timesOpen || 0} day${timesOpen === 1 ? '' : 's'}</strong></div><div class="attendance-summary-pill"><span>Holidays</span><strong>${holidays}</strong></div><div class="attendance-summary-pill"><span>Midterm</span><strong>${midterms}</strong></div><div class="attendance-summary-pill"><span>Strike Days</span><strong>${schoolCalendarRecordsForTerm(term,year).filter(x=>x.record.type==='strike').length}</strong></div></div>`;
   html += `<div class="calendar-editor"><h3>School Calendar</h3><p class="hint">${dates ? `Current term: ${escapeHtml(term)} ${escapeHtml(year)} · ${escapeHtml(dates.start)} to ${escapeHtml(dates.end)}` : 'Set the Term Opens and Term Closes dates in Setup first.'}</p>`;
   if (isTeacher()) html += '<p class="hint">School calendar dates are managed by your Head Teacher. Teachers can view the calendar and record pupil attendance in Students.</p>';
-  html += '<div class="row"><label>Date<input type="date" id="calendarDate"></label><label>Day Type<select id="calendarType"><option value="open">School Open</option><option value="holiday">Holiday</option><option value="midterm">Midterm</option><option value="strike">Strike</option></select></label></div>';
+  html += '<div class="row"><label>Date<input type="date" id="calendarDate"></label><label>Day Type<select id="calendarType"><option value="open">School Open</option><option value="event">School Event (school open)</option><option value="holiday">Holiday</option><option value="midterm">Midterm</option><option value="strike">Strike</option></select></label></div>';
   html += '<label>Note / Occasion (optional)<input type="text" id="calendarNote" placeholder="e.g. Independence Day / Midterm Break"></label>';
   html += '<div class="attendance-toolbar"><button type="button" id="saveCalendarDay" class="btn-primary">Save Calendar Day</button><button type="button" id="clearCalendarDay" class="btn-text">Clear / Set School Open</button></div></div>';
   html += '<div class="table-scroll"><table class="grades-table attendance-table"><thead><tr><th>Date</th><th>Day</th><th>Type</th><th>Note</th><th>Action</th></tr></thead><tbody>';
@@ -6314,9 +6539,10 @@ function renderSchoolCalendar() {
     const type = document.getElementById('calendarType').value;
     const note = document.getElementById('calendarNote').value.trim();
     if (!date) { alert('Select a calendar date.'); return; }
+    if (type === 'event' && !note) { alert('Add a short name for this school event.'); return; }
     const dates = getTermDates(term, year);
     if (dates && (date < dates.start || date > dates.end)) { alert('The calendar date must be inside the current term dates.'); return; }
-    if (!isWeekdayDate(parseDateOnly(date))) { alert('This school calendar is for weekdays. Weekends are automatically excluded from Times Open.'); return; }
+    if (!isWeekdayDate(parseDateOnly(date)) && type !== 'event') { alert('This school calendar entry must be on a weekday. Weekends are automatically excluded from Times Open.'); return; }
     const all = DB.get(KEYS.schoolCalendar, {});
     const key = calendarKey(term, year, date);
     const originalDate = editingSchoolCalendarDate;
