@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.107';
+const APP_VERSION = '40.1.109';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1087,14 +1087,14 @@ function saveAttendanceTabState(mode) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['operations', 'app-settings', 'help-about', 'supervision', 'school-calendar', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity'];
+const views = ['operations', 'app-settings', 'help-about', 'supervision', 'school-calendar', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity', 'communications'];
 function showView(name) {
   if (!enforceGuestTrial()) return;
   // Never render role-sensitive views while an authenticated session is still
   // being resolved. Guest mode explicitly marks itself ready before calling
   // proceedToApp().
   if (FIREBASE_ENABLED && !sessionReady) return;
-  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'billing', 'fees', 'manage-teachers'].indexOf(name) !== -1) {
+  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'billing', 'fees', 'manage-teachers', 'communications'].indexOf(name) !== -1) {
     name = 'home';
   }
   views.forEach(v => {
@@ -1133,6 +1133,7 @@ function showView(name) {
   if (name === 'students') renderStudentClassSelect();
   if (name === 'attendance') renderAttendanceView();
   if (name === 'school-calendar') renderSchoolCalendarTab();
+  if (name === 'communications' && typeof window.renderSchoolCommunications === 'function') window.renderSchoolCommunications();
   if (name === 'grades') renderGradesClassSelect();
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
@@ -1172,6 +1173,7 @@ function sectionTitle(name) {
   if(name==='app-settings')return 'Settings';
   if(name==='help-about')return 'Help & About';
   if(name==='fees')return 'Fees & Receipts';
+  if(name==='communications')return 'Communications';
   if(name==='supervision')return 'Supervision and Observation';
   if(name==='school-calendar')return 'School Calendar';
   if(name==='operations')return 'Stores, Assets & Liabilities';
@@ -1200,6 +1202,7 @@ window.addEventListener('scroll',()=>{if(floatingPillTicking)return;floatingPill
 /* ---------- Home dashboard ---------- */
 const QUICK_ACCESS_CARDS = [
   {view:'fees',title:'Fees & Receipts',description:'Fee categories, pupil balances and receipts',headteacherOnly:true,icon:'<path d="M4 4h16v16H4z"/>'},
+  {view:'communications',title:'Communications',description:'Prepare school messages and email drafts',headteacherOnly:true,icon:'<path d="M4 5h16v14H4z"/><path d="m4 7 8 6 8-6"/>'},
   { view: 'setup', title: 'Setup', description: 'School info, term, and report layout', headteacherOnly: true,
     icon: '<line x1="4" y1="6" x2="20" y2="6"/><circle cx="9" cy="6" r="2"/><line x1="4" y1="12" x2="20" y2="12"/><circle cx="15" cy="12" r="2"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="7" cy="18" r="2"/>' },
   { view: 'manage-teachers', title: 'Manage Teachers', description: 'Approve, assign classes, disable', headteacherOnly: true,
@@ -1237,7 +1240,7 @@ function renderQuickAccessList() {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
-  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','reports','operations','supervision','school-calendar','activity','history'];
+  const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','fees','communications','reports','operations','supervision','school-calendar','activity','history'];
   const cards = QUICK_ACCESS_CARDS.slice().sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view)).filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
   wrap.innerHTML = cards.map(c => `
     <button type="button" class="qa-card" data-view="${c.view}">
@@ -11858,7 +11861,7 @@ async function performReconnectRecovery() {
       // This is an existing workspace, not a navigation or session restoration.
       // Keep the user's current view, open dialogs and scroll position intact.
       const view = currentVisibleViewName();
-      if (isTeacher() && ['setup','staff','classes','subjects','billing','fees','manage-teachers'].includes(view)) {
+      if (isTeacher() && ['setup','staff','classes','subjects','billing','fees','manage-teachers','communications'].includes(view)) {
         showView('home'); // A changed role still removes access immediately.
       } else {
         if (view === 'grades' && (typeof preserveLiveGradeSheetAfterRecovery !== 'function' || !preserveLiveGradeSheetAfterRecovery())) renderGradesClassSelect();

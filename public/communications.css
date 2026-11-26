@@ -1,0 +1,29 @@
+#app .communication-intro{max-width:820px;margin:0 0 20px;color:var(--paper);}
+#app .communication-intro p{margin:0 0 8px;line-height:1.65;}
+#app .communication-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(240px,.85fr);gap:18px;align-items:start;}
+#app .communication-card,#app .communication-editor{min-width:0;border:1px solid var(--rule);border-radius:16px;background:var(--surface-alt);padding:18px;}
+#app .communication-card h3{margin:0 0 16px;color:var(--paper);font-size:18px;}
+#app .communication-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+#app .communication-form-grid label,#app .communication-editor>label{display:block;min-width:0;}
+#app .communication-form-grid input,#app .communication-form-grid select,#app .communication-editor input,#app .communication-editor textarea{display:block;width:100%;max-width:100%;margin-top:6px;}
+#app .communication-wide{grid-column:1/-1;}
+#app .communication-preview{display:grid;gap:14px;margin-top:18px;padding:16px;border:1px solid var(--rule);border-radius:12px;background:var(--surface);color:var(--paper);}
+#app .communication-preview>div{min-width:0;}
+#app .communication-label{display:block;margin-bottom:6px;color:var(--muted);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+#app #communicationPreviewSubject{display:block;overflow-wrap:anywhere;font-weight:600;}
+#app #communicationPreviewBody{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.6;}
+#app .communication-preview .hint{margin:0;color:var(--gold);}
+#app .communication-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
+#app .communication-actions button{width:auto;}
+#app .communication-tags-card dl{margin:0;display:grid;gap:0;}
+#app .communication-tags-card dl>div{display:grid;grid-template-columns:minmax(84px,.65fr) minmax(0,1.35fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--rule);}
+#app .communication-tags-card dl>div:last-child{border-bottom:0;}
+#app .communication-tags-card dt{font-weight:600;color:var(--paper);}
+#app .communication-tags-card dd{margin:0;color:var(--muted);font-size:13px;line-height:1.45;}
+#app .communication-editor{margin-top:18px;}
+#app .communication-editor summary{cursor:pointer;color:var(--paper);font-weight:600;}
+#app .communication-editor>label{margin-top:14px;}
+#app .communication-editor textarea{min-height:180px;resize:vertical;}
+#app #communicationStatus,#app #communicationTemplateStatus{min-height:1.5em;margin-bottom:0;}
+@media(max-width:720px){#app .communication-layout{grid-template-columns:1fr;}#app .communication-tags-card{order:2;}}
+@media(max-width:520px){#app .communication-form-grid{grid-template-columns:1fr;}#app .communication-wide{grid-column:auto;}#app .communication-card,#app .communication-editor{padding:14px;}#app .communication-actions{display:grid;grid-template-columns:1fr;}#app .communication-actions button{width:100%;}}
