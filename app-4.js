@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.111';
+const APP_VERSION = '40.1.112';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;

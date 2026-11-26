@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AlatiphA SchoolHub Complete User Guide</title>
-<meta name="description" content="SchoolHub school-user guide, reviewed 8 November 2026 · v40.1.70. Covers Head Teacher, Teacher and Guest workflows, student onboarding, daily attendance, class filters, sync conflict review, app updates, messages, fees, stock, backups and recovery.">
+<meta name="description" content="SchoolHub school-user guide, reviewed 26 November 2026 · v40.1.112. Covers Communications templates, the read-only Parent Portal, School Calendar, Head Teacher and Teacher workflows, student onboarding, attendance, fees, sync, backups and recovery.">
 <style>
 html { scroll-behavior: smooth; }
 .embedded-guide .guide-app-link { display:none; }
@@ -112,15 +112,15 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h1>AlatiphA SchoolHub Complete User Guide</h1>
 <p class="guide-app-link"><a href="https://alatipha-schoolhub.web.app/">Open SchoolHub</a></p>
-<p class="updated"><strong>Updated:</strong> 8 November 2026 · SchoolHub v40.1.70</p>
+<p class="updated"><strong>Updated:</strong> 26 November 2026 · SchoolHub v40.1.112</p>
 
 <div class="intro-box">
-<strong>AlatiphA SchoolHub</strong> is a school-management Progressive Web App designed to bring school administration, staff and pupil records, weekly teaching supervision, stores and school property, attendance, assessment, report cards, fees and receipts, notifications and school communication, parent fee communication, synchronisation, backup and recovery into one working environment.
+<strong>AlatiphA SchoolHub</strong> is a school-management Progressive Web App designed to bring school administration, staff and pupil records, weekly teaching supervision, the School Calendar, email-message templates, read-only family access, stores and school property, attendance, assessment, report cards, fees and receipts, notifications, synchronisation, backup and recovery into one working environment.
 </div>
 
-<p>This guide explains the current SchoolHub school workspace from the perspective of a <strong>Guest</strong>, <strong>Head Teacher</strong> and <strong>Teacher</strong>. It covers the current major tabs, protected school joining and approval, Supervision and Observation, Stores/Inventory/Assets/Liabilities, the Notification Center and announcements, Fees &amp; Receipts, account security, offline drafts and synchronisation, and the safeguards that protect school data.</p>
+<p>This guide explains the current SchoolHub workspace for <strong>Guests</strong>, <strong>Head Teachers</strong>, <strong>Teachers</strong> and families using the Parent Portal. It covers the major tabs, School Calendar, Communications email drafts, invited parent access, school joining and approval, Supervision and Observation, Stores/Inventory/Assets/Liabilities, Fees &amp; Receipts, account security, offline drafts and synchronisation.</p>
 
-<div class="success-box"><strong>This v40.1.70 guide includes:</strong> separate student onboarding methods, class-scoped Search and exports, role-specific pupil summaries, daily attendance pills, narrow frozen attendance columns, configured Messages &amp; Push, Check for updates / Install update, Sync Center pending-record and conflict review, and the renamed Supervision and Observation section with filters, draft controls, audited edit/delete actions, printable and downloadable reports, and local-time timestamps. This guide is for Head Teachers, Teachers and Guests.</div>
+<div class="success-box"><strong>This v40.1.112 guide includes:</strong> the School Calendar tab with current-month navigation and a Sunday/Monday week-start choice; Communications templates that prepare reviewable email drafts; the read-only Parent Portal for linked learners; separate student onboarding methods, class-scoped Search and exports, role-specific pupil summaries, attendance, Sync Center conflict review, and current Supervision and Observation workflows. This guide is for Head Teachers, Teachers, Guests and invited parents.</div>
 
 <details class="toc" open>
 <summary>Table of Contents</summary>
@@ -155,7 +155,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
   <ol>
     <li><a href="#student-attendance">Student Attendance</a></li>
     <li><a href="#teacher-attendance">Teacher Attendance</a></li>
-    <li><a href="#calendar">School Calendar</a></li>
+    <li><a href="#calendar">School Calendar tab</a></li>
     <li><a href="#attendance-summary">Summary</a></li>
     <li><a href="#attendance-analytics">Analytics</a></li>
     <li><a href="#attendance-reports">Attendance Reports</a></li>
@@ -198,6 +198,8 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
     <li><a href="#automatic-notifications">Automatic Account Notifications</a></li>
     <li><a href="#announcements">School Announcements</a></li>
     <li><a href="#browser-notifications">Browser / PWA Notifications</a></li>
+    <li><a href="#school-communications">Communications email templates</a></li>
+    <li><a href="#parent-portal">Parent Portal</a></li>
   </ol>
 </li>
 <li><a href="#fees">Fees &amp; Receipts (FIS)</a>
@@ -391,8 +393,9 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <h3 id="daily-attendance-counts">10.3 Daily counts and term figures</h3>
 <p><strong>Present + Late (day)</strong> adds the displayed P and L marks for the selected date. <strong>Absent (day)</strong> counts A marks for that date. The pupil counts follow the selected class; teacher counts follow the displayed teacher list. Both update while marking, including Mark All and Unmark All. Save attendance to retain those changes.</p>
 <p>Unmarked and other statuses do not count as Present/Late or Absent. <strong>Times Open</strong> and the average attendance ratio remain term figures. A changed daily pill is not, by itself, confirmation of an uploaded save.</p>
-<h3 id="calendar">10.4 School Calendar</h3>
-<p>Use Calendar for school-day exceptions such as holidays, midterms and school-wide closures. Editing an event updates it; changing its date moves it rather than creating a duplicate. Check the academic period and date before changing the calendar.</p>
+<h3 id="calendar">10.4 School Calendar tab</h3>
+<p>Open <strong>Home → School Calendar</strong>. The tab sits between Supervision and Observation and Activity Log. It opens on the current month and date for the current term. Use the term/year selectors and previous/next month buttons to browse; choose <strong>Today</strong> to return to the current date. The calendar displays school days, closures and key events, with a list of this month’s key dates.</p>
+<p>Choose whether the week begins on <strong>Sunday</strong> or <strong>Monday</strong> using the Week starts buttons. SchoolHub remembers this preference on the current browser/device. Head Teachers can add, edit or remove a key date, holiday, midterm or closure. Editing updates the event; changing its date moves it rather than creating a duplicate. Teachers can view the calendar. Select an open weekday in the current term to go to that date’s attendance register.</p>
 <h3 id="attendance-summary">10.5 Summary</h3>
 <p>Summary consolidates attendance for the selected period and includes daily class-completion information where available. Check its date and filters before interpreting a count.</p>
 <h3 id="attendance-analytics">10.6 Analytics</h3>
@@ -565,6 +568,14 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <ol class="mini-steps"><li>Sign in with a verified, enabled account on the device.</li><li>Open <strong>Profile → Settings → Messages &amp; Push → This device</strong>.</li><li>Choose message and school-activity preferences, select <strong>Enable push on this device</strong> and allow browser notifications when prompted.</li><li>Use <strong>Refresh device status</strong> to check the result. Repeat setup on each device that should receive alerts.</li></ol>
 <p>Configured web push supports closed-app delivery on supported browsers, subject to connectivity, browser/phone restrictions and notification settings. If push is blocked, review the browser’s site notification permissions. If the service configuration is unavailable, contact SchoolHub support. Saved in-app messages remain accessible through the bell even without push permission.</p>
 
+<h3 id="school-communications">18.5 Communications email templates</h3>
+<p>Head Teachers open <strong>Home → Communications</strong> to prepare a message for one learner. Choose a template and, if helpful, filter learners by class. Fill in optional details such as a note, fee balance, overdue amount or payment due date. The preview fills supported tags such as learner name, class, term, school name and guardian name. Complete any missing tag fields before copying or opening the draft.</p>
+<p>Use <strong>Edit message templates</strong> to change a subject or message, save the template for the school, or restore that template’s default wording. Template changes sync with the school when connected. <strong>Copy message</strong> copies the preview. <strong>Open email draft</strong> opens the device’s email app for review. SchoolHub does not send the email: enter or confirm the guardian’s address in the email app and send it there. Guardian email addresses are not stored in the student record, and report-card attachments must be added manually.</p>
+
+<h3 id="parent-portal">18.6 Parent Portal</h3>
+<p>The Parent Portal gives invited families <strong>read-only</strong> access to their linked learner’s attendance, grades, report comments and fee balance. A parent cannot edit school records. Open <strong>Home → Parent Portal</strong> as the Head Teacher, choose an active learner and enter the parent/guardian email address to create an invitation. The invitation is for that verified email, expires after seven days and can be used once. Share its code privately with the named parent or guardian.</p>
+<p>The parent follows the <strong>Parent Portal</strong> link on the SchoolHub sign-in page, creates or signs in to a separate parent account, verifies the invited email and enters the invitation code. They must use the same email address the Head Teacher invited; school staff should not use their staff account as a parent account. After linking, the parent can view only the learner or learners linked by the school, refresh the information and print/save a report. The Head Teacher can review linked parent accounts in Parent Portal and revoke a learner link. If a code has expired or was used already, issue a new invitation.</p>
+
 <h2 id="fees"><span class="chapter-number">Chapter 19:</span> Fees &amp; Receipts (FIS)</h2>
 <p>The current Fees &amp; Receipts system has been expanded from the older single-fee model into a multi-category fee-item system. It keeps separate pupil charges, payments, allocations, balances, receipts, adjustments and arrears while preserving legacy v40 fee information during migration.</p>
 
@@ -705,7 +716,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h2 id="profile"><span class="chapter-number">Chapter 23:</span> Profile Menu &amp; Help</h2>
 <p>The compact <strong>Profile menu</strong> keeps account actions together: My Details for linked Teachers, Account Security for active accounts, Settings, Help and Log Out (or sign-in when applicable). <strong>Settings and Help are no longer Home cards.</strong></p>
-<ul class="feature-list"><li><strong>Profile → Settings:</strong> Notifications, Messages &amp; Push, Sync Center and System Health; Head Teachers also see School Setup. Billing &amp; Credits appears directly in Profile for Head Teachers, between Settings and Help.</li><li><strong>Profile → Help:</strong> Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, About SchoolHub, Privacy and Terms of Use.</li><li><strong>Home:</strong> school-work pages, including Setup, Reports, Stores, Assets &amp; Liabilities and Supervision and Observation, according to your permissions.</li></ul>
+<ul class="feature-list"><li><strong>Profile → Settings:</strong> Notifications, Messages &amp; Push, Sync Center and System Health; Head Teachers also see School Setup. Billing &amp; Credits appears directly in Profile for Head Teachers, between Settings and Help.</li><li><strong>Profile → Help:</strong> Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, About SchoolHub, Privacy and Terms of Use.</li><li><strong>Home:</strong> school-work pages, including Setup, Reports, Communications, Parent Portal, School Calendar, Stores, Assets &amp; Liabilities and Supervision and Observation, according to your permissions.</li></ul>
 <p>The guided tour matches your role: Head Teacher, Teacher or Guest. The <strong>Complete user guide</strong> link in each tour opens this detailed guide in a separate tab without closing your SchoolHub workspace. The guide is also accessible from Profile → Help. It is included in the updated app cache so it can open offline after that cache has been prepared online.</p>
 <p><strong>My Details</strong> edits the user's linked personal Staff record subject to permission and conflict checks. It can preserve a device-scoped draft for later online submission.</p>
 <p><strong>Account Security</strong> changes login credentials for email/password accounts or directs Google-only users to Google Account Security. Credential changes are online-only and are never stored as drafts.</p>
@@ -741,8 +752,9 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <li><strong>Share the school join code with Teachers.</strong></li>
 <li><strong>Review join notifications and teacher identities.</strong> Resolve duplicate-email warnings before approval.</li>
 <li><strong>Approve Teachers, link Staff records and assign classes/subjects.</strong></li>
-<li><strong>Use Notifications and announcements for important school communication.</strong></li>
-<li><strong>Configure Calendar holidays and midterms.</strong></li>
+<li><strong>Use Communications</strong> to prepare a message from a template, review the email draft and send it from your email app.</li>
+<li><strong>Configure the School Calendar</strong> with school days, holidays, midterms and key dates. Choose the preferred week start.</li>
+<li><strong>Invite parents</strong> from Parent Portal using each guardian’s verified email; review linked access and remove it when needed.</li>
 <li><strong>Record Attendance.</strong></li>
 <li><strong>Enter Grades and complete at least six subject results before relying on aggregate/class position.</strong></li>
 <li><strong>Add Remarks and generate Reports.</strong></li>
@@ -759,7 +771,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <h2 id="conclusion"><span class="chapter-number">Chapter 27:</span> Conclusion</h2>
 <p>AlatiphA SchoolHub has developed from a simple school-record system into a broader school-management platform covering the daily workflow of Head Teachers and Teachers.</p>
 
-<p>Its role-based accounts separate administrative responsibilities from classroom access. Staff, Classes, Students, Subjects, Attendance, Grades, Remarks, Reports, Stores/Assets/Liabilities, Supervision and Observation, Fees &amp; Receipts and Term History provide the main working environment, while notifications, announcements, account security, financial reporting, parent statements, reminders, backups, cloud synchronisation, offline support and year-end rollover support the wider life of school records.</p>
+<p>Its role-based accounts separate administrative responsibilities from classroom access. Staff, Classes, Students, Subjects, Attendance, the School Calendar, Grades, Remarks, Reports, Communications, Parent Portal, Stores/Assets/Liabilities, Supervision and Observation, Fees &amp; Receipts and Term History provide the main working environment. Notifications, parent access, account security, financial reporting, backups, cloud synchronisation, offline support and year-end rollover support the wider life of school records.</p>
 
 <p>The current safety architecture places particular emphasis on protecting school data and account identity by preserving pending edits and scoped drafts, controlling sensitive cloud operations, preventing duplicate teacher memberships for the same normalised email, isolating protected financial/stock/supervision saves, applying conflict checks, maintaining recovery information and reducing the risk of incomplete local data overwriting fuller cloud records.</p>
 
