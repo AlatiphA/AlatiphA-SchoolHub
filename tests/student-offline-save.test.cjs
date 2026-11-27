@@ -5,7 +5,7 @@ const handlerCode=source.slice(source.indexOf("  list.querySelectorAll('.save-st
 function fixture(values=new Map(),opts={}){
  if(!values.has('students'))values.set('students',JSON.stringify([{id:'test',classId:'c4',name:'Original',dob:'2015-01-01',gender:'Male'},{id:'real',classId:'c4',name:'Real pupil'}]));
  let callback,renders=0,cloudCalls=0,scheduled=0;
- const fields={'.edit-student-class':'c4','.edit-student-name':'Offline name','.edit-student-dob':'2015-01-01','.edit-student-gender':'Male','.edit-student-id':'','.edit-student-phone':'','.edit-student-disability':'','.edit-student-guardian':'','.edit-student-house-gps':''};
+ const fields={'.edit-student-class':'c4','.edit-student-name':'Offline name','.edit-student-dob':'2015-01-01','.edit-student-gender':'Male','.edit-student-id':'','.edit-student-phone':'','.edit-student-parent-email':'','.edit-student-disability':'','.edit-student-guardian':'','.edit-student-house-gps':''};
  const btn={dataset:{id:'test'},disabled:false,textContent:'Update',closest:()=>({querySelector:s=>({value:fields[s]})}),addEventListener:(_,fn)=>callback=fn};
  const c={console:{warn(){},error(){}},navigator:{onLine:false},localStorage:{getItem:k=>values.get(k)||null,setItem(k,v){if(k===opts.failKey)throw Error('storage full');values.set(k,v);},removeItem:k=>values.delete(k)},stripImagesForLocalStorage:(_,v)=>v,restoreLocalImagesForDbKey:(_,v)=>v,stableSyncJson:JSON.stringify,updateOfflineModeBanner(){},scheduleCloudPush(){scheduled++;},
  alert:m=>c.messages.push(m),messages:[],KEYS:{students:'students'},FIREBASE_ENABLED:true,currentUid:'teacher',currentSchoolId:'school',currentStatus:'active',sessionGeneration:1,sessionReady:true,sessionDataReady:true,cloudHydrationInProgress:false,editingStudentId:'test',
