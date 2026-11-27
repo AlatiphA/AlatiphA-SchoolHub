@@ -5,6 +5,8 @@
 #app .communication-card h3{margin:0 0 16px;color:var(--paper);font-size:18px;}
 #app .communication-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
 #app .communication-form-grid label,#app .communication-editor>label{display:block;min-width:0;}
+#app .communication-form-grid [hidden]{display:none!important;}
+#app .communication-template-hint{align-self:center;margin:0;}
 #app .communication-form-grid input,#app .communication-form-grid select,#app .communication-editor input,#app .communication-editor textarea{display:block;width:100%;max-width:100%;margin-top:6px;}
 #app .communication-wide{grid-column:1/-1;}
 #app .communication-preview{display:grid;gap:14px;margin-top:18px;padding:16px;border:1px solid var(--rule);border-radius:12px;background:var(--surface);color:var(--paper);}

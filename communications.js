@@ -59,14 +59,15 @@
           <h3>Prepare a message</h3>
           <div class="communication-form-grid">
             <label>Template<select id="communicationTemplateSelect">${templates.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label>
+            <p class="hint communication-template-hint">Only the fill-in fields used by this template are shown.</p>
             <label>Class filter<select id="communicationClassSelect"><option value="">All classes</option>${options}</select></label>
             <label class="communication-wide">Learner<select id="communicationPupilSelect"><option value="">Choose a learner</option>${pupilOptions}</select></label>
             <label class="communication-wide">Parent/Guardian email recipient (optional)<input id="communicationRecipient" type="email" maxlength="254" placeholder="parent@example.com" autocomplete="email"></label>
             <p id="communicationAttachmentHint" class="hint communication-wide" hidden>Before sending this report-card draft, attach the generated report-card PDF in your email app.</p>
-            <label>Details<input id="communicationDetails" type="text" placeholder="Optional note"></label>
-            <label>Balance<input id="communicationBalance" type="text" inputmode="decimal" placeholder="e.g. GH₵ 250.00"></label>
-            <label>Overdue amount<input id="communicationOverdue" type="text" inputmode="decimal" placeholder="e.g. GH₵ 100.00"></label>
-            <label>Payment due date<input id="communicationDue" type="date"></label>
+            <label class="communication-template-input" data-template-field="details" hidden>Details<input id="communicationDetails" type="text" placeholder="Optional note"></label>
+            <label class="communication-template-input" data-template-field="balance" hidden>Balance<input id="communicationBalance" type="text" inputmode="decimal" placeholder="e.g. GH₵ 250.00"></label>
+            <label class="communication-template-input" data-template-field="overdue" hidden>Overdue amount<input id="communicationOverdue" type="text" inputmode="decimal" placeholder="e.g. GH₵ 100.00"></label>
+            <label class="communication-template-input" data-template-field="due" hidden>Payment due date<input id="communicationDue" type="date"></label>
           </div>
           <div class="communication-preview" aria-live="polite">
             <div><span class="communication-label">Subject</span><strong id="communicationPreviewSubject">Choose a template</strong></div>
@@ -82,7 +83,7 @@
 
         <aside class="communication-card communication-tags-card">
           <h3>Available tags</h3>
-          <p class="hint">Tags in braces are filled in when you choose a learner. Add the other details above when needed.</p>
+          <p class="hint">Tags in braces are filled in when you choose a learner. Choose a template to show only the fill-in fields it uses.</p>
           <dl>${TAG_GUIDE.map(([tag, meaning]) => `<div><dt>{${esc(tag)}}</dt><dd>${esc(meaning)}</dd></div>`).join('')}</dl>
         </aside>
       </div>
@@ -109,9 +110,14 @@
     const bodyEditor = byId('communicationBodyTemplate');
     const status = byId('communicationStatus');
     const templateStatus = byId('communicationTemplateStatus');
+    const templateInputFields = [...host.querySelectorAll('[data-template-field]')];
     let selectedTemplateId = templates[0]?.id || '';
 
     function templateById(id) { return templates.find(item => item.id === id) || templates[0]; }
+    function updateTemplateInputVisibility(subject, body) {
+      const usedTags = new Set([subject, body].flatMap(text => [...String(text || '').matchAll(/\{([^{}]+)\}/g)].map(match => match[1].trim().toLowerCase())));
+      templateInputFields.forEach(field => { field.hidden = !usedTags.has(field.dataset.templateField); });
+    }
     function loadEditor(id) {
       const item = templateById(id);
       if (!item) return;
@@ -154,9 +160,12 @@
 
     function updatePreview() {
       const item = templateById(templateSelect.value || selectedTemplateId);
+      const subjectTemplate = subjectEditor?.value ?? item?.subject ?? '';
+      const bodyTemplate = bodyEditor?.value ?? item?.body ?? '';
+      updateTemplateInputVisibility(subjectTemplate, bodyTemplate);
       const values = tagValues();
-      const subject = fillTags(subjectEditor?.value ?? item?.subject ?? '', values);
-      const body = fillTags(bodyEditor?.value ?? item?.body ?? '', values);
+      const subject = fillTags(subjectTemplate, values);
+      const body = fillTags(bodyTemplate, values);
       byId('communicationPreviewSubject').textContent = subject.rendered || '—';
       byId('communicationPreviewBody').textContent = body.rendered || '—';
       const missing = [...new Set([...subject.missing, ...body.missing])];
