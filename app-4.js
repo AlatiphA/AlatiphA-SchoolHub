@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.116';
+const APP_VERSION = '40.1.117';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -7463,20 +7463,9 @@ document.getElementById('saveAttendanceBtn').addEventListener('click', () => {
   const all = DB.get(KEYS.attendance, {});
   all[key] = { classId, term: settings.currentTerm, year: settings.currentYear, date, entries: statuses };
   DB.set(KEYS.attendance, all);
-
-  const summary = attendanceSummary(classId, settings.currentTerm, settings.currentYear).summary;
-  const remarksAll = DB.get(KEYS.remarks, {});
-  const remarkKey = gradeKey(classId, settings.currentTerm, settings.currentYear);
-  const classRemarks = remarksAll[remarkKey] || {};
-  Object.keys(summary).forEach(studentId => {
-    if (!classRemarks[studentId]) classRemarks[studentId] = {};
-    classRemarks[studentId].attendance = summary[studentId].total;
-  });
-  remarksAll[remarkKey] = classRemarks;
-  DB.set(KEYS.remarks, remarksAll);
   auditAction('update', 'studentAttendance', key, `Saved student attendance for ${date} · ${settings.currentTerm} ${settings.currentYear}`);
   renderAttendanceForm();
-  alert('Student attendance saved. Term attendance totals have been updated.');
+  alert('Student attendance saved. Report-card attendance totals use the saved registers.');
 });
 
 document.getElementById('saveTeacherAttendanceBtn').addEventListener('click', () => {
