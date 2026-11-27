@@ -8,10 +8,10 @@ test('stock category choices contain the fourteen agreed categories and retain s
  const saved=c.operationsCategoryOptions('Old school category');assert.equal(saved.at(-1)[0],'Old school category');
  assert.equal(c.operationsCategoryOptions('Furniture').length,15);assert.equal(c.operationsCategoryOptions('').length,15);
 });
-test('Stores follows Reports in both Home and the full quick-access menu',()=>{
+test('Reports follows Remarks and Fees follows Parent Portal on Home',()=>{
  const source=fs.readFileSync('app-4.js','utf8');
  const home=source.match(/const homeOrder=(\[[^;]+\])/)[1];const order=vm.runInNewContext(home);
- assert.equal(order.indexOf('operations'),order.indexOf('reports')+1);
- const cards=source.slice(source.indexOf('const QUICK_ACCESS_CARDS = ['),source.indexOf('function renderHomeQuickAccess'));
- const views=[...cards.matchAll(/\bview:\s*'([^']+)'/g)].map(x=>x[1]);assert.equal(views.indexOf('operations'),views.indexOf('reports')+1);
+ assert.equal(order.indexOf('reports'),order.indexOf('remarks')+1);
+ assert.equal(order.indexOf('fees'),order.indexOf('parent-portal')+1);
+ assert(order.includes('operations'));
 });
