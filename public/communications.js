@@ -6,7 +6,7 @@
     { id: 'fee-reminder', name: 'Fee reminder', channel: 'Fees & Receipts', subject: '{Term} fees reminder · {First}', body: 'Dear {Guardian},\n\nOur records show that {Overdue} remains outstanding for {First} {Last} of {Class}. The balance due is {Balance}, payable by {Due}.\n\nIf you have already paid, please ignore this message. If you would like to discuss a payment plan, please call or reply to this e-mail.\n\nKind regards,\n{School}\n{Contact}' }
   ];
   const TAG_GUIDE = [
-    ['Guardian', 'Guardian name'], ['First', 'Learner first name'], ['Last', 'Learner surname'],
+    ['Guardian', 'Parent/Guardian name'], ['First', 'Learner first name'], ['Last', 'Learner surname'],
     ['Class', 'Learner’s class'], ['Date', 'Today’s date'], ['Term', 'Current term and year'],
     ['Details', 'Details entered for this message'], ['Balance', 'Balance entered for this message'],
     ['Overdue', 'Overdue amount entered for this message'], ['Due', 'Payment deadline entered for this message'],
@@ -47,12 +47,12 @@
     const settings = DB.get(KEYS.settings, {});
     const esc = value => escapeHtml(String(value == null ? '' : value));
     const options = classes.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('');
-    const pupilOptions = students.map(item => `<option value="${esc(item.id)}" data-class="${esc(item.classId)}">${esc(item.name || 'Unnamed learner')} · ${esc(classes.find(c => String(c.id) === String(item.classId))?.name || 'No class')}</option>`).join('');
+    const pupilOptions = students.map(item => `<option value="${esc(item.id)}" data-class="${esc(item.classId)}" data-parent-email="${esc(item.parentEmail || '')}">${esc(item.name || 'Unnamed learner')} · ${esc(classes.find(c => String(c.id) === String(item.classId))?.name || 'No class')}</option>`).join('');
 
     host.innerHTML = `
       <section class="communication-intro">
         <p>Prepare a message using a saved template. SchoolHub fills in learner and school details, then opens a draft in your email app for you to review.</p>
-        <p class="hint">SchoolHub does not send these emails. Guardian email addresses are not stored yet, so enter the recipient in each draft. Attachments such as report cards must be added manually.</p>
+        <p class="hint">Choose a learner to fill the recipient from the saved Parent/Guardian Email; you can change it before opening the draft. SchoolHub opens but does not send emails. Report-card PDFs must be attached manually in your email app.</p>
       </section>
       <div class="communication-layout">
         <section class="communication-card">
@@ -61,7 +61,8 @@
             <label>Template<select id="communicationTemplateSelect">${templates.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label>
             <label>Class filter<select id="communicationClassSelect"><option value="">All classes</option>${options}</select></label>
             <label class="communication-wide">Learner<select id="communicationPupilSelect"><option value="">Choose a learner</option>${pupilOptions}</select></label>
-            <label class="communication-wide">Email recipient (optional)<input id="communicationRecipient" type="email" placeholder="guardian@example.com" autocomplete="off"></label>
+            <label class="communication-wide">Parent/Guardian email recipient (optional)<input id="communicationRecipient" type="email" maxlength="254" placeholder="parent@example.com" autocomplete="email"></label>
+            <p id="communicationAttachmentHint" class="hint communication-wide" hidden>Before sending this report-card draft, attach the generated report-card PDF in your email app.</p>
             <label>Details<input id="communicationDetails" type="text" placeholder="Optional note"></label>
             <label>Balance<input id="communicationBalance" type="text" inputmode="decimal" placeholder="e.g. GH₵ 250.00"></label>
             <label>Overdue amount<input id="communicationOverdue" type="text" inputmode="decimal" placeholder="e.g. GH₵ 100.00"></label>
@@ -117,6 +118,8 @@
       editSelect.value = item.id;
       subjectEditor.value = item.subject;
       bodyEditor.value = item.body;
+      const attachmentHint=byId('communicationAttachmentHint');
+      if(attachmentHint)attachmentHint.hidden=item.id!=='report-card';
       selectedTemplateId = item.id;
       templateSelect.value = item.id;
       updatePreview();
@@ -170,10 +173,13 @@
         if (!option.value) return;
         option.hidden = !!classSelect.value && option.dataset.class !== classSelect.value;
       });
-      if (pupilSelect.selectedOptions[0]?.hidden) pupilSelect.value = '';
+      if (pupilSelect.selectedOptions[0]?.hidden) { pupilSelect.value = ''; byId('communicationRecipient').value = ''; }
       updatePreview();
     });
-    pupilSelect.addEventListener('change', updatePreview);
+    pupilSelect.addEventListener('change', () => {
+      byId('communicationRecipient').value=pupilSelect.selectedOptions[0]?.dataset.parentEmail||'';
+      updatePreview();
+    });
     ['communicationRecipient', 'communicationDetails', 'communicationBalance', 'communicationOverdue', 'communicationDue'].forEach(id => byId(id).addEventListener('input', updatePreview));
     subjectEditor.addEventListener('input', updatePreview);
     bodyEditor.addEventListener('input', updatePreview);

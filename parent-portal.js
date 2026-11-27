@@ -45,11 +45,11 @@
       <div class="parent-manager-grid">
         <section class="parent-card">
           <h3>Invite a parent or guardian</h3>
-          <p class="parent-muted">Enter the parent’s email and choose a learner. Share the generated code and Parent Portal link privately. The parent must create an account with this same verified email.</p>
+          <p class="parent-muted">Choose a learner to prefill the saved Parent/Guardian Email, or enter another address. Share the generated code and Parent Portal link privately. The parent must create an account with this same verified email.</p>
           <form id="parentInviteForm" class="parent-form">
             <label>Learner<select id="parentInviteStudent" required><option value="">Select learner</option>${students.map(student => {
               const cls = (DB.get(KEYS.classes, []) || []).find(item => item.id === student.classId);
-              return `<option value="${escape(student.id)}">${escape(student.name || 'Unnamed learner')} · ${escape(cls?.name || 'Class not set')}</option>`;
+              return `<option value="${escape(student.id)}" data-parent-email="${escape(student.parentEmail || '')}">${escape(student.name || 'Unnamed learner')} · ${escape(cls?.name || 'Class not set')}</option>`;
             }).join('')}</select></label>
             <label>Parent/guardian email<input id="parentInviteEmail" type="email" maxlength="254" autocomplete="email" required placeholder="parent@example.com"></label>
             <button class="parent-primary" id="parentInviteSubmit" type="submit">Create invitation</button>
@@ -65,9 +65,14 @@
       </div>`;
 
     const form = host.querySelector('#parentInviteForm');
+    const inviteStudent = host.querySelector('#parentInviteStudent');
+    const inviteEmail = host.querySelector('#parentInviteEmail');
     const output = host.querySelector('#parentInviteResult');
     const submit = host.querySelector('#parentInviteSubmit');
     const status = host.querySelector('#parentManagerStatus');
+    inviteStudent?.addEventListener('change', () => {
+      if (inviteEmail) inviteEmail.value = inviteStudent.selectedOptions[0]?.dataset.parentEmail || '';
+    });
     form?.addEventListener('submit', async event => {
       event.preventDefault();
       const studentId = host.querySelector('#parentInviteStudent')?.value || '';

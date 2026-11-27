@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.113';
+const APP_VERSION = '40.1.114';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -3461,7 +3461,9 @@ function renderStudents() {
         </div>
         <label>Class<select class="edit-student-class">${getAccessibleClasses().map(c => `<option value="${escapeHtml(c.id)}" ${c.id === st.classId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></label>
         <input type="text" class="edit-student-id" value="${st.admissionId ? escapeHtml(st.admissionId) : ''}" placeholder="Student ID (optional)">
-        <input type="tel" class="edit-student-phone" value="${st.parentPhone ? escapeHtml(st.parentPhone) : ''}" placeholder="Parent phone (optional, for WhatsApp)">
+        <label>Parent/Guardian phone (optional)
+          <input type="tel" class="edit-student-phone" value="${st.parentPhone ? escapeHtml(st.parentPhone) : ''}" placeholder="Phone number for WhatsApp">
+        </label>
         <label>Disability
           <select class="edit-student-disability">
             <option value="">Select</option>
@@ -3469,7 +3471,12 @@ function renderStudents() {
             <option value="Yes" ${st.disability === 'Yes' ? 'selected' : ''}>Yes</option>
           </select>
         </label>
-        <input type="text" class="edit-student-guardian" value="${st.guardianName ? escapeHtml(st.guardianName) : ''}" placeholder="Guardian name">
+        <label>Parent/Guardian
+          <input type="text" class="edit-student-guardian" value="${st.guardianName ? escapeHtml(st.guardianName) : ''}" placeholder="Parent/Guardian">
+        </label>
+        <label>Parent/Guardian Email (optional)
+          <input type="email" class="edit-student-parent-email" value="${st.parentEmail ? escapeHtml(st.parentEmail) : ''}" maxlength="254" autocomplete="email" placeholder="parent@example.com">
+        </label>
         <input type="text" class="edit-student-house-gps" value="${st.houseGps ? escapeHtml(st.houseGps) : ''}" placeholder="House No. / GhanaPost GPS">
         ${photoPreview}
         <label>Passport Photo
@@ -3627,11 +3634,13 @@ function renderStudents() {
       const li=btn.closest('li'),name=li.querySelector('.edit-student-name').value.trim(),dob=li.querySelector('.edit-student-dob').value.trim(),gender=li.querySelector('.edit-student-gender').value;
       if(!name||!gender||!dob){const missing=[];if(!name)missing.push('Full name');if(!gender)missing.push('Sex');if(!dob)missing.push('Date of Birth');alert(missing.join(', ')+(missing.length===1?' is required.':' are required.'));return;}
       const admissionId=li.querySelector('.edit-student-id').value.trim(),students=DB.get(KEYS.students,[]),current=students.find(x=>x.id===btn.dataset.id);
+      const parentEmailInput=li.querySelector('.edit-student-parent-email'),parentEmail=parentEmailInput?.value.trim()||'';
+      if(parentEmail&&!parentEmailInput.checkValidity()){alert('Enter a valid Parent/Guardian Email address, or leave it blank.');parentEmailInput.focus();return;}
       if(!current||!requireClassAccess(current.classId))return;
       const classId=li.querySelector('.edit-student-class').value;
       if(!classId||!getAccessibleClasses().some(c=>c.id===classId)||!requireClassAccess(classId))return;
       if(admissionId&&students.some(x=>x.id!==current.id&&String(x.admissionId||'').trim().toLowerCase()===admissionId.toLowerCase())){alert('Another student already uses this Student ID. Student IDs must be unique.');return;}
-      const updated=Object.assign({},current,{name,dob,gender,admissionId,classId,parentPhone:li.querySelector('.edit-student-phone').value.trim(),disability:li.querySelector('.edit-student-disability')?.value||'',guardianName:li.querySelector('.edit-student-guardian')?.value.trim()||'',houseGps:li.querySelector('.edit-student-house-gps')?.value.trim()||''});
+      const updated=Object.assign({},current,{name,dob,gender,admissionId,classId,parentPhone:li.querySelector('.edit-student-phone').value.trim(),parentEmail,disability:li.querySelector('.edit-student-disability')?.value||'',guardianName:li.querySelector('.edit-student-guardian')?.value.trim()||'',houseGps:li.querySelector('.edit-student-house-gps')?.value.trim()||''});
       const token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId,oldText=btn.textContent;btn.disabled=true;btn.textContent='Saving…';
       let savedLocally=false;
       try {
@@ -3725,11 +3734,12 @@ document.getElementById('addStudentBtn').addEventListener('click', async () => {
   const classId=document.getElementById('newStudentClassSelect').value;if(!classId){alert('Select a destination class.');return;}if(classId==='__all__'){alert('Select one class before adding students.');return;}if(!requireClassAccess(classId))return;
   const nameInput=document.getElementById('newStudentName'),dobInput=document.getElementById('newStudentDob'),validation=document.getElementById('addStudentValidation'),name=nameInput.value.trim(),dob=dobInput.value.trim();
   if(!name||!dob){validation.textContent=!name&&!dob?'Full name and Date of Birth are required before the student can be added.':(!name?'Full name is required before the student can be added.':'Date of Birth is required before the student can be added.');validation.classList.add('show');return;}
+  const parentEmailInput=document.getElementById('newStudentParentEmail'),parentEmail=parentEmailInput.value.trim();if(parentEmail&&!parentEmailInput.checkValidity()){validation.textContent='Enter a valid Parent/Guardian Email address, or leave it blank.';validation.classList.add('show');parentEmailInput.focus();return;}
   validation.classList.remove('show');const gender=document.getElementById('newStudentGender').value;if(!gender){validation.textContent='Sex is required before the student can be added.';validation.classList.add('show');return;}
   const admissionId=document.getElementById('newStudentId').value.trim(),students=DB.get(KEYS.students,[]);if(admissionId&&students.some(x=>String(x.admissionId||'').trim().toLowerCase()===admissionId.toLowerCase())){validation.textContent='Another student already uses this Student ID. Student IDs must be unique.';validation.classList.add('show');return;}
   const createKey=JSON.stringify([sessionGeneration,currentUid,currentSchoolId,classId]);
   const createId=studentCreatePending.get(createKey)||uid();studentCreatePending.set(createKey,createId);
-  const record={id:createId,classId,name,dob,gender,admissionId,parentPhone:document.getElementById('newStudentPhone').value.trim(),disability:document.getElementById('newStudentDisability')?.value||'',guardianName:document.getElementById('newStudentGuardian')?.value.trim()||'',houseGps:document.getElementById('newStudentHouseGps')?.value.trim()||''};
+  const record={id:createId,classId,name,dob,gender,admissionId,parentPhone:document.getElementById('newStudentPhone').value.trim(),parentEmail,disability:document.getElementById('newStudentDisability')?.value||'',guardianName:document.getElementById('newStudentGuardian')?.value.trim()||'',houseGps:document.getElementById('newStudentHouseGps')?.value.trim()||''};
   const photoFile=newStudentPhotoInput?.files?.[0]||null,btn=document.getElementById('addStudentBtn'),oldText=btn.textContent,token=sessionGeneration,userId=currentUid,schoolId=currentSchoolId;let studentSaved=false;btn.disabled=true;btn.textContent=photoFile?'Preparing photo…':'Saving…';
   try{
     let photoData='';
@@ -3737,7 +3747,7 @@ document.getElementById('addStudentBtn').addEventListener('click', async () => {
     const localOnly=FIREBASE_ENABLED&&(navigator.onLine===false||offlineAuthenticatedMode);if(FIREBASE_ENABLED&&(!sessionReady||currentStatus!=='active'||cloudHydrationInProgress||!sessionDataReady))throw new Error('School data is still synchronizing.');if(FIREBASE_ENABLED&&currentSchoolId&&!localOnly){if(cloudHydrationInProgress||!sessionDataReady)throw new Error('School data is still synchronizing.');btn.textContent='Saving…';await schoolRef().collection('students').doc(String(record.id)).set(stripImagesForCloud('students',record));if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();}
     let photoStoragePath='';
     if(photoFile){photoStoragePath=schoolAssetPath(photoFile,'student-photos',record.classId+'/'+record.id);await cacheLocalImageWithMeta(imageCacheKey('student',record.id),photoData,{storagePath:photoStoragePath,sourceUrl:'',updatedAt:new Date().toISOString()});if(!isCurrentSession(token,userId,schoolId))return;record.photo=photoData;record.photoUrl='';record.photoStoragePath=photoStoragePath;}
-    recoverSyncJournal();const latest=DB.get(KEYS.students,[]),existing=latest.findIndex(x=>x.id===record.id);if(existing<0)latest.push(record);else latest[existing]=record;DB.set(KEYS.students,latest,{skipCloudSync:!localOnly});studentCreatePending.delete(createKey);studentSaved=true;document.getElementById('studentSearchInput').value='';nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';document.getElementById('newStudentGender').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';if(newStudentPhotoInput)newStudentPhotoInput.value='';clearNewStudentPhotoPreview();renderStudents();renderClasses();addStudentForm.classList.remove('hidden');toggleAddStudentBtn.textContent='Collapse';toggleAddStudentBtn.setAttribute('aria-expanded','true');nameInput.focus({preventScroll:true});nameInput.scrollIntoView({block:'nearest',behavior:'smooth'});auditAction('create','student',record.id,`Added student: ${record.name}`);
+    recoverSyncJournal();const latest=DB.get(KEYS.students,[]),existing=latest.findIndex(x=>x.id===record.id);if(existing<0)latest.push(record);else latest[existing]=record;DB.set(KEYS.students,latest,{skipCloudSync:!localOnly});studentCreatePending.delete(createKey);studentSaved=true;document.getElementById('studentSearchInput').value='';nameInput.value='';dobInput.value='';newStudentAge.value='';document.getElementById('newStudentId').value='';document.getElementById('newStudentPhone').value='';parentEmailInput.value='';document.getElementById('newStudentGender').value='';if(document.getElementById('newStudentDisability'))document.getElementById('newStudentDisability').value='';if(document.getElementById('newStudentGuardian'))document.getElementById('newStudentGuardian').value='';if(document.getElementById('newStudentHouseGps'))document.getElementById('newStudentHouseGps').value='';if(newStudentPhotoInput)newStudentPhotoInput.value='';clearNewStudentPhotoPreview();renderStudents();renderClasses();addStudentForm.classList.remove('hidden');toggleAddStudentBtn.textContent='Collapse';toggleAddStudentBtn.setAttribute('aria-expanded','true');nameInput.focus({preventScroll:true});nameInput.scrollIntoView({block:'nearest',behavior:'smooth'});auditAction('create','student',record.id,`Added student: ${record.name}`);
     if(photoFile&&FIREBASE_ENABLED&&currentSchoolId){try{const url=await uploadSchoolAsset(photoFile,'student-photos',record.classId+'/'+record.id);if(!isCurrentSession(token,userId,schoolId))return;const saved=DB.get(KEYS.students,[]),current=saved.find(x=>x.id===record.id);if(current){current.photo=photoData;current.photoUrl=url||'';current.photoStoragePath=photoStoragePath;}DB.set(KEYS.students,saved,{skipCloudSync:!localOnly});await studentRef(record.id).set({photoUrl:url||'',photoStoragePath,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});if(!isCurrentSession(token,userId,schoolId))return;await upsertImageManifest('student',record.id,{classId:record.classId,storagePath:photoStoragePath,sourceUrl:url||'',storageUpdatedAt:new Date().toISOString()});if(!isCurrentSession(token,userId,schoolId))return;setLastSyncedNow();renderStudents();}catch(photoError){if(isCurrentSession(token,userId,schoolId)){console.warn('New student photo cloud backup pending:',photoError);alert(`Student added. The photo is saved on this browser; Firebase backup is pending.\n\n${photoError.message||photoError}`);}}}
   }catch(error){if(isCurrentSession(token,userId,schoolId))alert('Student was NOT added to SchoolHub.\n\n'+(error.message||error));}finally{if(isCurrentSession(token,userId,schoolId)){btn.disabled=false;btn.textContent=studentSaved?'Add next student':oldText;}}
 });
@@ -3758,12 +3768,14 @@ function prepareBulkAdd(kind, text, classId, previous) {
     const shorthand = parts.length === 1 ? /^(female|male|f|m)\s+(.+)$/i.exec(parts[0].trim()) : null;
     let gender = '', externalId;
     {
-      if (parts.length < 1 || parts.length > 2 || (kind === 'staff' && parts.length !== 2 && !shorthand)) { rejectLine(raw, index, `Use ${kind === 'staff' ? 'Full name, Sex, Staff ID' : 'Full name, Sex, optional Student ID'}.`); return; }
+      if (parts.length < 1 || parts.length > (kind === 'staff' ? 2 : 3) || (kind === 'staff' && parts.length !== 2 && !shorthand)) { rejectLine(raw, index, `Use ${kind === 'staff' ? 'Full name, Sex, Staff ID' : 'Full name, Sex, optional Student ID, optional Parent/Guardian Email'}.`); return; }
       const sex = (shorthand ? shorthand[1] : parts[0]).trim().toLowerCase();
       gender = sex === 'female' || sex === 'f' ? 'F' : sex === 'male' || sex === 'm' ? 'M' : '';
       if (!gender) { rejectLine(raw, index, 'Sex is required. Use Female/Male or F/M.'); return; }
       externalId = (shorthand ? shorthand[2] : (parts[1] || '')).trim();
     }
+    const parentEmail=kind==='staff'?'':String(parts[2]||'').trim();
+    if(parentEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail)){rejectLine(raw,index,'Parent/Guardian Email must be a valid email address, or blank.');return;}
     const key = externalId.toLowerCase();
     if (!name || (kind === 'staff' && !externalId)) { rejectLine(raw, index, `${kind === 'staff' ? 'Name and Staff ID are required.' : 'Name is required.'}`); return; }
     const oldIndex = reusable.findIndex(item => item.line === line);
@@ -3772,7 +3784,8 @@ function prepareBulkAdd(kind, text, classId, previous) {
     if (key) inputIds.add(key);
     const record = old?.record || (kind === 'staff'
       ? {id:uid(), name, sex:gender, staffId:externalId, role:'Teacher'}
-      : {id:uid(), classId, name, gender, admissionId:externalId, parentPhone:''});
+      : {id:uid(), classId, name, gender, admissionId:externalId, parentPhone:'', parentEmail});
+    if(kind==='student'&&parentEmail)record.parentEmail=parentEmail;
     items.push({line, record});
   });
   return {items, errors, invalidLines};
@@ -3871,8 +3884,9 @@ async function showStudentDetails(studentId) {
     ['Age', calculateStudentAge(st.dob) || '—'],
     ['Class', cls ? cls.name : '—'],
     ['Disability', st.disability || '—'],
-    ['Guardian name', st.guardianName || '—'],
+    ['Parent/Guardian', st.guardianName || '—'],
     ['Parent/Guardian phone', st.parentPhone || '—'],
+    ['Parent/Guardian Email', st.parentEmail || '—'],
     ['House No. / GhanaPost GPS', st.houseGps || '—']
   ];
 
@@ -4153,8 +4167,9 @@ const STUDENT_TRANSFER_FIELDS = [
   {key:'gender', label:'Sex'},
   {key:'dob', label:'Date of Birth'},
   {key:'disability', label:'Disability'},
-  {key:'guardianName', label:'Guardian Name'},
+  {key:'guardianName', label:'Parent/Guardian'},
   {key:'parentPhone', label:'Parent/Guardian Phone'},
+  {key:'parentEmail', label:'Parent/Guardian Email'},
   {key:'houseGps', label:'House No. / GhanaPost GPS'},
   {key:'className', label:'Class'}
 ];
@@ -4198,7 +4213,8 @@ function installStudentTabUpgrade() {
       <label>Disability
         <select id="newStudentDisability"><option value="">Select</option><option value="No">No</option><option value="Yes">Yes</option></select>
       </label>
-      <label>Guardian name <input type="text" id="newStudentGuardian" placeholder="Guardian name"></label>
+      <label>Parent/Guardian <input type="text" id="newStudentGuardian" placeholder="Parent/Guardian"></label>
+      <label>Parent/Guardian Email (optional) <input type="email" id="newStudentParentEmail" maxlength="254" autocomplete="email" placeholder="parent@example.com"></label>
       <label>House No. / GhanaPost GPS <input type="text" id="newStudentHouseGps" placeholder="e.g. House 12 / NT-123-4567"></label>`;
     addBtn.parentNode.insertBefore(host, addBtn);
   }
@@ -4470,6 +4486,9 @@ function planStudentImport(rows, destinationClassId) {
     const parsedDob = dateMatch ? new Date(String(v.dob) + 'T00:00:00Z') : null;
     if (v.dob && (!parsedDob || !Number.isFinite(parsedDob.getTime()) || parsedDob.toISOString().slice(0,10) !== v.dob)) issues.push('Date of Birth must be a valid YYYY-MM-DD date.');
     if (Object.values(v).some(value => String(value || '').length > 500)) issues.push('One or more fields are too long.');
+    const parentEmail=String(v.parentEmail||'').trim();
+    if(parentEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parentEmail))issues.push('Parent/Guardian Email must be a valid email address, or blank.');
+    if(parentEmail.length>254)issues.push('Parent/Guardian Email must not exceed 254 characters.');
     let disability = String(v.disability || '').trim();
     if (disability) {
       const d = disability.toLowerCase();
@@ -4488,7 +4507,7 @@ function planStudentImport(rows, destinationClassId) {
     if (rowIssues.length) return {row:item.row, values:v, source:item, status:'needs-correction', issues:rowIssues, change:null};
     const merged = current ? Object.assign({}, current) : {id:uid()};
     merged.name = String(v.name).trim(); merged.admissionId = sid; merged.gender = gender; merged.dob = v.dob; merged.classId = classId;
-    ['guardianName','parentPhone','houseGps'].forEach(k => { if (v[k]) merged[k] = v[k]; });
+    ['guardianName','parentPhone','parentEmail','houseGps'].forEach(k => { if (v[k]) merged[k] = v[k]; });
     if (disability) merged.disability = disability;
     return {row:item.row, values:v, source:item, status:'ready', issues:[], change:{mode:current ? 'Update' : 'Add', record:merged}};
   });
@@ -4711,7 +4730,7 @@ function currentStudentTableRows() {
   return getAccessibleStudents().filter(st => {
     if (!selectedClass || (selectedClass !== '__all__' && st.classId !== selectedClass)) return false;
     if (!query) return true;
-    return [st.name,st.admissionId,st.guardianName,st.parentPhone,st.houseGps,st.disability,studentClassName(st)].join(' ').toLowerCase().includes(query);
+    return [st.name,st.admissionId,st.guardianName,st.parentPhone,st.parentEmail,st.houseGps,st.disability,studentClassName(st)].join(' ').toLowerCase().includes(query);
   });
 }
 
@@ -4732,9 +4751,9 @@ function renderStudentDetailsTableLegacy() {
     <div id="studentDetailsTableWrap" ${studentTableVisible?'':'hidden'}>
       <p class="hint">Scroll sideways to see all student details.</p>
       <div class="table-scroll" tabindex="0"><table class="grades-table student-details-table"><thead><tr>
-      <th>Full Name</th><th>Student ID</th><th>Sex</th><th>DOB</th><th>Age</th><th>Disability</th><th>Guardian Name</th><th>Phone</th><th>House No. / GhanaPost GPS</th><th>Class</th><th>Actions</th>
+      <th>Full Name</th><th>Student ID</th><th>Sex</th><th>DOB</th><th>Age</th><th>Disability</th><th>Parent/Guardian</th><th>Phone</th><th>Parent/Guardian Email</th><th>House No. / GhanaPost GPS</th><th>Class</th><th>Actions</th>
       </tr></thead><tbody>` +
-      (rows.length ? rows.map(st => `<tr><td>${escapeHtml(st.name||'—')}</td><td>${escapeHtml(st.admissionId||'—')}</td><td>${escapeHtml(st.gender==='M'?'Male':st.gender==='F'?'Female':'—')}</td><td>${escapeHtml(st.dob||'—')}</td><td>${escapeHtml(calculateStudentAge(st.dob)||'—')}</td><td>${escapeHtml(st.disability||'—')}</td><td>${escapeHtml(st.guardianName||'—')}</td><td>${escapeHtml(st.parentPhone||'—')}</td><td>${escapeHtml(st.houseGps||'—')}</td><td>${escapeHtml(studentClassName(st)||'—')}</td><td><button type="button" class="table-view-student" data-id="${st.id}">View</button> <button type="button" class="table-edit-student" data-id="${st.id}">Edit</button></td></tr>`).join('') : '<tr><td colspan="11" class="empty">No students to display.</td></tr>') +
+      (rows.length ? rows.map(st => `<tr><td>${escapeHtml(st.name||'—')}</td><td>${escapeHtml(st.admissionId||'—')}</td><td>${escapeHtml(st.gender==='M'?'Male':st.gender==='F'?'Female':'—')}</td><td>${escapeHtml(st.dob||'—')}</td><td>${escapeHtml(calculateStudentAge(st.dob)||'—')}</td><td>${escapeHtml(st.disability||'—')}</td><td>${escapeHtml(st.guardianName||'—')}</td><td>${escapeHtml(st.parentPhone||'—')}</td><td>${escapeHtml(st.parentEmail||'—')}</td><td>${escapeHtml(st.houseGps||'—')}</td><td>${escapeHtml(studentClassName(st)||'—')}</td><td><button type="button" class="table-view-student" data-id="${st.id}">View</button> <button type="button" class="table-edit-student" data-id="${st.id}">Edit</button></td></tr>`).join('') : '<tr><td colspan="12" class="empty">No students to display.</td></tr>') +
       '</tbody></table></div></div>';
   document.getElementById('toggleStudentTableBtn').onclick = () => { studentTableVisible=!studentTableVisible; renderStudentDetailsTable(); };
   panel.querySelectorAll('.table-view-student').forEach(b => b.onclick=()=>showStudentDetails(b.dataset.id));
@@ -4759,14 +4778,14 @@ function renderStudentDetailsTable() {
     '</td><td>' + escapeHtml(st.gender==='M'?'Male':st.gender==='F'?'Female':'—') + '</td><td>' + escapeHtml(st.dob||'—') +
     '</td><td>' + escapeHtml(calculateStudentAge(st.dob)||'—') + '</td><td>' + escapeHtml(st.disability||'—') +
     '</td><td>' + escapeHtml(st.guardianName||'—') + '</td><td>' + escapeHtml(st.parentPhone||'—') +
-    '</td><td>' + escapeHtml(st.houseGps||'—') + '</td><td>' + escapeHtml(studentClassName(st)||'—') +
+    '</td><td>' + escapeHtml(st.parentEmail||'—') + '</td><td>' + escapeHtml(st.houseGps||'—') + '</td><td>' + escapeHtml(studentClassName(st)||'—') +
     '</td><td><button type="button" class="table-view-student" data-id="' + escapeHtml(st.id) + '">View</button> <button type="button" class="table-edit-student" data-id="' + escapeHtml(st.id) + '">Edit</button></td></tr>').join('');
   const toolbar = '<div class="staff-data-toolbar"><strong>Student details table</strong><button type="button" id="toggleStudentTableBtn" aria-controls="studentDetailsTableWrap" aria-expanded="' +
     studentTableVisible + '">' + (studentTableVisible?'Hide table':'Show table') + '</button></div>';
   const table = studentTableVisible
     ? '<div id="studentDetailsTableWrap"><p class="hint">Scroll sideways to see all student details.</p><div class="table-scroll" tabindex="0"><table class="grades-table student-details-table"><thead><tr>' +
-      '<th>Full Name</th><th>Student ID</th><th>Sex</th><th>DOB</th><th>Age</th><th>Disability</th><th>Guardian Name</th><th>Phone</th><th>House No. / GhanaPost GPS</th><th>Class</th><th>Actions</th>' +
-      '</tr></thead><tbody>' + (rowMarkup || '<tr><td colspan="11" class="empty">No students to display.</td></tr>') + '</tbody></table></div>' +
+      '<th>Full Name</th><th>Student ID</th><th>Sex</th><th>DOB</th><th>Age</th><th>Disability</th><th>Parent/Guardian</th><th>Phone</th><th>Parent/Guardian Email</th><th>House No. / GhanaPost GPS</th><th>Class</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + (rowMarkup || '<tr><td colspan="12" class="empty">No students to display.</td></tr>') + '</tbody></table></div>' +
       (rows.length > pageRows.length ? '<p class="hint student-details-pagination-status" role="status">Showing ' + pageRows.length + ' of ' + rows.length + ' matching students in this table.</p><button type="button" id="studentDetailsTableMoreBtn">Show ' +
         Math.min(STUDENT_RESULTS_PAGE_SIZE, rows.length - pageRows.length) + ' more students</button>' : '') + '</div>'
     : '';
