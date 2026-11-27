@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AlatiphA SchoolHub Complete User Guide</title>
-<meta name="description" content="SchoolHub school-user guide, reviewed 27 November 2026 · v40.1.117. Covers Communications templates with Parent/Guardian Email linking, the read-only Parent Portal, School Calendar, Head Teacher and Teacher workflows, student onboarding, attendance, fees, sync, backups and recovery.">
+<meta name="description" content="SchoolHub school-user guide, reviewed 27 November 2026 · v40.1.120. Covers Communications templates with Parent/Guardian Email linking, the read-only Parent Portal, School Calendar, Head Teacher and Teacher workflows, student onboarding, attendance, fees, sync, backups and recovery.">
 <style>
 html { scroll-behavior: smooth; }
 .embedded-guide .guide-app-link { display:none; }
@@ -66,6 +66,11 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 }
 .schoolhub-post .toc li { margin: 7px 0; }
 .schoolhub-post .toc a { text-decoration: none; }
+.schoolhub-post .toc-search{display:grid;gap:6px;margin:14px 0 10px;font-size:14px;font-weight:700}
+.schoolhub-post .toc-search input{box-sizing:border-box;width:100%;min-width:0;padding:10px 12px;border:1px solid #cfc8b5;border-radius:8px;font:inherit;font-weight:400}
+.schoolhub-post .toc-status{margin:5px 0;color:#5d6d63;font-size:13px}
+.schoolhub-post .toc [hidden]{display:none!important}
+.schoolhub-post [id]{scroll-margin-top:18px}
 .schoolhub-post .table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -116,7 +121,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <h1>AlatiphA SchoolHub Complete User Guide</h1>
 <p class="guide-app-link"><a href="https://alatipha-schoolhub.web.app/">Open SchoolHub</a></p>
-<p class="updated"><strong>Updated:</strong> 26 November 2026 · SchoolHub v40.1.112</p>
+<p class="updated"><strong>Updated:</strong> 27 November 2026 · SchoolHub v40.1.120</p>
 
 <div class="intro-box">
 <strong>AlatiphA SchoolHub</strong> is a school-management Progressive Web App designed to bring school administration, staff and pupil records, weekly teaching supervision, the School Calendar, email-message templates, read-only family access, stores and school property, attendance, assessment, report cards, fees and receipts, notifications, synchronisation, backup and recovery into one working environment.
@@ -124,10 +129,12 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 
 <p>This guide explains the current SchoolHub workspace for <strong>Guests</strong>, <strong>Head Teachers</strong>, <strong>Teachers</strong> and families using the Parent Portal. It covers the major tabs, School Calendar, Communications email drafts, invited parent access, school joining and approval, Supervision and Observation, Stores/Inventory/Assets/Liabilities, Fees &amp; Receipts, account security, offline drafts and synchronisation.</p>
 
-<div class="success-box"><strong>This v40.1.117 guide includes:</strong> the School Calendar tab with current-month navigation and a Sunday/Monday week-start choice; Communications templates that prepare reviewable email drafts using a learner’s saved Parent/Guardian Email and show only fields used by the selected template; the read-only Parent Portal for linked learners; separate student onboarding methods, class-scoped Search and exports, role-specific pupil summaries, attendance totals from registers, Sync Center conflict review, and current Supervision and Observation workflows. This guide is for Head Teachers, Teachers, Guests and invited parents.</div>
+<div class="success-box"><strong>This v40.1.120 guide includes:</strong> the School Calendar tab with current-month navigation and a Sunday/Monday week-start choice; Communications templates that prepare reviewable email drafts using a learner’s saved Parent/Guardian Email and show only fields used by the selected template; the read-only Parent Portal for linked learners; separate student onboarding methods, class-scoped Search and exports, role-specific pupil summaries, attendance totals from registers, Sync Center conflict review, and current Supervision and Observation workflows. This guide is for Head Teachers, Teachers, Guests and invited parents.</div>
 
-<details class="toc" open>
+<details class="toc">
 <summary>Table of Contents</summary>
+<label class="toc-search">Find a section<input id="guideTocSearch" type="search" placeholder="Search guide sections…" autocomplete="off"></label>
+<p id="guideTocStatus" class="toc-status" role="status" aria-live="polite">All guide sections are shown.</p>
 <ol>
 <li><a href="#install">Install or Open SchoolHub</a></li>
 <li><a href="#accounts">SchoolHub Accounts</a>
@@ -296,6 +303,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <h2 id="home"><span class="chapter-number">Chapter 3:</span> Home Dashboard</h2>
 <p>The Home tab acts as the main starting point after entering SchoolHub. It provides quick access to the areas available to the current user's role. The top-bar notification bell shows an unread badge when new SchoolHub notifications are waiting.</p>
 <p>Major areas include Setup, Manage Teachers, Staff, Classes, Subjects, Students, Attendance, Grades, Remarks, Fees &amp; Receipts, Reports, Stores, Assets &amp; Liabilities, Supervision and Observation, Activity Log and Term History, depending on the user's role. Billing &amp; Credits remains a separate Head Teacher area when available.</p>
+<p>Use the star on a Home card to pin it above the other pages. Pinning changes only this device’s Home order and is saved separately for each account and school. Select the star again to unpin. The cards available to each role remain controlled by the school’s permissions.</p>
 <p>The floating quick-navigation pill also provides fast access to frequently used sections such as Home, Attendance and Reports.</p>
 
 <h2 id="setup"><span class="chapter-number">Chapter 4:</span> School Setup</h2>
@@ -702,7 +710,7 @@ body { margin:0; padding:0; background:#fff; color:#203329; }
 <p>Connected live views can receive supported class, pupil, grade and attendance updates from another device while retaining open edits. Keep the relevant view open and check its connection or conflict message. Stores periodically refreshes visible records while online and verified; other views can still require Refresh. One device’s saved value is not proof that every other screen has refreshed.</p>
 
 <h3 id="app-updates">21.5 Check for updates and install</h3>
-<ol class="mini-steps"><li>Open <strong>Profile → About</strong> to read the installed release.</li><li>While online, choose <strong>Check for updates</strong> and wait for the check and download.</li><li>When ready, choose <strong>Install update</strong>. Save open form entries first because installing reloads SchoolHub.</li><li>Reopen About to confirm the new release. If no update is ready, the installation button shows <strong>Installed</strong>. Reconnect and retry if the check fails.</li></ol>
+<ol class="mini-steps"><li>Open <strong>Profile → About</strong>. The header shows the installed release; the update panel shows the latest release and when it was last checked.</li><li>While online, choose <strong>Check for updates</strong>. The status badge identifies whether SchoolHub is checking, up to date, has an update available, or needs a new check.</li><li>When the download is ready, choose <strong>Install update</strong>. Save open form entries first because installing reloads SchoolHub.</li><li>Reopen About to confirm the installed release. Reconnect and check again if the check failed or the last check is old.</li></ol>
 <p>Saved records and pending uploads stay on this device through an app update. The release number advances when changed app content is prepared for deployment; checking for updates or deploying unchanged content does not itself create a new version. System Health reports service-worker problems when available.</p>
 
 <h3 id="sync-center">21.6 Sync Center</h3>
@@ -787,5 +795,43 @@ Developed by AlatiphA Multimedia<br>
 © All Rights Reserved · AlatiphA Multimedia
 </div>
 
+<script>
+(function(){
+  const toc=document.querySelector('.schoolhub-post .toc');
+  const search=document.getElementById('guideTocSearch');
+  const status=document.getElementById('guideTocStatus');
+  const rootList=toc?.querySelector(':scope > ol');
+  if(!toc||!search||!status||!rootList)return;
+  if(window.matchMedia('(max-width: 700px)').matches)toc.open=false;
+  function filterList(list,query){
+    let hasVisible=false,matched=0;
+    Array.from(list.children).filter(item=>item.tagName==='LI').forEach(item=>{
+      const link=Array.from(item.children).find(child=>child.tagName==='A');
+      const nested=Array.from(item.children).find(child=>child.tagName==='OL');
+      const ownMatch=!query||(link&&link.textContent.toLocaleLowerCase().includes(query));
+      let nestedVisible=false;
+      if(nested){const result=filterList(nested,query);nestedVisible=result.visible;matched+=result.matched;nested.hidden=!nestedVisible;}
+      item.hidden=!(ownMatch||nestedVisible);
+      if(ownMatch&&link)matched+=1;
+      if(!item.hidden)hasVisible=true;
+    });
+    return {visible:hasVisible,matched};
+  }
+  function apply(){
+    const query=search.value.trim().toLocaleLowerCase();
+    const result=filterList(rootList,query);
+    status.textContent=query?(result.matched?`Showing ${result.matched} matching sections.`:'No matching sections. Try another search.'):'All guide sections are shown.';
+  }
+  search.addEventListener('input',apply);
+  toc.querySelectorAll('a[href^="#"]').forEach(link=>link.addEventListener('click',()=>{
+    const id=decodeURIComponent(link.hash.slice(1));
+    window.setTimeout(()=>{
+      if(window.matchMedia('(max-width: 700px)').matches)toc.open=false;
+      document.getElementById(id)?.scrollIntoView({block:'start'});
+    },50);
+  }));
+  apply();
+})();
+</script>
 </div></body>
 </html>

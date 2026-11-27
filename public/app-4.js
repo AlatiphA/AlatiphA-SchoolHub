@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.119';
+const APP_VERSION = '40.1.120';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1251,23 +1251,47 @@ const QUICK_ACCESS_CARDS = [
 
 function renderQuickAccessList() {
   const wrap = document.getElementById('quickAccessList');
+  if (!wrap) return;
   if (FIREBASE_ENABLED && !sessionDataReady) {
     wrap.innerHTML = '<div class="empty">Loading your school workspace…</div>';
     return;
   }
   const homeOrder=['setup','manage-teachers','staff','classes','subjects','students','attendance','grades','remarks','reports','communications','parent-portal','fees','operations','supervision','school-calendar','activity','history'];
-  const cards = QUICK_ACCESS_CARDS.slice().sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view)).filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())));
-  wrap.innerHTML = cards.map(c => `
-    <button type="button" class="qa-card" data-view="${c.view}">
-      <span class="qa-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${c.icon}</svg></span>
-      <span class="qa-text">
-        <span class="qa-title">${escapeHtml(c.title)}</span>
-        <span class="qa-desc">${escapeHtml(c.description)}</span>
-      </span>
-    </button>
-  `).join('');
+  const pinScope = [currentSchoolId || 'local', currentUid || currentUserData?.email || currentRole || 'guest'].join(':');
+  const pinKey = `schoolhub_home_pins_v1:${pinScope}`;
+  let pinned = [];
+  try { pinned = JSON.parse(localStorage.getItem(pinKey) || '[]'); } catch (_) {}
+  if (!Array.isArray(pinned)) pinned = [];
+  const cards = QUICK_ACCESS_CARDS.slice()
+    .sort((a,b)=>homeOrder.indexOf(a.view)-homeOrder.indexOf(b.view))
+    .filter(c => c.view !== 'billing' && (!c.headteacherOnly || currentRole === 'headteacher' || (c.view === 'staff' && isActiveGuest())))
+    .sort((a,b) => {
+      const aPin = pinned.indexOf(a.view), bPin = pinned.indexOf(b.view);
+      if (aPin >= 0 || bPin >= 0) return aPin < 0 ? 1 : bPin < 0 ? -1 : aPin - bPin;
+      return homeOrder.indexOf(a.view) - homeOrder.indexOf(b.view);
+    });
+  wrap.innerHTML = cards.map(c => {
+    const isPinned = pinned.includes(c.view);
+    return `
+      <div class="qa-card-item">
+        <button type="button" class="qa-card" data-view="${c.view}">
+          <span class="qa-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${c.icon}</svg></span>
+          <span class="qa-text"><span class="qa-title">${escapeHtml(c.title)}</span><span class="qa-desc">${escapeHtml(c.description)}</span></span>
+        </button>
+        <button type="button" class="qa-pin${isPinned ? ' is-pinned' : ''}" data-pin-view="${c.view}" aria-pressed="${isPinned}" aria-label="${isPinned ? 'Unpin' : 'Pin'} ${escapeHtml(c.title)} ${isPinned ? 'from' : 'to'} the top of Home" title="${isPinned ? 'Unpin from top of Home' : 'Pin to top of Home'}">★</button>
+      </div>`;
+  }).join('');
   wrap.querySelectorAll('.qa-card').forEach(btn => {
     btn.addEventListener('click', () => showView(btn.dataset.view));
+  });
+  wrap.querySelectorAll('.qa-pin').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.pinView;
+      const next = pinned.includes(view) ? pinned.filter(item => item !== view) : [...pinned, view];
+      try { localStorage.setItem(pinKey, JSON.stringify(next)); } catch (_) {}
+      renderQuickAccessList();
+      wrap.querySelector(`[data-pin-view="${view}"]`)?.focus();
+    });
   });
 }
 
@@ -5225,6 +5249,7 @@ function openInlineDoc(name) {
     body.appendChild(frame);
   } else {
     body.appendChild(template.content.cloneNode(true));
+    if (name === 'faq') window.initSchoolHubFaqFilters?.(body);
   }
   body.scrollTop = 0;
   dialog.classList.remove('hidden');
@@ -13494,6 +13519,8 @@ function markSchoolHubUpdateReady(workerState = 'installed') {
   try { localStorage.setItem(SCHOOLHUB_SW_UPDATE_READY_KEY, String(Date.now())); } catch (_) {}
   const status = document.getElementById('aboutUpdateStatus');
   if (status) status.textContent = `A SchoolHub update is ready (${workerState}). Reload when convenient to use the new version.`;
+  const badge = document.getElementById('aboutUpdateBadge');
+  if (badge) { badge.textContent = 'Update ready'; badge.dataset.state = 'available'; }
   window.dispatchEvent(new CustomEvent('schoolhub-sw-update-ready', { detail: { state: workerState } }));
 }
 

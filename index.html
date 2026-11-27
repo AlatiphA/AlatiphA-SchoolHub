@@ -226,6 +226,7 @@
       <p id="welcomeSubtext" class="welcome-subtext">Here's what's happening with your classes.</p>
     </div>
     <div id="statsSummary" class="stats-summary"></div>
+    <p class="qa-pin-help">Use the star to keep your most-used pages at the top. Pins are saved for this account and school on this device.</p>
     <div class="quick-access-list" id="quickAccessList"></div>
   </section>
 
@@ -994,6 +995,11 @@
 </div>
 
 <template id="inlineDocTemplateFaq">
+<div class="faq-search-tools" role="search" aria-label="Search help answers">
+  <label for="faqSearch">Search answers<input id="faqSearch" type="search" placeholder="Search a question or answer…" autocomplete="off"></label>
+  <label for="faqAudience">Show help for<select id="faqAudience"><option value="all">All roles</option><option value="headteacher">Head Teacher</option><option value="teacher">Teacher</option><option value="parent">Parent / Guardian</option></select></label>
+  <p id="faqSearchStatus" role="status" aria-live="polite">Showing all help answers.</p>
+</div>
 <div class="inline-faq-grid">
       <section class="inline-doc-section"><h2>Current packages, owner controls and automatic updates</h2>
 <details><summary>What are the current SchoolHub packages?</summary><div class="inline-doc-answer"><p>Report credits cost GH₵0.20 per report. Termly unlimited reports cost GH₵50 for the saved school term and academic year. Yearly unlimited reports cost GH₵120 for 12 months from activation. Attendance costs GH₵50 per school term separately. New three-year purchases are suspended; existing valid licences retain their benefits. These service charges are separate from learner school fees.</p></div></details>
@@ -1004,14 +1010,14 @@
 <details><summary>Can I record supervision for last week or earlier?</summary><div class="inline-doc-answer"><p>Yes. In Supervision and Observation, use the week tabs to choose a week, or select a prior Friday in Go to week ending (Friday). Use This week to return. Record when the check actually happened in Date checked, and confirm the correct academic year and term. Saved term dates select the academic year and term automatically. Missing or overlapping dates require manual confirmation. Outstanding checks lists teacher/class pairs still unrecorded for the selected period, based on current teaching assignments; historical staffing may differ. Choose Record check beside a pair to preselect it. Use the teacher/class filters to find saved records. Existing records, teacher feedback and saved drafts are retained.</p></div></details>
 <details><summary>Which changes update automatically on another device?</summary><div class="inline-doc-answer"><p>Classes, students and notifications receive live updates. Selected grades and pupil attendance registers update while open; calendar and teacher attendance update while Attendance is open. Other areas check about every 30 seconds while the app is visible and online, including staff, subjects, settings, remarks, teacher assignments, fees, billing and supervision. Operations checks about every 15 seconds while open. Refresh pauses for changed forms and open dialogs. Finish the operation or leave/reopen the view; manual Refresh remains available. Offline drafts are not automatically submitted.</p></div></details>
 <details><summary>How do I message a school or user?</summary><div class="inline-doc-answer"><p>In Owner Administration, choose Message school or open Access &amp; users → Message user. Review the selected audience, title and message before sending. Archived schools must first be restored. Restrictions cannot erase previously saved offline copies.</p></div></details></section>
-<section class="inline-doc-support"><p><strong>SchoolHub help · Updated 26 November 2026</strong></p><p>Start with installation below, then sign in, prepare school records and follow the daily workflows. Later sections cover syncing, conflict review, backups and troubleshooting. Distinguish a local save, an unsent draft and server confirmation. Open the Complete user guide for longer step-by-step instructions.</p></section>
+<section class="inline-doc-support"><p><strong>SchoolHub help · Updated 27 November 2026</strong></p><p>Search questions and answers above, or choose Head Teacher, Teacher or Parent / Guardian to see role-specific guidance alongside general answers. Start with installation below, then sign in, prepare school records and follow the daily workflows. Later sections cover syncing, conflict review, backups and troubleshooting. Distinguish a local save, an unsent draft and server confirmation. Open the Complete user guide for longer step-by-step instructions.</p></section>
 
       <section class="inline-doc-section">
         <h2>Install SchoolHub and keep it updated</h2>
         <details><summary>Where do I start?</summary><div class="inline-doc-answer"><p>With internet available, open <a href="https://alatipha-schoolhub.web.app/">SchoolHub</a> in a supported browser. You can use it in the browser or install it as an app. Installing does not create a school or account; sign in, create an account or use the Guest trial in the next step.</p></div></details>
         <details><summary>How do I install SchoolHub?</summary><div class="inline-doc-answer"><ol><li>Open SchoolHub online on the device you want to use.</li><li>Use the available <strong>Install SchoolHub</strong> banner or your browser’s install/Add to Home Screen option. If you are already inside the workspace, use <strong>Profile → Help → Install SchoolHub</strong>.</li><li>Follow the device prompt and open SchoolHub from its app icon.</li></ol><p>Installation availability depends on the browser/device. If an install option is unavailable, continue in the browser. Installed SchoolHub still needs the correct account and permissions; first sign-in and loading an uncached school require internet.</p></div></details>
         <details><summary>The app looks outdated. What should I do?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → About</strong> while online. Use <strong>Check for updates</strong>, wait for the download, then choose <strong>Install update</strong>. If a check fails or you are offline, reconnect and retry. Use <strong>Settings → System Health</strong> for diagnostics. Keep pending records and drafts; do not clear app data to force an update.</p></div></details>
-        <details><summary>How are service-worker updates handled?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → About → Check for updates</strong>. Wait while a release downloads. <strong>Install update</strong> becomes available when ready; The status message confirms when you are up to date; the Install update button appears only when an update is ready. Save open form entries before installing because the app reloads. Saved records and queued uploads remain on this device. The release number advances when changed app content is prepared for deployment.</p></div></details>
+        <details><summary>How are service-worker updates handled?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → About</strong> to see the installed version, latest release, last checked time and a clear update status. Choose <strong>Check for updates</strong> while online. Wait while a release downloads; <strong>Install update</strong> appears only when it is ready. Save open form entries before installing because the app reloads. Saved records and queued uploads remain on this device. The release number advances when changed app content is prepared for deployment.</p></div></details>
       </section>
 
       <section class="inline-doc-section">
@@ -1029,6 +1035,7 @@
       <section class="inline-doc-section">
         <h2>Find your way around</h2>
         <details><summary>Where are Settings and Help now?</summary><div class="inline-doc-answer"><p>Open the <strong>Profile button at the top right → Settings</strong> or <strong>Profile → Help</strong>. They no longer appear as Home cards. Home keeps school-work pages such as Setup, Classes, Reports, Stores and Supervision and Observation.</p></div></details>
+        <details><summary>How do I pin a page to the top of Home?</summary><div class="inline-doc-answer"><p>On Home, choose the star on a page card. Pinned pages move above the other pages. Choose the star again to unpin. Pins are saved on this device separately for each account and school; they do not sync to another device or add pages your role cannot access.</p></div></details>
         <details><summary>What is inside Settings?</summary><div class="inline-doc-answer"><p><strong>Profile → Settings</strong> contains Notifications, Messages &amp; Push, Sync Center and System Health. Head Teachers also see School Setup. Billing &amp; Credits appears in Profile before Settings for Head Teachers. The header bell and sync indicator are shortcuts.</p></div></details>
         <details><summary>Where is the complete user guide?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → Help → Complete user guide</strong>, or use the link below the controls in any Head Teacher, Teacher or Guest guided tour. It opens inside SchoolHub. Close the guide to return to your current screen. The guide is included with the app and can open offline after the updated app has cached it. <a href="complete-user-guide.html" data-inline-doc="guide">Read the complete user guide</a>.</p></div></details>
         <details><summary>What is inside Help?</summary><div class="inline-doc-answer"><p>The Profile options appear in this order: <strong>Account Security</strong>, <strong>Billing &amp; Credits</strong>, <strong>Settings</strong>, <strong>About</strong> and <strong>Help</strong>. Billing &amp; Credits is shown for Head Teachers; Account Security appears for active signed-in accounts. <strong>Profile → Help</strong> groups Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, Privacy and Terms of Use. About opens the release and update information separately.</p></div></details>
@@ -1375,7 +1382,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Version <strong id="aboutVersion">40.1.119</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Installed version <strong id="aboutVersion">40.1.120</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
@@ -1386,6 +1393,11 @@
       <div><span>Service worker</span><strong id="aboutSwStatus">Checking…</strong></div>
     </div>
     <section class="about-updates-card" aria-labelledby="aboutUpdatesTitle"><h3 id="aboutUpdatesTitle">App updates</h3>
+    <div class="about-update-summary" aria-label="Release information">
+      <span id="aboutUpdateBadge" class="about-update-badge" data-state="unknown">Not checked</span>
+      <div><span>Latest release</span><strong id="aboutLatestVersion">Not checked</strong></div>
+      <div><span>Last checked</span><strong id="aboutLastChecked">Not checked yet</strong></div>
+    </div>
     <p id="aboutUpdateStatus" class="hint about-status" role="status" aria-live="polite">Check for the latest SchoolHub release.</p>
     <div class="about-actions">
       <button type="button" id="aboutCheckUpdateBtn" class="btn-secondary">Check for updates</button>
@@ -1418,6 +1430,7 @@
 <script src="manual-billing.js"></script>
 <script src="service-access.js"></script>
 <script src="communications.js?v=communication-templates-1"></script>
+<script src="faq-filter.js"></script>
 <script src="app-4.js?v=school-calendar-current-day-week-start-1"></script>
 <script src="fees.js?v=v40-private-images-1"></script>
 <script src="school-operations.js?v=v40-private-images-1"></script>

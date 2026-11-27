@@ -1,10 +1,29 @@
 (function(root){
   'use strict';
+  const REMOTE_KEY='schoolhub_last_release_check_v1';
   let installed='',registration=null,remote=null,checking=false,installing=false,sequence=0;
   const element=id=>root.document.getElementById(id);
-  function display(message,ready=false){
+  function updateSummary(state='unknown'){
+    const badge=element('aboutUpdateBadge'),latest=element('aboutLatestVersion'),checked=element('aboutLastChecked');
+    const labels={unknown:'Not checked',checking:'Checking',current:'Up to date',available:'Update available',attention:'Check needed'};
+    if(badge){badge.textContent=labels[state]||labels.unknown;if(badge.dataset)badge.dataset.state=state;}
+    if(latest)latest.textContent=remote?.version||'Not checked';
+    if(checked){
+      let timestamp=0;try{timestamp=Number(root.localStorage.getItem(REMOTE_KEY)||0);}catch(_){}
+      checked.textContent=timestamp?new Date(timestamp).toLocaleString():'Not checked yet';
+    }
+  }
+  function display(message,ready=false,state){
     const status=element('aboutUpdateStatus'),check=element('aboutCheckUpdateBtn'),install=element('aboutInstallUpdateBtn');
     if(status)status.textContent=message;
+    if(!state){
+      if(ready||/update is ready|available|downloading|installing/i.test(message))state='available';
+      else if(/up to date/i.test(message))state='current';
+      else if(/checking/i.test(message))state='checking';
+      else if(/offline|failed|could not|unavailable|not completed|couldn't/i.test(message))state='attention';
+      else state='unknown';
+    }
+    updateSummary(state);
     if(check)check.disabled=checking||installing;
     if(install){install.hidden=!ready&&!installing;install.disabled=!ready||checking||installing;install.textContent=installing?'Installing…':'Install update';}
   }
@@ -59,6 +78,8 @@
       const data=await response.json();
       if(!/^\d+\.\d+\.\d+$/.test(data.version||''))throw Error('Invalid release information.');
       remote=data;
+      try{root.localStorage.setItem(REMOTE_KEY,String(Date.now()));root.localStorage.setItem(REMOTE_KEY+'_data',JSON.stringify(remote));}catch(_){}
+      updateSummary('checking');
       if(!('serviceWorker' in root.navigator))throw Error('Updates are unavailable in this browser.');
       const reg=await root.navigator.serviceWorker.getRegistration('./');
       if(!reg)throw Error('Offline support is still starting. Reload once and try again.');
@@ -90,10 +111,12 @@
   }
   function init(version){
     if(installed)return;installed=version;
+    try{const cached=JSON.parse(root.localStorage.getItem(REMOTE_KEY+'_data')||'null');if(cached&&/^\d+\.\d+\.\d+$/.test(cached.version||''))remote=cached;}catch(_){}
     element('aboutInstallUpdateBtn')?.addEventListener('click',install);
     root.addEventListener('schoolhub-sw-update-ready',()=>refresh());
     root.navigator.serviceWorker?.addEventListener('controllerchange',()=>{if(!installing)refresh();});
-    display('Version '+installed+'. Check for updates when online.');
+    updateSummary('unknown');
+    display('Version '+installed+'. Check for updates when online.',false,'unknown');
   }
   root.SchoolHubUpdates={init,check,install,refresh};
 })(window);
