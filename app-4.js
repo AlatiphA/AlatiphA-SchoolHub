@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.121';
+const APP_VERSION = '40.1.123';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -9599,7 +9599,7 @@ function reportUsesCredits(settings) {
 }
 
 let preparedReportUrl = null;
-function showPreparedReport(url, filename) {
+function showPreparedReport(url, filename, autoDownload = true, deliveryOptions = null) {
   document.getElementById('preparedReportDialog')?.remove();
   if (preparedReportUrl) URL.revokeObjectURL(preparedReportUrl);
   preparedReportUrl = url;
@@ -9609,12 +9609,42 @@ function showPreparedReport(url, filename) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-labelledby', 'preparedReportTitle');
-  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><div class="prepared-report-actions"><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close data-dismiss-ui>Close</button></div></div>';
+  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p data-report-note>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><div class="prepared-report-actions"><button type="button" class="btn-primary" data-report-share hidden>Share PDF</button><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close data-dismiss-ui>Close</button></div></div>';
   overlay.querySelector('.prepared-report-name').textContent = filename;
   const download = overlay.querySelector('[data-report-download]');
+  const shareButton = overlay.querySelector('[data-report-share]');
+  const note = overlay.querySelector('[data-report-note]');
   download.href = url;
   download.download = filename;
   overlay.querySelector('[data-report-open]').href = url;
+  if (deliveryOptions?.file && deliveryOptions?.shareData) {
+    shareButton.hidden = false;
+    note.textContent = deliveryOptions.channel === 'email'
+      ? `Choose your email app, then address the message to ${deliveryOptions.recipient || 'the parent'} before sending.`
+      : 'Choose WhatsApp, then select the parent chat before sending.';
+    shareButton.addEventListener('click', async () => {
+      shareButton.disabled = true;
+      shareButton.textContent = 'Opening share options…';
+      try {
+        await navigator.share(deliveryOptions.shareData);
+        deliveryOptions.onResult?.('shared');
+        close();
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          shareButton.disabled = false;
+          shareButton.textContent = 'Share PDF';
+          note.textContent = 'Nothing was sent. You can try sharing again or save the PDF.';
+          deliveryOptions.onResult?.('cancelled');
+          return;
+        }
+        shareButton.disabled = true;
+        shareButton.textContent = 'File sharing unavailable';
+        note.textContent = 'Save the PDF and attach it manually in your email or WhatsApp message.';
+        deliveryOptions.onResult?.('fallback');
+        download.click();
+      }
+    });
+  }
   const previousFocus = document.activeElement;
   const close = () => {
     overlay.remove();
@@ -9632,8 +9662,8 @@ function showPreparedReport(url, filename) {
     }
   });
   document.body.appendChild(overlay);
-  download.focus();
-  download.click();
+  (deliveryOptions?.file ? shareButton : download).focus();
+  if (autoDownload) download.click();
 }
 
 function reportGenerationProgress(message){
@@ -9645,31 +9675,51 @@ function reportGenerationSession(){
   return ()=>{if(typeof isCurrentSession==='function'&&!isCurrentSession(generation,uid,school))throw Error('Your school session changed. Generate the report again.');};
 }
 
-async function downloadGeneratedReport(doc, filename, count, reportType = 'paid', classId) {
-  if (!enforceGuestTrial()) return;
+async function downloadGeneratedReport(doc, filename, count, reportType = 'paid', classId, shareOptions) {
+  if (!enforceGuestTrial()) return 'blocked';
   // Serialize before deducting, then download the same prepared PDF.
-  const url = URL.createObjectURL(doc.output('blob'));
+  const pdfBlob = doc.output('blob');
+  const url = URL.createObjectURL(pdfBlob);
   let offered = false;
   try {
     if (reportType === 'bw-single' && isActiveGuest()) {
       if (bwFreeRemaining() <= 0) {
         alert('Your 10 free guest reports are used. Register your school to continue.');
-        return;
+        return 'blocked';
       }
       localStorage.setItem(GUEST_BW_USAGE_KEY, String(BW_FREE_REPORT_LIMIT - bwFreeRemaining() + 1));
       renderReportCreditStatus();
     } else if (count) {
       try { await consumeReportCredits(count, crypto.randomUUID(), reportType, classId); }
-      catch (error) { alert(error.message || 'School credits could not be confirmed. The report was not downloaded.'); return; }
+      catch (error) { alert(error.message || 'School credits could not be confirmed. The report was not prepared.'); return 'blocked'; }
+    }
+    if (shareOptions) {
+      try {
+        if (typeof File === 'function' && typeof navigator.share === 'function') {
+          const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+          if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+            const shareData = { files: [file], title: shareOptions.subject || 'SchoolHub report card', text: shareOptions.text || '' };
+            showPreparedReport(url, filename, false, { file, shareData, channel: shareOptions.channel, recipient: shareOptions.recipient, onResult: shareOptions.onResult });
+            offered = true;
+            return 'ready';
+          }
+        }
+      } catch (error) {
+        console.warn('File sharing is unavailable; offering the PDF download instead:', error);
+      }
+      showPreparedReport(url, filename);
+      offered = true;
+      return 'fallback';
     }
     showPreparedReport(url, filename);
     offered = true;
+    return 'downloaded';
   } finally {
     if (!offered) URL.revokeObjectURL(url);
   }
 }
 let reportGenerationBusy = false;
-async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride) {
+async function generateSinglePDF(result, positions, numOnRoll, classInfo, studentRemarks, settingsOverride, shareOptions) {
   if (!enforceGuestTrial() || reportGenerationBusy) return;
   reportGenerationBusy = true;
   try {
@@ -9690,9 +9740,26 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const assetIssues = typeof reportAssetIssuesForPrepared === 'function' ? reportAssetIssuesForPrepared(result, assets) : [];
   if (typeof confirmReportAssetIssues === 'function' && !confirmReportAssetIssues(assetIssues)) return;
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
-  await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, 1, reportUsesCredits(settings) ? 'paid' : 'bw-single', classInfo?.id||result.student.classId);
+  return await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, 1, reportUsesCredits(settings) ? 'paid' : 'bw-single', classInfo?.id||result.student.classId, shareOptions);
   } finally { reportGenerationBusy = false; }
 }
+
+async function generateCommunicationReport(studentId, shareOptions) {
+  const settings = DB.get(KEYS.settings, {});
+  const student = DB.get(KEYS.students, []).find(item => String(item.id) === String(studentId));
+  if (!student) { alert('Choose a learner before preparing a report card.'); return 'blocked'; }
+  const classId = student.classId;
+  const classInfo = DB.get(KEYS.classes, []).find(item => String(item.id) === String(classId));
+  if (!classInfo) { alert('This learner is not assigned to an active class. Check the student record first.'); return 'blocked'; }
+  const results = computeClassResults(classId, settings.currentTerm, settings.currentYear);
+  const result = results.find(item => String(item.student.id) === String(student.id));
+  if (!result) { alert('There are no report results for this learner in the selected term.'); return 'blocked'; }
+  const positions = computeSubjectPositions(classId, settings.currentTerm, settings.currentYear);
+  const numOnRoll = studentsForClassYear(classId, settings.currentYear).length;
+  const remarksAll = DB.get(KEYS.remarks, {})[gradeKey(classId, settings.currentTerm, settings.currentYear)] || {};
+  return generateSinglePDF(result, positions, numOnRoll, classInfo, remarksAll[student.id] || {}, settings, shareOptions);
+}
+window.generateCommunicationReport = generateCommunicationReport;
 
 async function generateBatchPDF(results, positions, numOnRoll, classInfo, remarksAll, settingsOverride) {
   if (!enforceGuestTrial() || reportGenerationBusy) return;

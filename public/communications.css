@@ -17,6 +17,10 @@
 #app .communication-preview .hint{margin:0;color:var(--gold);}
 #app .communication-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
 #app .communication-actions button{width:auto;}
+#app .communication-share{display:grid;gap:8px;}
+#app .communication-share-options{display:flex;gap:8px;flex-wrap:wrap;}
+#app .communication-share-options[hidden],#app .communication-continue[hidden]{display:none!important;}
+#app .communication-continue{display:inline-flex;align-items:center;justify-content:center;margin-top:12px;text-decoration:none;}
 #app .communication-tags-card dl{margin:0;display:grid;gap:0;}
 #app .communication-tags-card dl>div{display:grid;grid-template-columns:minmax(84px,.65fr) minmax(0,1.35fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--rule);}
 #app .communication-tags-card dl>div:last-child{border-bottom:0;}

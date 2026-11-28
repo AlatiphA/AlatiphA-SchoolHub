@@ -2,7 +2,7 @@
   const DEFAULT_TEMPLATES = [
     { id: 'absence-alert', name: 'Absence alert', channel: 'Attendance', subject: '{First} was absent today ({Date})', body: 'Dear {Guardian},\n\n{First} was marked absent from {Class} today. If you have not told us the reason yet, please reply to this e-mail or call the school office.\n\nKind regards,\n{School}\n{Contact}' },
     { id: 'at-risk', name: 'At-risk learner', channel: 'Learner support', subject: '{First} · a word about this term', body: 'Dear {Guardian},\n\nWe would like to talk with you about how {First} is doing this term:\n{Details}\n\nPlease call the school office or reply to this e-mail so we can agree a time to meet.\n\nKind regards,\n{School}\n{Contact}' },
-    { id: 'report-card', name: 'Report card', channel: 'Reports', subject: "{First}'s {Term} report card", body: 'Dear {Guardian},\n\nPlease find {First}\'s {Term} report card attached.\n\nKind regards,\n{School}\n{Contact}' },
+    { id: 'report-card', name: 'Report card', channel: 'Reports', subject: "{First}'s {Term} report card", body: 'Dear {Guardian},\n\nPlease review {First}\'s report card for {Term}.\n\nKind regards,\n{School}\n{Contact}' },
     { id: 'fee-reminder', name: 'Fee reminder', channel: 'Fees & Receipts', subject: '{Term} fees reminder · {First}', body: 'Dear {Guardian},\n\nOur records show that {Overdue} remains outstanding for {First} {Last} of {Class}. The balance due is {Balance}, payable by {Due}.\n\nIf you have already paid, please ignore this message. If you would like to discuss a payment plan, please call or reply to this e-mail.\n\nKind regards,\n{School}\n{Contact}' }
   ];
   const TAG_GUIDE = [
@@ -47,12 +47,12 @@
     const settings = DB.get(KEYS.settings, {});
     const esc = value => escapeHtml(String(value == null ? '' : value));
     const options = classes.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('');
-    const pupilOptions = students.map(item => `<option value="${esc(item.id)}" data-class="${esc(item.classId)}" data-parent-email="${esc(item.parentEmail || '')}">${esc(item.name || 'Unnamed learner')} · ${esc(classes.find(c => String(c.id) === String(item.classId))?.name || 'No class')}</option>`).join('');
+    const pupilOptions = students.map(item => `<option value="${esc(item.id)}" data-class="${esc(item.classId)}" data-parent-email="${esc(item.parentEmail || '')}" data-parent-phone="${esc(item.parentPhone || '')}">${esc(item.name || 'Unnamed learner')} · ${esc(classes.find(c => String(c.id) === String(item.classId))?.name || 'No class')}</option>`).join('');
 
     host.innerHTML = `
       <section class="communication-intro">
-        <p>Prepare a message using a saved template. SchoolHub fills in learner and school details, then opens a draft in your email app for you to review.</p>
-        <p class="hint">Choose a learner to fill the recipient from the saved Parent/Guardian Email; you can change it before opening the draft. SchoolHub opens but does not send emails. Report-card PDFs must be attached manually in your email app.</p>
+        <p>Prepare a message using a saved template. SchoolHub fills in learner and school details, then opens Email or WhatsApp sharing options for you to review.</p>
+        <p class="hint">Choose a learner to use their saved parent contact. Share opens Email and WhatsApp options. Report-card PDFs can be attached through your device’s share sheet; if this browser cannot share files, SchoolHub saves the PDF and asks you to attach it yourself.</p>
       </section>
       <div class="communication-layout">
         <section class="communication-card">
@@ -63,7 +63,7 @@
             <label>Class filter<select id="communicationClassSelect"><option value="">All classes</option>${options}</select></label>
             <label class="communication-wide">Learner<select id="communicationPupilSelect"><option value="">Choose a learner</option>${pupilOptions}</select></label>
             <label class="communication-wide">Parent/Guardian email recipient (optional)<input id="communicationRecipient" type="email" maxlength="254" placeholder="parent@example.com" autocomplete="email"></label>
-            <p id="communicationAttachmentHint" class="hint communication-wide" hidden>Before sending this report-card draft, attach the generated report-card PDF in your email app.</p>
+            <p id="communicationAttachmentHint" class="hint communication-wide" hidden>SchoolHub prepares the selected learner’s report PDF. The device share sheet can include it as an attachment; if file sharing is unavailable, attach the downloaded PDF before sending.</p>
             <label class="communication-template-input" data-template-field="details" hidden>Details<input id="communicationDetails" type="text" placeholder="Optional note"></label>
             <label class="communication-template-input" data-template-field="balance" hidden>Balance<input id="communicationBalance" type="text" inputmode="decimal" placeholder="e.g. GH₵ 250.00"></label>
             <label class="communication-template-input" data-template-field="overdue" hidden>Overdue amount<input id="communicationOverdue" type="text" inputmode="decimal" placeholder="e.g. GH₵ 100.00"></label>
@@ -76,8 +76,15 @@
           </div>
           <div class="communication-actions">
             <button type="button" id="communicationCopyBtn" class="btn-secondary">Copy message</button>
-            <button type="button" id="communicationDraftBtn" class="btn-primary">Open email draft</button>
+            <div class="communication-share">
+              <button type="button" id="communicationShareBtn" class="btn-primary" aria-expanded="false" aria-controls="communicationShareOptions">Share</button>
+              <div id="communicationShareOptions" class="communication-share-options" role="group" aria-label="Choose a sharing method" hidden>
+                <button type="button" class="btn-secondary" data-share-channel="email">Email</button>
+                <button type="button" class="btn-secondary" data-share-channel="whatsapp">WhatsApp</button>
+              </div>
+            </div>
           </div>
+          <a id="communicationContinueLink" class="btn-secondary communication-continue" hidden></a>
           <p id="communicationStatus" class="hint" role="status" aria-live="polite"></p>
         </section>
 
@@ -109,6 +116,9 @@
     const subjectEditor = byId('communicationSubjectTemplate');
     const bodyEditor = byId('communicationBodyTemplate');
     const status = byId('communicationStatus');
+    const shareButton = byId('communicationShareBtn');
+    const shareOptions = byId('communicationShareOptions');
+    const continueLink = byId('communicationContinueLink');
     const templateStatus = byId('communicationTemplateStatus');
     const templateInputFields = [...host.querySelectorAll('[data-template-field]')];
     let selectedTemplateId = templates[0]?.id || '';
@@ -175,6 +185,112 @@
       return { subject: subject.rendered, body: body.rendered, missing };
     }
 
+    function emailDraftUrl(recipient, result) {
+      return `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(result.subject)}&body=${encodeURIComponent(result.body)}`;
+    }
+    function whatsappPhoneDigits(phone) {
+      let digits = String(phone || '').replace(/\D/g, '');
+      if (digits.startsWith('00')) digits = digits.slice(2);
+      if (/^0\d{9}$/.test(digits)) digits = '233' + digits.slice(1);
+      return digits;
+    }
+    function whatsappDraftUrl(phone, result) {
+      const digits = whatsappPhoneDigits(phone);
+      const message = `${result.subject}\n\n${result.body}`;
+      return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+    }
+    function clearContinueLink() {
+      continueLink.hidden = true;
+      continueLink.removeAttribute('href');
+      continueLink.textContent = '';
+    }
+    function openShareDestination(channel, recipient, phone, result) {
+      if (channel === 'email') {
+        window.location.href = emailDraftUrl(recipient, result);
+      } else {
+        const link = document.createElement('a');
+        link.href = whatsappDraftUrl(phone, result);
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.click();
+      }
+    }
+
+    shareButton.addEventListener('click', () => {
+      const expanded = shareButton.getAttribute('aria-expanded') === 'true';
+      shareButton.setAttribute('aria-expanded', String(!expanded));
+      shareOptions.hidden = expanded;
+    });
+    shareOptions.addEventListener('click', async event => {
+      const option = event.target.closest('[data-share-channel]');
+      if (!option) return;
+      const channel = option.dataset.shareChannel;
+      const result = updatePreview();
+      const pupilOption = pupilSelect.selectedOptions[0];
+      const studentId = pupilSelect.value;
+      const recipient = byId('communicationRecipient').value.trim();
+      const phone = pupilOption?.dataset.parentPhone || '';
+      shareOptions.hidden = true;
+      shareButton.setAttribute('aria-expanded', 'false');
+      clearContinueLink();
+      if (!studentId) { status.textContent = 'Choose a learner first.'; return; }
+      if (result.missing.length) { status.textContent = 'Complete the highlighted fields before sharing.'; return; }
+      if (channel === 'email' && recipient && !byId('communicationRecipient').checkValidity()) { status.textContent = 'Enter a valid parent email address, or leave it blank and add it in your email app.'; return; }
+      if (channel === 'whatsapp' && !whatsappPhoneDigits(phone)) { status.textContent = 'No valid Parent/Guardian phone is saved for this learner. Add it in Students before using WhatsApp.'; return; }
+
+      if (templateSelect.value !== 'report-card') {
+        openShareDestination(channel, recipient, phone, result);
+        status.textContent = channel === 'email'
+          ? 'Email draft opened. Review the parent address and message, then send it from your email app.'
+          : 'WhatsApp opened with the message prepared. Review it and choose the parent chat before sending.';
+        return;
+      }
+
+      if (typeof window.generateCommunicationReport !== 'function') { status.textContent = 'Report sharing is unavailable until the report tools finish loading. Refresh and try again.'; return; }
+      status.textContent = 'Preparing the learner’s report card…';
+      option.disabled = true;
+      shareButton.disabled = true;
+      shareButton.textContent = 'Preparing PDF…';
+      try {
+        const showFallback = () => {
+          continueLink.href = channel === 'email' ? emailDraftUrl(recipient, result) : whatsappDraftUrl(phone, result);
+          continueLink.target = '_blank';
+          continueLink.rel = 'noopener';
+          continueLink.textContent = channel === 'email' ? 'Continue to email draft' : 'Continue to WhatsApp';
+          continueLink.hidden = false;
+          status.textContent = channel === 'email'
+            ? 'This browser cannot attach files directly. The report PDF has been saved; continue to the email draft and attach that PDF before sending.'
+            : 'This browser cannot attach files directly. The report PDF has been saved; continue to WhatsApp and attach that PDF before sending.';
+        };
+        const onShareResult = shareState => {
+          if (shareState === 'shared') status.textContent = 'The device share sheet handed off the PDF. Check the email or WhatsApp app and confirm it was sent; SchoolHub cannot confirm delivery.';
+          else if (shareState === 'cancelled') status.textContent = 'The share sheet was closed. Check the target app; SchoolHub cannot confirm whether anything was sent.';
+          else if (shareState === 'fallback') showFallback();
+        };
+        const outcome = await window.generateCommunicationReport(studentId, {
+          channel, recipient, subject: result.subject,
+          text: channel === 'whatsapp' ? `${result.subject}\n\n${result.body}` : result.body,
+          onResult: onShareResult
+        });
+        if (outcome === 'ready') {
+          status.textContent = channel === 'email'
+            ? `The PDF is ready. Tap Share PDF in the Report ready window, choose your email app, then enter ${recipient || 'the parent’s email address'}. SchoolHub cannot confirm delivery.`
+            : 'The PDF is ready. Tap Share PDF in the Report ready window, choose WhatsApp, then select the parent chat. SchoolHub cannot confirm delivery.';
+        } else if (outcome === 'fallback') {
+          showFallback();
+        } else {
+          status.textContent = 'The report was not shared. Check the report message and try again.';
+        }
+      } catch (error) {
+        console.error('Unable to share report card:', error);
+        status.textContent = 'Unable to prepare this report card. Check the report access and try again.';
+      } finally {
+        option.disabled = false;
+        shareButton.disabled = false;
+        shareButton.textContent = 'Share';
+      }
+    });
+
     templateSelect.addEventListener('change', () => loadEditor(templateSelect.value));
     editSelect.addEventListener('change', () => loadEditor(editSelect.value));
     classSelect.addEventListener('change', () => {
@@ -229,17 +345,6 @@
         await navigator.clipboard.writeText(`Subject: ${result.subject}\n\n${result.body}`);
         status.textContent = 'Message copied. Review it before sharing.';
       } catch (_) { status.textContent = 'Could not copy automatically. Select and copy the preview text.'; }
-    });
-
-    byId('communicationDraftBtn').addEventListener('click', () => {
-      const result = updatePreview();
-      if (!pupilSelect.value) { status.textContent = 'Choose a learner first.'; return; }
-      if (result.missing.length) { status.textContent = 'Complete the highlighted tag fields before opening the draft.'; return; }
-      const recipient = byId('communicationRecipient').value.trim();
-      if (recipient && !byId('communicationRecipient').checkValidity()) { status.textContent = 'Enter a valid email address, or leave it blank and add the address in your email app.'; return; }
-      const draftUrl = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(result.subject)}&body=${encodeURIComponent(result.body)}`;
-      window.location.href = draftUrl;
-      status.textContent = recipient ? 'Email draft opened. Review the recipient and message before sending.' : 'Email draft opened. Add the guardian’s address and review the message before sending.';
     });
 
     loadEditor(selectedTemplateId);
