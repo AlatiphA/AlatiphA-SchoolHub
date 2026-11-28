@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.125';
+const APP_VERSION = '40.1.126';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1795,6 +1795,7 @@ function renderPendingSyncData() {
 }
 
 async function updateSyncCenter() {
+  const imageResult = arguments[0];
   if (typeof renderPendingSyncData === 'function') renderPendingSyncData();
   const cloudEl = document.getElementById('syncCloudImages');
   const localEl = document.getElementById('syncLocalImages');
@@ -1828,12 +1829,14 @@ async function updateSyncCenter() {
   }
 
   try {
-    const inventory = await withUiTimeout(getCloudImageInventory({ probeLegacy: false }), 10000, 'Image inventory check is taking too long. Core school data is still available.');
-    const localCount = await countCachedInventoryItems(inventory);
-    cloudEl.textContent = String(inventory.length);
+    const knownCounts = Number.isFinite(imageResult?.total) && Number.isFinite(imageResult?.local);
+    const inventory = knownCounts ? null : await withUiTimeout(getCloudImageInventory({ probeLegacy: false }), 10000, 'Image inventory check is taking too long. Core school data is still available.');
+    const localCount = knownCounts ? imageResult.local : await countCachedInventoryItems(inventory);
+    const cloudCount = knownCounts ? imageResult.total : inventory.length;
+    cloudEl.textContent = String(cloudCount);
     localEl.textContent = String(localCount);
     lastEl.textContent = getLastImageSyncText();
-    const missing = Math.max(0, inventory.length - localCount);
+    const missing = Math.max(0, cloudCount - localCount);
     if (missing > 0) {
       stateEl.textContent = `⚠ ${missing} image${missing === 1 ? '' : 's'} may need synchronization`;
       detailEl.textContent = 'Use Sync Images to download missing photos and signatures to this browser.';
@@ -1882,14 +1885,15 @@ function renderImageSyncDiagnostics(result) {
 }
 
 function setSyncCenterActionsBusy(busy) {
-  for (const id of ['syncCenterSyncBtn', 'syncCenterImagesBtn', 'syncCenterRecoverBtn', 'syncCenterRefreshBtn']) {
+  for (const id of ['syncCenterDataBtn', 'syncCenterSyncBtn', 'syncCenterImagesBtn', 'syncCenterRecoverBtn', 'syncCenterRefreshBtn']) {
     const button = document.getElementById(id);
     if (button) button.disabled = busy;
   }
 }
 
 async function runSyncCenterSync() {
-  const btn = document.getElementById('syncCenterSyncBtn');
+  const dataOnly = arguments[0]?.dataOnly === true;
+  const btn = document.getElementById(dataOnly ? 'syncCenterDataBtn' : 'syncCenterSyncBtn');
   const status = document.getElementById('syncCenterActionStatus');
   if (btn && btn.disabled) return;
   if (!FIREBASE_ENABLED || !currentSchoolId) {
@@ -1902,18 +1906,34 @@ async function runSyncCenterSync() {
   setSyncCenterActionsBusy(true);
   if (status) status.textContent = 'Checking your account and uploading saved data edits…';
   try {
-    await revalidateAndSyncAfterReconnect(true, {userInitiated:true});
+    // A normal connected session needs only a membership check here. A full
+    // cloud pull follows below for Sync Everything.
+    await revalidateAndSyncAfterReconnect(true, {userInitiated:true,metadataOnly:true});
     if (!verified()) throw new Error('Account verification is incomplete. Saved edits remain on this device.');
     // Reconnect may report a conflict and return. Explicitly await the retained
     // outbox; downloading images does not confirm that data edits were uploaded.
     const failures = [];
     try { await flushAllSchoolHubWrites(); } catch (error) { failures.push(error.message || String(error)); }
     if (!verified()) return;
+    if (dataOnly) {
+      const pending = pendingSyncCountForCurrentSchool() > 0 || hasPendingSchoolHubSync();
+      if (status) status.textContent = pending || failures.length
+        ? 'Data sync incomplete. ' + (pending ? 'Saved data edits are still pending. See Pending school data above. ' : '') + failures.join(' · ')
+        : 'Saved data synced. No pending data edits.';
+      renderCloudSyncStatus();
+      renderPendingSyncData();
+      updateOfflineModeBanner();
+      const lastData = document.getElementById('syncLastData');
+      if (lastData) lastData.textContent = formatSyncTime(localStorage.getItem(LAST_SYNCED_KEY));
+      return;
+    }
+    if (status) status.textContent = 'Refreshing school data…';
     try { await pullCloudData(); } catch (error) { failures.push('Cloud refresh: ' + (error.message || String(error))); }
     if (!verified()) return;
     renderCloudSyncStatus();
     renderClasses(); renderStudents(); renderSubjects(); renderStaff(); renderQuickAccessList(); renderHome();
     let result = {downloaded:0,repaired:0,failed:0};
+    if (status) status.textContent = 'Checking photos and signatures…';
     try { result = await syncImagesFromCloud({ force: false }); } catch (error) { failures.push('Images: ' + (error.message || String(error))); }
     if (!verified()) return;
     renderImageSyncDiagnostics(result);
@@ -1922,7 +1942,7 @@ async function runSyncCenterSync() {
       ? 'Sync incomplete. ' + (pending ? 'Saved data edits are still pending. See Pending school data above. ' : '') + failures.join(' · ') + ' Images: ' + result.downloaded + ' downloaded, ' + result.failed + ' failed.'
       : result.failed ? 'Data edits uploaded. Image sync incomplete: ' + result.failed + ' failed.'
       : 'Sync complete: no pending data edits. Images: ' + result.downloaded + ' downloaded, ' + (result.repaired || 0) + ' metadata repaired, 0 failed.';
-    await updateSyncCenter();
+    await updateSyncCenter(result);
   } catch (e) {
     if (current() && status) status.textContent = 'Data sync incomplete: ' + (e && e.message ? e.message : String(e || 'Unknown error')) + ' Saved edits remain on this device.';
   } finally {
@@ -2061,6 +2081,7 @@ document.getElementById('syncCenterCloseBtn').addEventListener('click', hideSync
 document.getElementById('syncCenterDialog').addEventListener('click', e => { if (e.target.id === 'syncCenterDialog') hideSyncCenter(); });
 document.getElementById('syncCenterRefreshBtn').addEventListener('click', updateSyncCenter);
 document.getElementById('syncCenterSyncBtn').addEventListener('click', runSyncCenterSync);
+document.getElementById('syncCenterDataBtn').addEventListener('click', () => runSyncCenterSync({dataOnly:true}));
 const syncCenterRecoverBtn = document.getElementById('syncCenterRecoverBtn');
 if (syncCenterRecoverBtn) {
   syncCenterRecoverBtn.addEventListener('click', async () => {
@@ -2074,7 +2095,7 @@ if (syncCenterRecoverBtn) {
     try {
       const result = await publishLocalImagesToCloud();
       if (status) status.textContent = `Recovery complete: ${result.published} published, ${result.skipped} already registered, ${result.failed} failed.`;
-      await updateSyncCenter();
+      await updateSyncCenter(result);
     } catch (e) {
       if (status) status.textContent = 'Image recovery failed: ' + (e.message || e);
     } finally {
@@ -11907,7 +11928,9 @@ async function revalidateAndSyncAfterReconnect(force = true) {
   const verified = revalidateAndSyncAfterReconnect.verifiedContext;
   if (!force && !offlineAuthenticatedMode && sessionReady && sessionDataReady && verified &&
       isCurrentSession(verified.generation, verified.uid, verified.school) && Date.now() - verified.at < 300000) {
-    await flushPendingCloudWrites();
+    // Sync Center flushes every queue after verification, including fees and
+    // operations when a school-record write is blocked.
+    if (!options.userInitiated) await flushPendingCloudWrites();
     return;
   }
   const task = { generation: sessionGeneration, uid: currentUid, school: currentSchoolId };
@@ -12056,7 +12079,7 @@ async function performReconnectRecovery() {
         window.scrollTo(scrollX, scrollY);
       }
     });
-    startBackgroundImageSync(token, uidBefore, schoolBefore);
+    if (!options.userInitiated) startBackgroundImageSync(token, uidBefore, schoolBefore);
   } catch (error) {
     console.warn('Reconnect synchronization failed:', error);
     if (!isCurrentSession(token, uidBefore, schoolBefore)) return;
