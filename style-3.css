@@ -1177,7 +1177,7 @@ input[type="date"]{
 
   #view-reports:not(.hidden),#view-history:not(.hidden){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;align-items:start;}
   #view-reports>h2,#view-reports>.report-themes-launch,#view-reports>#reportCreditStatus,
-  #view-reports>#reportThemePicker,#view-reports>.stack,#view-reports>.list,#view-reports>.backup-section,
+  #view-reports>#reportThemePicker,#view-reports>.stack,#view-reports>#reportShareQueue,#view-reports>.list,#view-reports>.backup-section,
   #view-history>h2,#view-history>#historyStatsWrap,#view-history>.stack,#view-history>.list,#view-history>.backup-section{grid-column:1/-1;}
   #view-reports>.stack,#view-history>.stack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
   #view-reports>.stack>* ,#view-history>.stack>*{margin-bottom:0;}
@@ -1246,6 +1246,24 @@ html.authing #authGate{flex-direction:column;justify-content:flex-start;padding:
 
 
 /* v40 report list: long student names wrap without displacing actions */
+.report-share-panel{min-width:0;margin:18px 0;padding:18px;border:1px solid var(--border);border-radius:16px;background:var(--card)}
+.report-share-panel[hidden]{display:none}
+.report-share-panel-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.report-share-panel-head h3{margin:0 0 6px}
+.report-share-panel-head .hint{margin:0;max-width:68ch}
+#reportShareCount{font-weight:700;white-space:nowrap}
+.report-share-toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+.report-share-toolbar button{width:auto}
+.report-share-queue-list{list-style:none;padding:0;margin:0}
+.report-share-queue-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-top:1px solid var(--border)}
+.report-share-queue-person{display:flex;flex-direction:column;min-width:0;gap:4px;overflow-wrap:anywhere}
+.report-share-queue-person span,.report-share-queue-person small{color:var(--muted)}
+.report-share-queue-actions{display:flex;flex-wrap:wrap;gap:8px;flex:none}
+.report-share-queue-actions button{width:auto;white-space:nowrap}
+.report-share-queue-actions button:disabled{opacity:.45;cursor:not-allowed}
+.report-share-select{display:inline-flex;align-items:center;gap:6px;margin:5px 0;font-size:13px;font-weight:500;cursor:pointer}
+.report-share-select input{width:18px;height:18px;accent-color:var(--accent)}
+@media(max-width:700px){.report-share-panel{padding:14px}.report-share-queue-row{align-items:stretch;flex-direction:column}.report-share-queue-actions{width:100%}.report-share-queue-actions button{flex:1 1 125px;white-space:normal}}
 #reportsStudentList .report-student-row{
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;

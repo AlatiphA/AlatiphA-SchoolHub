@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.126';
+const APP_VERSION = '40.1.130';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -8226,10 +8226,83 @@ function renderReportCreditStatus() {
   document.getElementById('reportBillingLink')?.addEventListener('click', () => { if (isHeadTeacher()) showView('billing'); });
 }
 
+let reportShareScope = '';
+const reportShareSelection = new Set();
+const reportShareStatus = new Map();
+
+function reportShareStudent(result) {
+  const records = DB.get(KEYS.students, []);
+  return (Array.isArray(records) ? records : []).find(item => String(item.id) === String(result.student.id)) || result.student;
+}
+
+function reportShareContact(student) {
+  const email = String(student.parentEmail || '').trim();
+  const phone = guardianWhatsAppDigits(student.parentPhone);
+  return { email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '', phone };
+}
+
+function reportShareStatusText(state) {
+  return ({ ready: 'PDF ready. Use Share PDF in the open window.', handoff: 'Handed to your device. Confirm it was sent before marking sent.', fallback: 'PDF saved. Attach it in the parent’s message, then mark sent.', cancelled: 'Sharing closed. Nothing is marked sent.', unmarked: 'Not marked sent. Prepare the PDF again if needed.', sent: 'Marked sent by you.' })[state] || 'Not prepared';
+}
+
+function renderReportShareQueue(results, settings) {
+  const panel = document.getElementById('reportShareQueue');
+  const entries = document.getElementById('reportShareQueueEntries');
+  const count = document.getElementById('reportShareCount');
+  if (!panel || !entries || !count) return;
+  const selected = results.filter(result => reportShareSelection.has(String(result.student.id)));
+  const sent = selected.filter(result => reportShareStatus.get(String(result.student.id)) === 'sent').length;
+  count.textContent = `${selected.length} selected · ${sent} marked sent`;
+  entries.innerHTML = selected.length ? `<ul class="report-share-queue-list">${selected.map(result => {
+    const student = reportShareStudent(result);
+    const contact = reportShareContact(student);
+    const id = escapeHtml(String(result.student.id));
+    const state = reportShareStatus.get(String(result.student.id)) || '';
+    const noResults = !result.entries.length;
+    return `<li class="report-share-queue-row">
+      <div class="report-share-queue-person"><strong>${escapeHtml(student.name || 'Learner')}</strong><span>Email: ${contact.email ? escapeHtml(contact.email) : 'Not saved'} · WhatsApp: ${contact.phone ? escapeHtml(String(student.parentPhone)) : 'Not saved'}</span><small>${escapeHtml(noResults ? 'No grades entered for this learner yet.' : reportShareStatusText(state))}</small></div>
+      <div class="report-share-queue-actions"><button type="button" class="report-share-prepare" data-id="${id}" data-channel="email" ${contact.email && !noResults ? '' : 'disabled'}>Email PDF</button><button type="button" class="report-share-prepare" data-id="${id}" data-channel="whatsapp" ${contact.phone && !noResults ? '' : 'disabled'}>WhatsApp PDF</button><button type="button" class="report-share-mark" data-id="${id}" ${['handoff', 'fallback', 'sent'].includes(state) ? '' : 'disabled'}>${state === 'sent' ? 'Undo sent' : 'Mark sent'}</button></div>
+    </li>`;
+  }).join('')}</ul>` : '<p class="hint">Choose learners from the report list below.</p>';
+  const scope = reportShareScope;
+  entries.querySelectorAll('.report-share-prepare').forEach(button => button.addEventListener('click', () => runReportAction(button, async () => {
+    const result = results.find(item => String(item.student.id) === button.dataset.id);
+    if (!result || scope !== reportShareScope) return;
+    const student = reportShareStudent(result);
+    const contact = reportShareContact(student);
+    const channel = button.dataset.channel;
+    const recipient = channel === 'email' ? contact.email : contact.phone;
+    if (!recipient) { alert('Add the parent contact in Students → Edit, then try again.'); return; }
+    const subject = `${student.name}'s ${settings.currentTerm || ''} ${settings.currentYear || ''} report card`;
+    const message = `Dear ${student.guardianName || 'Parent/Guardian'},\n\nPlease find ${student.name}'s report card attached.\n\n${settings.schoolName || 'School'}`;
+    const updateStatus = state => { if (scope === reportShareScope) { reportShareStatus.set(String(student.id), state); renderReportShareQueue(results, settings); } };
+    const outcome = await generateCommunicationReport(student.id, {
+      channel, recipient, subject, text: message,
+      onResult: resultState => {
+        if (resultState === 'shared') updateStatus('handoff');
+        else if (resultState === 'fallback') updateStatus('fallback');
+        else if (resultState === 'cancelled') updateStatus('cancelled');
+      }
+    });
+    if (outcome === 'ready') updateStatus('ready');
+    else if (outcome === 'fallback') updateStatus('fallback');
+  })));
+  entries.querySelectorAll('.report-share-mark').forEach(button => button.addEventListener('click', () => {
+    const id = button.dataset.id;
+    if (scope !== reportShareScope) return;
+    const state = reportShareStatus.get(id);
+    if (!['handoff', 'fallback', 'sent'].includes(state)) return;
+    reportShareStatus.set(id, state === 'sent' ? 'unmarked' : 'sent');
+    renderReportShareQueue(results, settings);
+  }));
+}
+
 function renderReportsStudentList() {
   renderReportCreditStatus();
   if (hasSchoolBillingAccount()) refreshBillingAccount(true).then(() => renderReportCreditStatus());
   const classId = document.getElementById('reportsClassSelect').value;
+  const queuePanel = document.getElementById('reportShareQueue');
+  if (queuePanel) queuePanel.hidden = !classId || !canPrintClassReports(classId);
   if (classId && !canAccessClass(classId)) { document.getElementById('reportsStudentList').innerHTML = '<li class="empty">You do not have access to this class.</li>'; return; }
   const list = document.getElementById('reportsStudentList');
   list.innerHTML = '';
@@ -8239,16 +8312,19 @@ function renderReportsStudentList() {
   if(!allowed){list.innerHTML='<li class="empty">Complete parent reports are available to the Head Teacher and assigned class/form teachers. Subject teachers can export their results from Grades.</li>';return;}
   if (!classId) { list.innerHTML = '<li class="empty">Add a class first.</li>'; return; }
   const settings = DB.get(KEYS.settings, {});
+  const scope = [typeof currentSchoolId === 'undefined' ? 'guest' : (currentSchoolId || 'guest'), typeof currentUid === 'undefined' ? 'guest' : (currentUid || 'guest'), classId, settings.currentTerm, settings.currentYear].join('|');
+  if (scope !== reportShareScope) { reportShareScope = scope; reportShareSelection.clear(); reportShareStatus.clear(); }
   const results = computeClassResults(classId, settings.currentTerm, settings.currentYear);
   if (!results.length) { list.innerHTML = '<li class="empty">No students in this class.</li>'; return; }
   results.forEach(r => {
     const li = document.createElement('li');
     li.className = 'report-student-row';
     li.innerHTML = `<div class="report-student-info"><strong>${escapeHtml(r.student.name)}</strong>
+        <label class="report-share-select"><input type="checkbox" class="report-share-check" data-id="${escapeHtml(String(r.student.id))}" ${reportShareSelection.has(String(r.student.id)) ? 'checked' : ''}> Add to sharing list</label>
         <div class="meta">${r.entries.length} of ${r.subjectCount||r.entries.length} subject(s) · Avg ${r.avg.toFixed(1)}${r.entries.length<r.subjectCount?' · Incomplete results':''}</div></div>
       <div class="actions report-student-actions">
         <button class="gen" data-id="${r.student.id}">Generate PDF</button>
-        <button class="share" data-id="${r.student.id}">Share</button>
+        <button class="share" data-id="${r.student.id}">Share summary</button>
       </div>`;
     list.appendChild(li);
   });
@@ -8271,6 +8347,24 @@ function renderReportsStudentList() {
       shareResultViaWhatsApp(result, classInfo, settings);
     });
   });
+  list.querySelectorAll('.report-share-check').forEach(input => input.addEventListener('change', () => {
+    if (input.checked) reportShareSelection.add(input.dataset.id);
+    else reportShareSelection.delete(input.dataset.id);
+    renderReportShareQueue(results, settings);
+  }));
+  const selectReady = document.getElementById('reportShareSelectReady');
+  const clear = document.getElementById('reportShareClear');
+  if (selectReady) selectReady.onclick = () => {
+    results.forEach(result => { const contact = reportShareContact(reportShareStudent(result)); if (result.entries.length && (contact.email || contact.phone)) reportShareSelection.add(String(result.student.id)); });
+    list.querySelectorAll('.report-share-check').forEach(input => { input.checked = reportShareSelection.has(input.dataset.id); });
+    renderReportShareQueue(results, settings);
+  };
+  if (clear) clear.onclick = () => {
+    reportShareSelection.clear();
+    list.querySelectorAll('.report-share-check').forEach(input => { input.checked = false; });
+    renderReportShareQueue(results, settings);
+  };
+  renderReportShareQueue(results, settings);
 }
 
 // Opens a WhatsApp chat with the student's saved parent phone number,

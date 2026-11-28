@@ -18,7 +18,7 @@ function fixture(){
     generateSinglePDF:async(...args)=>calls.push(['single',...args]),generateBatchPDF:async(...args)=>calls.push(['batch',...args])};
   vm.createContext(ctx);
   vm.runInContext(section('async function runReportAction(', 'function reportUsesCredits('),ctx);
-  vm.runInContext(section('function renderReportsStudentList()', '// Opens a WhatsApp'),ctx);
+  vm.runInContext(section("let reportShareScope = ''", '// Opens a WhatsApp'),ctx);
   vm.runInContext(section("document.getElementById('generateAllBtn').addEventListener", '/* ---------- CSV export'),ctx);
   return {ctx,button,batch,calls,alerts};
 }
