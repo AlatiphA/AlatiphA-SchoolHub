@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.120';
+const APP_VERSION = '40.1.121';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1204,10 +1204,10 @@ document.getElementById('backBtn').addEventListener('click', () => showView('hom
 /* ---------- v40 floating quick-access pill ---------- */
 let floatingPillLastY = window.scrollY || 0, floatingPillTicking = false;
 function floatingPillIcon(name) {
- const icons={home:'<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/></svg>',attendance:'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M7 3v4M17 3v4M4 9h16"/><path d="m8 15 2 2 5-5"/></svg>',reports:'<svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 17v-3M12 17v-6M15 17v-4"/></svg>',billing:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>'}; return icons[name]||'';
+ const icons={home:'<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/></svg>',attendance:'<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M7 3v4M17 3v4M4 9h16"/><path d="m8 15 2 2 5-5"/></svg>',grades:'<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',reports:'<svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v5h4M9 17v-3M12 17v-6M15 17v-4"/></svg>',billing:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>'}; return icons[name]||'';
 }
 function currentVisibleViewName(){return views.find(v=>{const el=document.getElementById('view-'+v);return el&&!el.classList.contains('hidden')})||'home'}
-function floatingPillItems(){const x=[{view:'home',label:'Home',icon:'home'},{view:'attendance',label:'Attendance',icon:'attendance'},{view:'grades',label:'Grades',icon:'reports'}];if(isHeadTeacher())x.push({view:'fees',label:'Fees & Receipts',icon:'billing'});x.push({view:'reports',label:'Reports',icon:'reports'});return x}
+function floatingPillItems(){const x=[{view:'home',label:'Home',icon:'home'},{view:'attendance',label:'Attendance',icon:'attendance'},{view:'grades',label:'Grades',icon:'grades'},{view:'reports',label:'Reports',icon:'reports'}];if(isHeadTeacher())x.push({view:'fees',label:'Fees & Receipts',icon:'billing'});return x}
 function renderFloatingPill(){let p=document.getElementById('schoolHubFloatingPill');if(!sessionReady&&FIREBASE_ENABLED){if(p)p.remove();return;}if(!p){p=document.createElement('nav');p.id='schoolHubFloatingPill';p.setAttribute('aria-label','Quick navigation');document.body.appendChild(p)}const active=currentVisibleViewName();p.innerHTML=floatingPillItems().map(i=>`<button type="button" data-view="${i.view}" class="${active===i.view?'active':''}">${floatingPillIcon(i.icon)}<span class="pill-label">${escapeHtml(i.label)}</span></button>`).join('');p.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{p.classList.remove('pill-hidden');showView(b.dataset.view);renderFloatingPill()}))}
 function showFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.remove('pill-hidden')}
 function hideFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.add('pill-hidden')}
