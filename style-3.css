@@ -1010,6 +1010,8 @@ html.sessionRestoring #sessionRestoreGate{
 .student-details-box{max-width:420px;text-align:left;max-height:86vh;overflow:hidden;display:flex;flex-direction:column;}
 .student-details-box h2{text-align:center;}
 .student-details-content{overflow:auto;max-height:65vh;padding:4px 2px 10px;}
+.student-detail-links{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.student-detail-links button{flex:1 1 140px}
 .student-detail-photo{display:block;width:110px;height:130px;object-fit:cover;margin:14px auto 4px;border-radius:8px;border:1px solid var(--rule);background:#fff;}
 .student-details-box .about-actions{justify-content:center;padding-top:8px;}
 .student-details-box .about-actions .btn-primary{flex:0 0 120px;}

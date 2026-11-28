@@ -73,6 +73,12 @@
     inviteStudent?.addEventListener('change', () => {
       if (inviteEmail) inviteEmail.value = inviteStudent.selectedOptions[0]?.dataset.parentEmail || '';
     });
+    const intent = window.schoolHubParentPortalIntent;
+    window.schoolHubParentPortalIntent = null;
+    if (intent?.studentId && students.some(student => String(student.id) === intent.studentId)) {
+      inviteStudent.value = intent.studentId;
+      inviteStudent.dispatchEvent(new Event('change'));
+    }
     form?.addEventListener('submit', async event => {
       event.preventDefault();
       const studentId = host.querySelector('#parentInviteStudent')?.value || '';
@@ -146,6 +152,7 @@
       const fees = (data.fees || []).find(row => row.studentId === student.id) || {};
       const grades = (data.grades || []).filter(row => row.studentId === student.id).sort((a, b) => `${b.year}${b.term}`.localeCompare(`${a.year}${a.term}`));
       const reports = (data.reports || []).filter(row => row.studentId === student.id).sort((a, b) => `${b.year}${b.term}`.localeCompare(`${a.year}${a.term}`));
+      const publishedReports = (data.publishedReports || []).filter(row => row.studentId === student.id);
       const attendanceRows = attendance.slice(0, 18).map(row => `<tr><td>${escape(displayDate(row.date))}</td><td>${escape(row.term)} ${escape(row.year)}</td><td>${escape(humanStatus(row.status))}</td></tr>`).join('');
       const gradeSections = grades.map(sheet => `<section><h4 class="parent-section-title">${escape(sheet.term)} ${escape(sheet.year)}</h4><div class="parent-table-wrap"><table class="parent-table"><thead><tr><th>Subject</th><th>Class score / 60</th><th>Exam score / 100</th></tr></thead><tbody>${(sheet.subjects || []).map(mark => `<tr><td>${escape(mark.subject)}</td><td>${mark.classScore == null ? '—' : escape(mark.classScore)}</td><td>${mark.examScore == null ? '—' : escape(mark.examScore)}</td></tr>`).join('')}</tbody></table></div></section>`).join('');
       const reportSections = reports.map(report => {
@@ -164,13 +171,37 @@
         </div>
         <h3 class="parent-section-title">Attendance</h3>
         ${attendanceRows ? `<div class="parent-table-wrap"><table class="parent-table"><thead><tr><th>Date</th><th>Term</th><th>Status</th></tr></thead><tbody>${attendanceRows}</tbody></table></div>` : '<p class="parent-empty">No attendance has been recorded for this academic year.</p>'}
+        <h3 class="parent-section-title">Published report cards</h3>
+        ${publishedReports.length ? publishedReports.map(report => `<div class="parent-report-note"><strong>${escape(report.term)} ${escape(report.year)}</strong><button type="button" class="parent-secondary parent-report-download" data-report-id="${escape(report.reportId)}">Download PDF</button></div>`).join('') : '<p class="parent-empty">The school has not published a report card for this learner yet.</p>'}
         <h3 class="parent-section-title">Grades</h3>
         ${gradeSections || '<p class="parent-empty">No saved grades are available for this learner yet.</p>'}
         <h3 class="parent-section-title">Report comments</h3>
         ${reportSections || '<p class="parent-empty">No report comments are available yet.</p>'}
       </article>`;
     }).join('') || '<div class="parent-card"><p>No learner is currently linked to this account. Contact the school.</p></div>';
-    document.querySelector('.parent-portal-intro > p:last-child').textContent = `${data.schoolName} · Attendance, grades, report comments and fee balance`;
+    cards.querySelectorAll('.parent-report-download').forEach(button => button.addEventListener('click', async () => {
+      button.disabled = true;
+      button.textContent = 'Preparing PDF…';
+      try {
+        const response = await callable('getParentReportCard')({ reportId: button.dataset.reportId });
+        const encoded = response.data?.pdfBase64 || '';
+        const binary = atob(encoded);
+        const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = response.data?.filename || 'SchoolHub_report.pdf';
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        setStatus('Report PDF downloaded. Open it to read or print.', 'success');
+      } catch (error) {
+        setStatus(error.message || 'Could not download this report. Check your connection and try again.', 'error');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Download PDF';
+      }
+    }));
+    document.querySelector('.parent-portal-intro > p:last-child').textContent = `${data.schoolName} · Attendance, published report cards, grades, report comments and fee balance`;
     dataBox.hidden = false;
   }
 

@@ -44,6 +44,7 @@ body.parent-portal-page{margin:0;min-height:100vh;background:#f0efe6;color:var(-
 .parent-empty{padding:12px 0;color:var(--pp-muted)}
 .parent-report-note{border-left:4px solid var(--pp-gold);padding:10px 14px;background:var(--pp-paper);border-radius:0 10px 10px 0;margin:8px 0}
 .parent-report-note strong{display:block;margin-bottom:3px}
+.parent-report-note .parent-report-download{margin-top:8px}
 .parent-portal-footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:24px;color:var(--pp-muted);font-size:.9rem}
 .parent-manager-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px}
 .parent-manager-grid .parent-card{margin:0}

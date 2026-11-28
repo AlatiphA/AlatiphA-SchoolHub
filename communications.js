@@ -52,7 +52,7 @@
     host.innerHTML = `
       <section class="communication-intro">
         <p>Prepare a message using a saved template. SchoolHub fills in learner and school details, then opens Email or WhatsApp sharing options for you to review.</p>
-        <p class="hint">Choose a learner to use their saved parent contact. Share opens Email and WhatsApp options. Report-card PDFs can be attached through your device’s share sheet; if this browser cannot share files, SchoolHub saves the PDF and asks you to attach it yourself.</p>
+        <p class="hint">Choose a learner to use their saved parent contact. Publish a reviewed report PDF to the linked Parent Portal from the Report ready window. Email drafts remain available; a configured school mail service can also send the published PDF directly after your review.</p>
       </section>
       <div class="communication-layout">
         <section class="communication-card">
@@ -63,6 +63,7 @@
             <label>Class filter<select id="communicationClassSelect"><option value="">All classes</option>${options}</select></label>
             <label class="communication-wide">Learner<select id="communicationPupilSelect"><option value="">Choose a learner</option>${pupilOptions}</select></label>
             <label class="communication-wide">Parent/Guardian email recipient (optional)<input id="communicationRecipient" type="email" maxlength="254" placeholder="parent@example.com" autocomplete="email"></label>
+            <button type="button" id="communicationInviteParent" class="btn-secondary communication-wide">Open this learner in Parent Portal</button>
             <p id="communicationAttachmentHint" class="hint communication-wide" hidden>SchoolHub prepares the selected learner’s report PDF. The device share sheet can include it as an attachment; if file sharing is unavailable, attach the downloaded PDF before sending.</p>
             <label class="communication-template-input" data-template-field="details" hidden>Details<input id="communicationDetails" type="text" placeholder="Optional note"></label>
             <label class="communication-template-input" data-template-field="balance" hidden>Balance<input id="communicationBalance" type="text" inputmode="decimal" placeholder="e.g. GH₵ 250.00"></label>
@@ -340,8 +341,21 @@
         status.textContent = 'Message copied. Review it before sharing.';
       } catch (_) { status.textContent = 'Could not copy automatically. Select and copy the preview text.'; }
     });
+    byId('communicationInviteParent').addEventListener('click', () => {
+      if (!pupilSelect.value) { status.textContent = 'Choose a learner first.'; return; }
+      window.openLearnerParentPortal?.(pupilSelect.value);
+    });
 
-    loadEditor(selectedTemplateId);
+    const intent = window.schoolHubCommunicationIntent;
+    window.schoolHubCommunicationIntent = null;
+    loadEditor(templates.some(item => item.id === intent?.templateId) ? intent.templateId : selectedTemplateId);
+    if (intent?.studentId && students.some(item => String(item.id) === intent.studentId)) {
+      const pupil = students.find(item => String(item.id) === intent.studentId);
+      classSelect.value = String(pupil.classId || '');
+      classSelect.dispatchEvent(new Event('change'));
+      pupilSelect.value = intent.studentId;
+      pupilSelect.dispatchEvent(new Event('change'));
+    }
   }
 
   window.renderSchoolCommunications = renderSchoolCommunications;

@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.133';
+const APP_VERSION = '40.1.136';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1225,6 +1225,20 @@ function showView(name) {
   window.scrollTo(0, 0);
   if (typeof flushNotificationTap === 'function') flushNotificationTap();
   if (typeof requestPendingNotificationTap === 'function') requestPendingNotificationTap();
+}
+function openLearnerCommunication(studentId, templateId = 'report-card') {
+  if (!isHeadTeacher()) return;
+  window.schoolHubCommunicationIntent = { studentId: String(studentId), templateId };
+  showView('communications');
+}
+function openLearnerParentPortal(studentId) {
+  if (!isHeadTeacher()) return;
+  window.schoolHubParentPortalIntent = { studentId: String(studentId) };
+  showView('parent-portal');
+}
+if (typeof window !== 'undefined') {
+  window.openLearnerCommunication = openLearnerCommunication;
+  window.openLearnerParentPortal = openLearnerParentPortal;
 }
 
 if (typeof window !== 'undefined') window.addEventListener?.('popstate', event => {
@@ -4036,7 +4050,16 @@ async function showStudentDetails(studentId) {
   content.innerHTML = (photo
       ? `<div class="student-detail-photo-wrap"><img src="${escapeHtml(photo)}" alt="Student photo" class="student-detail-photo"></div>`
       : '') +
-    rows.map(([label, value]) => `<div class="staff-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('');
+    rows.map(([label, value]) => `<div class="staff-detail-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('') +
+    (isHeadTeacher() ? '<div class="student-detail-links"><button type="button" class="btn-secondary" data-student-communication>Message parent</button><button type="button" class="btn-secondary" data-student-portal>Parent Portal</button></div>' : '');
+  content.querySelector('[data-student-communication]')?.addEventListener('click', () => {
+    closeStudentDetails();
+    openLearnerCommunication(st.id, 'report-card');
+  });
+  content.querySelector('[data-student-portal]')?.addEventListener('click', () => {
+    closeStudentDetails();
+    openLearnerParentPortal(st.id);
+  });
 
   document.getElementById('studentDetailsDialog').classList.remove('hidden');
 }
@@ -8384,6 +8407,7 @@ function renderReportsStudentList() {
       <div class="actions report-student-actions">
         <button class="gen" data-id="${r.student.id}">Generate PDF</button>
         <button class="share" data-id="${r.student.id}">Share summary</button>
+        ${isHeadTeacher() ? `<button class="message-parent" data-id="${escapeHtml(String(r.student.id))}">Message parent</button>` : ''}
       </div>`;
     list.appendChild(li);
   });
@@ -8406,6 +8430,9 @@ function renderReportsStudentList() {
       shareResultViaWhatsApp(result, classInfo, settings);
     });
   });
+  list.querySelectorAll('.message-parent').forEach(btn => btn.addEventListener('click', () => {
+    openLearnerCommunication(btn.dataset.id, 'report-card');
+  }));
   list.querySelectorAll('.report-share-check').forEach(input => input.addEventListener('change', () => {
     if (input.checked) reportShareSelection.add(input.dataset.id);
     else reportShareSelection.delete(input.dataset.id);
@@ -9796,7 +9823,7 @@ function reportUsesCredits(settings) {
 }
 
 let preparedReportUrl = null;
-function showPreparedReport(url, filename, autoDownload = true, deliveryOptions = null) {
+function showPreparedReport(url, filename, autoDownload = true, deliveryOptions = null, reportContext = null) {
   document.getElementById('preparedReportDialog')?.remove();
   if (preparedReportUrl) URL.revokeObjectURL(preparedReportUrl);
   preparedReportUrl = url;
@@ -9806,16 +9833,88 @@ function showPreparedReport(url, filename, autoDownload = true, deliveryOptions 
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-labelledby', 'preparedReportTitle');
-  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p data-report-note>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><p class="hint" data-report-error hidden></p><div class="prepared-report-actions"><button type="button" class="btn-primary" data-report-share hidden>Share PDF</button><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-compose hidden>Open parent draft</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close data-dismiss-ui>Close</button></div></div>';
+  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p data-report-note>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><p class="hint" data-report-error hidden></p><div class="prepared-report-actions"><button type="button" class="btn-primary" data-report-share hidden>Share PDF</button><button type="button" class="btn-primary" data-report-publish hidden>Publish to Parent Portal</button><button type="button" class="btn-primary" data-report-email hidden>Send report email</button><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-compose hidden>Open parent draft</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close data-dismiss-ui>Close</button></div><p class="hint" data-report-email-preview hidden></p><p class="hint" data-report-publish-status role="status" aria-live="polite"></p></div>';
   overlay.querySelector('.prepared-report-name').textContent = filename;
   const download = overlay.querySelector('[data-report-download]');
   const shareButton = overlay.querySelector('[data-report-share]');
   const note = overlay.querySelector('[data-report-note]');
   const errorInfo = overlay.querySelector('[data-report-error]');
   const compose = overlay.querySelector('[data-report-compose]');
+  const publishButton = overlay.querySelector('[data-report-publish]');
+  const publishStatus = overlay.querySelector('[data-report-publish-status]');
+  const emailButton = overlay.querySelector('[data-report-email]');
+  const emailPreview = overlay.querySelector('[data-report-email-preview]');
   download.href = url;
   download.download = filename;
   overlay.querySelector('[data-report-open]').href = url;
+  if (reportContext && currentSchoolId && canPrintClassReports(reportContext.classId)) {
+    const savedRecipient = String(reportContext.parentEmail || '').trim().toLowerCase();
+    const requestedRecipient = deliveryOptions?.channel === 'email' ? String(deliveryOptions.recipient || '').trim().toLowerCase() : savedRecipient;
+    const subject = String(deliveryOptions?.subject || `${reportContext.studentName}'s ${reportContext.term} ${reportContext.year} report card`);
+    const message = String(deliveryOptions?.channel === 'email' ? deliveryOptions.text :
+      `Dear ${reportContext.guardianName || 'Parent/Guardian'},\n\nPlease find ${reportContext.studentName}'s report card attached.\n\n${reportContext.schoolName || 'School'}`);
+    let publishedReportId = '';
+    let mailStatus = null;
+    const updateEmailAction = () => {
+      const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(savedRecipient);
+      emailButton.hidden = !(publishedReportId && mailStatus?.configured && valid && requestedRecipient === savedRecipient);
+      emailPreview.hidden = emailButton.hidden;
+      if (!emailButton.hidden) emailPreview.textContent = `From ${mailStatus.from} · To ${savedRecipient} · Subject: ${subject}. Review the PDF and message before sending.`;
+    };
+    firebase.functions().httpsCallable('getSchoolMailStatus')({ expectedSchoolId: currentSchoolId })
+      .then(response => { if (overlay.isConnected) { mailStatus = response.data || null; updateEmailAction(); } })
+      .catch(() => { if (overlay.isConnected) { mailStatus = null; updateEmailAction(); } });
+    publishButton.hidden = false;
+    publishButton.addEventListener('click', async () => {
+      if (!confirm(`Publish ${reportContext.studentName}'s ${reportContext.term} ${reportContext.year} PDF to linked parents? This replaces any previously published PDF for that term.`)) return;
+      publishButton.disabled = true;
+      publishButton.textContent = 'Publishing…';
+      publishStatus.textContent = 'Uploading the approved report securely…';
+      try {
+        if (reportContext.schoolId !== currentSchoolId) throw new Error('Your school changed. Generate the report again.');
+        const bytes = new Uint8Array(await reportContext.pdfBlob.arrayBuffer());
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+        const response = await firebase.functions().httpsCallable('publishParentReportCard')({
+          expectedSchoolId: currentSchoolId,
+          studentId: reportContext.studentId,
+          term: reportContext.term,
+          year: reportContext.year,
+          pdfBase64: btoa(binary)
+        });
+        if (!response.data?.published) throw new Error('The report was not published. Please try again.');
+        publishedReportId = response.data.reportId;
+        updateEmailAction();
+        publishStatus.textContent = `Published. Linked parents can download this PDF in their Parent Portal after refreshing it.${!mailStatus?.configured ? ' Direct email will be available after the school mail service is set up.' : !savedRecipient ? ' Save the Parent/Guardian Email in Students to send directly.' : requestedRecipient !== savedRecipient ? ' Save the selected email in Students before sending directly.' : ''}`;
+        publishButton.textContent = 'Published';
+      } catch (error) {
+        publishStatus.textContent = error.message || 'Could not publish the PDF. Check your connection and try again.';
+        publishButton.disabled = false;
+        publishButton.textContent = 'Publish to Parent Portal';
+      }
+    });
+    emailButton.addEventListener('click', async () => {
+      if (!publishedReportId || !mailStatus?.configured) return;
+      if (!confirm(`Send this published PDF from ${mailStatus.from} to ${savedRecipient}?\n\nSubject: ${subject}\n\n${message}`)) return;
+      emailButton.disabled = true;
+      emailButton.textContent = 'Sending…';
+      publishStatus.textContent = 'Sending the PDF to the saved parent email…';
+      try {
+        if (reportContext.schoolId !== currentSchoolId) throw new Error('Your school changed. Generate the report again.');
+        const result = await firebase.functions().httpsCallable('sendParentReportEmail')({
+          expectedSchoolId: currentSchoolId, reportId: publishedReportId,
+          requestId: crypto.randomUUID(), recipient: savedRecipient, subject, text: message
+        });
+        if (!result.data?.accepted) throw new Error('Email delivery was not confirmed.');
+        publishStatus.textContent = `Email accepted for ${savedRecipient}. The PDF was attached. The parent can also download it in Parent Portal.`;
+        emailButton.textContent = 'Email accepted';
+      } catch (error) {
+        publishStatus.textContent = error.message || 'Email delivery was not confirmed. Check the sender’s Sent folder before trying again.';
+        emailButton.disabled = false;
+        emailButton.textContent = 'Send report email';
+      }
+    });
+  }
   const showFallback = error => {
     const channel = deliveryOptions?.channel;
     const recipient = String(deliveryOptions?.recipient || '').trim();
@@ -9903,7 +10002,7 @@ function reportGenerationSession(){
   return ()=>{if(typeof isCurrentSession==='function'&&!isCurrentSession(generation,uid,school))throw Error('Your school session changed. Generate the report again.');};
 }
 
-async function downloadGeneratedReport(doc, filename, count, reportType = 'paid', classId, shareOptions) {
+async function downloadGeneratedReport(doc, filename, count, reportType = 'paid', classId, shareOptions, reportContext = null) {
   if (!enforceGuestTrial()) return 'blocked';
   // Serialize before deducting, then download the same prepared PDF.
   const pdfBlob = doc.output('blob');
@@ -9927,7 +10026,7 @@ async function downloadGeneratedReport(doc, filename, count, reportType = 'paid'
           const file = new File([pdfBlob], filename, { type: 'application/pdf' });
           if (!navigator.canShare || navigator.canShare({ files: [file] })) {
             const shareData = { files: [file], title: shareOptions.subject || 'SchoolHub report card', text: shareOptions.text || '' };
-            showPreparedReport(url, filename, false, { file, shareData, channel: shareOptions.channel, recipient: shareOptions.recipient, subject: shareOptions.subject, text: shareOptions.text, onResult: shareOptions.onResult });
+            showPreparedReport(url, filename, false, { file, shareData, channel: shareOptions.channel, recipient: shareOptions.recipient, subject: shareOptions.subject, text: shareOptions.text, onResult: shareOptions.onResult }, reportContext && { ...reportContext, pdfBlob });
             offered = true;
             return 'ready';
           }
@@ -9935,11 +10034,11 @@ async function downloadGeneratedReport(doc, filename, count, reportType = 'paid'
       } catch (error) {
         console.warn('File sharing is unavailable; offering the PDF download instead:', error);
       }
-      showPreparedReport(url, filename, false, { fallback: true, channel: shareOptions.channel, recipient: shareOptions.recipient, subject: shareOptions.subject, text: shareOptions.text });
+      showPreparedReport(url, filename, false, { fallback: true, channel: shareOptions.channel, recipient: shareOptions.recipient, subject: shareOptions.subject, text: shareOptions.text }, reportContext && { ...reportContext, pdfBlob });
       offered = true;
       return 'fallback';
     }
-    showPreparedReport(url, filename);
+    showPreparedReport(url, filename, true, null, reportContext && { ...reportContext, pdfBlob });
     offered = true;
     return 'downloaded';
   } finally {
@@ -9968,7 +10067,11 @@ async function generateSinglePDF(result, positions, numOnRoll, classInfo, studen
   const assetIssues = typeof reportAssetIssuesForPrepared === 'function' ? reportAssetIssuesForPrepared(result, assets) : [];
   if (typeof confirmReportAssetIssues === 'function' && !confirmReportAssetIssues(assetIssues)) return;
   drawReportPage(doc, result, settings, positions, numOnRoll, classInfo, studentRemarks, assets);
-  return await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, 1, reportUsesCredits(settings) ? 'paid' : 'bw-single', classInfo?.id||result.student.classId, shareOptions);
+  const reportStudent = typeof reportShareStudent === 'function' ? reportShareStudent(result) : result.student;
+  return await downloadGeneratedReport(doc, `${result.student.name.replace(/\s+/g, '_')}_report.pdf`, 1, reportUsesCredits(settings) ? 'paid' : 'bw-single', classInfo?.id||result.student.classId, shareOptions,
+    { schoolId: typeof currentSchoolId === 'undefined' ? '' : currentSchoolId, studentId: result.student.id, studentName: result.student.name, classId: classInfo?.id || result.student.classId,
+      term: settings.currentTerm, year: settings.currentYear, parentEmail: reportStudent.parentEmail || '',
+      guardianName: reportStudent.guardianName || '', schoolName: settings.schoolName || 'School' });
   } finally { reportGenerationBusy = false; }
 }
 

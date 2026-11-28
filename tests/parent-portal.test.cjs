@@ -27,6 +27,7 @@ function fixture() {
     ['schools/school1/feeAccounts/old1', { studentId: 'pupil1', term: 'Term 3', year: '2025-2026', base: 500, paid: 0 }],
     ['schools/school1/pupilCharges/otherCharge', { studentId: 'pupil2', term: 'Term 1', year: '2026-2027', baseAmount: 9900 }]
   ]);
+  const files = new Map();
 
   const clone = value => value === undefined ? undefined : structuredClone(value);
   const snapshot = path => ({
@@ -60,7 +61,8 @@ function fixture() {
     async create(value) {
       if (records.has(path)) throw new Error('already exists');
       records.set(path, clone(value));
-    }
+    },
+    async set(value) { records.set(path, clone(value)); }
   });
   const db = {
     collection: name => collection(name),
@@ -85,15 +87,45 @@ function fixture() {
     db,
     onCall: (_options, handler) => handler,
     HttpsError,
-    admin: { firestore: { FieldValue: { serverTimestamp: () => 12345 } } }
+    admin: {
+      firestore: { FieldValue: { serverTimestamp: () => 12345 } },
+      storage: () => ({ bucket: () => ({ file: path => ({
+        save: async value => files.set(path, Buffer.from(value)),
+        download: async () => [files.get(path)]
+      }) }) })
+    }
   });
   const request = (uid, email, data = {}, emailVerified = true) => ({
     auth: { uid, token: { email, email_verified: emailVerified, name: 'Portal User' } },
     data
   });
   const headRequest = data => request('head', 'head@example.com', { expectedSchoolId: 'school1', ...data });
-  return { handlers, records, request, headRequest };
+  return { handlers, records, files, request, headRequest };
 }
+
+test('approved report PDF is published only by an authorized school member and readable only by the linked parent', async () => {
+  const f = fixture();
+  const pdfBase64 = Buffer.from('%PDF-1.7\nexample report').toString('base64');
+  const input = { studentId: 'pupil1', term: 'Term 1', year: '2026-2027', pdfBase64 };
+  await assert.rejects(f.handlers.publishParentReportCard(f.request('teacher', 'teacher@example.com', { expectedSchoolId: 'school1', ...input })),
+    error => error.code === 'permission-denied');
+  await assert.rejects(f.handlers.publishParentReportCard(f.headRequest({ ...input, year: 'wrong' })),
+    error => error.code === 'failed-precondition');
+  const result = await f.handlers.publishParentReportCard(f.headRequest(input));
+  assert.equal(result.published, true);
+  assert.equal(f.files.size, 1);
+  const invitation = await f.handlers.createParentPortalInvitation(f.headRequest({ studentId: 'pupil1', email: 'parent@example.com' }));
+  await f.handlers.claimParentPortalInvitation(f.request('parent', 'parent@example.com', { inviteCode: invitation.inviteCode }));
+  const data = await f.handlers.getParentPortalData(f.request('parent', 'parent@example.com'));
+  assert.deepEqual(data.publishedReports, [{ reportId: result.reportId, studentId: 'pupil1', term: 'Term 1', year: '2026-2027' }]);
+  const download = await f.handlers.getParentReportCard(f.request('parent', 'parent@example.com', { reportId: result.reportId }));
+  assert.equal(download.pdfBase64, pdfBase64);
+  await assert.rejects(f.handlers.getParentReportCard(f.request('someone', 'someone@example.com', { reportId: result.reportId })),
+    error => error.code === 'permission-denied');
+  await f.handlers.revokeParentPortalLink(f.headRequest({ parentUid: 'parent', studentId: 'pupil1' }));
+  await assert.rejects(f.handlers.getParentReportCard(f.request('parent', 'parent@example.com', { reportId: result.reportId })),
+    error => error.code === 'permission-denied');
+});
 
 test('Parent Portal invitations require an active Head Teacher and verified email, and claim only for the invited email', async () => {
   const f = fixture();

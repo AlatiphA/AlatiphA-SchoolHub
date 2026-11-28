@@ -9,6 +9,7 @@ function register({ onCall, HttpsError, db, admin }) {
   const schoolIdValid = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
   const recordIdValid = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
   const hash = value => crypto.createHash('sha256').update(value).digest('hex');
+  const reportIdFor = (studentId, term, year) => hash(`${studentId}\u0000${term}\u0000${year}`);
   const schoolRef = id => db.collection('schools').doc(id);
   const emailFor = req => normalizeEmail(req.auth?.token?.email);
   const requireSignedIn = req => {
@@ -41,6 +42,69 @@ function register({ onCall, HttpsError, db, admin }) {
     }
     return user;
   }
+
+  const publishParentReportCard = call(async req => {
+    requireSignedIn(req);
+    const user = (await db.collection('users').doc(req.auth.uid).get()).data();
+    if (!user || user.status !== 'active' || !user.schoolId || !['headteacher', 'teacher'].includes(user.role)
+      || req.data?.expectedSchoolId !== user.schoolId) fail('permission-denied', 'School report access is required.');
+    const studentId = req.data?.studentId;
+    if (!recordIdValid(studentId)) fail('invalid-argument', 'Choose a learner.');
+    const school = schoolRef(user.schoolId);
+    const [schoolSnap, studentSnap] = await Promise.all([school.get(), school.collection('students').doc(studentId).get()]);
+    if (!schoolSnap.exists || !studentSnap.exists || studentSnap.data()?.isActive === false) fail('not-found', 'The active learner was not found.');
+    const classId = studentSnap.data()?.classId;
+    if (!recordIdValid(classId)) fail('failed-precondition', 'The learner needs a class.');
+    if (user.role === 'teacher' && (!(user.assignedClassIds || []).includes(classId) || !(user.formClassIds || []).includes(classId))) {
+      fail('permission-denied', 'Only the Head Teacher or assigned class/form teacher can publish this report.');
+    }
+    const profile = schoolSnap.data()?.profile || {};
+    const term = String(profile.currentTerm || '');
+    const year = String(profile.currentYear || '');
+    if (!term || !year || req.data?.term !== term || req.data?.year !== year) {
+      fail('failed-precondition', 'The school term changed. Generate the report again before publishing.');
+    }
+    const encoded = req.data?.pdfBase64;
+    if (typeof encoded !== 'string' || encoded.length > 7_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+      fail('invalid-argument', 'The report PDF is missing or too large.');
+    }
+    const pdf = Buffer.from(encoded, 'base64');
+    if (!pdf.length || pdf.length > 5_000_000 || pdf.subarray(0, 5).toString() !== '%PDF-') {
+      fail('invalid-argument', 'Only a valid report PDF up to 5 MB can be published.');
+    }
+    const reportId = reportIdFor(studentId, term, year);
+    const storagePath = `schools/${user.schoolId}/published-reports/${studentId}/${reportId}.pdf`;
+    await admin.storage().bucket().file(storagePath).save(pdf, {
+      resumable: false,
+      metadata: { contentType: 'application/pdf', cacheControl: 'private, no-store' }
+    });
+    await school.collection('publishedReports').doc(reportId).set({
+      studentId, classId, term, year, storagePath, publishedBy: req.auth.uid,
+      publishedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return { published: true, reportId, studentName: String(studentSnap.data()?.name || 'Learner').slice(0, 200) };
+  });
+
+  const getParentReportCard = call(async req => {
+    const parent = await parentMembership(req);
+    const reportId = req.data?.reportId;
+    if (typeof reportId !== 'string' || !/^[a-f0-9]{64}$/.test(reportId)) fail('invalid-argument', 'Choose a published report.');
+    const school = schoolRef(parent.schoolId);
+    const [linkSnap, reportSnap] = await Promise.all([
+      school.collection('parentPortalAccess').doc(req.auth.uid).get(),
+      school.collection('publishedReports').doc(reportId).get()
+    ]);
+    const report = reportSnap.data() || {};
+    if (!reportSnap.exists || !recordIdValid(report.studentId) || !Array.isArray(linkSnap.data()?.studentIds)
+      || !linkSnap.data().studentIds.includes(report.studentId)) {
+      fail('permission-denied', 'This report is not available to your parent account.');
+    }
+    const expectedPath = `schools/${parent.schoolId}/published-reports/${report.studentId}/${reportId}.pdf`;
+    if (report.storagePath !== expectedPath) fail('data-loss', 'The report location is invalid. Contact the school.');
+    const [pdf] = await admin.storage().bucket().file(expectedPath).download();
+    if (pdf.length > 5_000_000) fail('resource-exhausted', 'This report is too large to download here. Contact the school.');
+    return { pdfBase64: pdf.toString('base64'), filename: `SchoolHub_${report.term}_${report.year}_report.pdf` };
+  });
 
   function linkedStudent(student, id, className) {
     return {
@@ -165,6 +229,15 @@ function register({ onCall, HttpsError, db, admin }) {
       ? [linkedStudent(doc.data() || {}, studentIds[i], classes.get(doc.data()?.classId))] : []);
     if (!students.length) fail('permission-denied', 'The linked learner records are no longer available. Contact the school.');
 
+    const publicationSnaps = await Promise.all(students.map(student =>
+      school.collection('publishedReports').where('studentId', '==', student.id).limit(30).get()));
+    const publishedReports = publicationSnaps.flatMap((snapshot, i) => snapshot.docs.flatMap(doc => {
+      const report = doc.data() || {};
+      if (report.studentId !== students[i].id || !/^[a-f0-9]{64}$/.test(doc.id)) return [];
+      return [{ reportId: doc.id, studentId: students[i].id,
+        term: String(report.term || '').slice(0, 80), year: String(report.year || '').slice(0, 80) }];
+    })).sort((a, b) => `${b.year}${b.term}`.localeCompare(`${a.year}${a.term}`));
+
     const profile = schoolSnap.data()?.profile || {};
     const year = String(profile.currentYear || '');
     const currentTerm = String(profile.currentTerm || '');
@@ -252,6 +325,7 @@ function register({ onCall, HttpsError, db, admin }) {
       attendance: attendance.slice(0, 600),
       grades: grades.slice(0, 400),
       reports: reports.slice(0, 400),
+      publishedReports: publishedReports.slice(0, 200),
       fees: financialRows
     };
   });
@@ -303,7 +377,7 @@ function register({ onCall, HttpsError, db, admin }) {
     });
   });
 
-  return { createParentPortalInvitation, claimParentPortalInvitation, getParentPortalData, getParentPortalOverview, revokeParentPortalLink };
+  return { createParentPortalInvitation, claimParentPortalInvitation, getParentPortalData, getParentPortalOverview, revokeParentPortalLink, publishParentReportCard, getParentReportCard };
 }
 
 module.exports = { register };
