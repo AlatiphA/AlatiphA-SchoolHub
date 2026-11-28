@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.137';
+const APP_VERSION = '40.1.138';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1088,7 +1088,7 @@ function saveAttendanceTabState(mode) {
 }
 
 /* ---------- view switching ---------- */
-const views = ['operations', 'app-settings', 'help-about', 'supervision', 'school-calendar', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity', 'communications', 'parent-portal'];
+const views = ['operations', 'app-settings', 'outgoing-mail', 'help-about', 'supervision', 'school-calendar', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity', 'communications', 'parent-portal'];
 let browserViewHistoryContext = '';
 let restoringBrowserView = false;
 function browserViewContext() {
@@ -1141,7 +1141,7 @@ function showView(name) {
   // being resolved. Guest mode explicitly marks itself ready before calling
   // proceedToApp().
   if (FIREBASE_ENABLED && !sessionReady) return;
-  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'billing', 'fees', 'manage-teachers', 'communications', 'parent-portal'].indexOf(name) !== -1) {
+  if (isTeacher() && ['setup', 'staff', 'classes', 'subjects', 'billing', 'fees', 'manage-teachers', 'communications', 'parent-portal', 'outgoing-mail'].indexOf(name) !== -1) {
     name = 'home';
   }
   if (name === 'parent-portal' && !isHeadTeacher()) name = 'home';
@@ -1196,6 +1196,7 @@ function showView(name) {
   if (name === 'attendance') renderAttendanceView();
   if (name === 'school-calendar') renderSchoolCalendarTab();
   if (name === 'communications' && typeof window.renderSchoolCommunications === 'function') window.renderSchoolCommunications();
+  if (name === 'outgoing-mail' && typeof window.renderSchoolMailSettings === 'function') window.renderSchoolMailSettings();
   if (name === 'grades') renderGradesClassSelect();
   if (name === 'remarks') renderRemarksClassSelect();
   if (name === 'reports') renderReportsClassSelect();
@@ -1257,6 +1258,7 @@ function refreshHeadTeacherSelect() {
 
 function sectionTitle(name) {
   if(name==='app-settings')return 'Settings';
+  if(name==='outgoing-mail')return 'Outgoing email';
   if(name==='help-about')return 'Help & About';
   if(name==='fees')return 'Fees & Receipts';
   if(name==='communications')return 'Communications';
@@ -1641,6 +1643,7 @@ function refreshProfileMenu() {
   document.getElementById('profileMyDetailsBtn')?.classList.toggle('hidden', !activeTeacher);
   const setupLink = document.getElementById('profileSetupLink');
   if (setupLink) { setupLink.textContent='School Setup'; setupLink.classList.toggle('hidden',isTeacher()); }
+  document.getElementById('profileMailBtn')?.classList.toggle('hidden', !isHeadTeacher());
   const billingLink = document.getElementById('profileBillingBtn');
   if (billingLink) billingLink.classList.toggle('hidden', !isHeadTeacher());
   const settings = DB.get(KEYS.settings, {});
@@ -1685,6 +1688,7 @@ document.getElementById('profileBtn').addEventListener('click', e => {
   document.getElementById('profileBtn').setAttribute('aria-expanded',String(!document.getElementById('profileDropdown').classList.contains('hidden')));
 });
 document.getElementById('profileSettingsBtn').addEventListener('click',()=>{document.getElementById('profileDropdown').classList.add('hidden');showView('app-settings');});
+document.getElementById('profileMailBtn').addEventListener('click',()=>showView('outgoing-mail'));
 document.getElementById('profileHelpBtn').addEventListener('click',()=>{document.getElementById('profileDropdown').classList.add('hidden');showView('help-about');});
 
 document.getElementById('profileSetupLink').addEventListener('click', () => {

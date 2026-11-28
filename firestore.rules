@@ -161,6 +161,8 @@ service cloud.firestore {
       // Parent clients receive learner-specific, sanitized responses from the server.
       match /parentPortalAccess/{parentUid} { allow read, write: if false; }
       match /parentPortalInvites/{inviteHash} { allow read, write: if false; }
+      // Outgoing mail credentials are encrypted and accessed only by trusted Functions.
+      match /mailConfig/{configId} { allow read, write: if false; }
       match /profileRecovery/{backupId} {
         allow read: if isHeadTeacher(schoolId);
         allow write: if false;

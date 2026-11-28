@@ -763,6 +763,14 @@
 .tour-complete-guide{display:block;margin-top:14px;padding:10px 12px;border:1px solid var(--rule);border-radius:10px;color:var(--paper);text-align:center;font-weight:600;line-height:1.4}
 .tour-complete-guide span{display:block;font-size:.75rem;font-weight:400;color:var(--muted)}
 .account-tools-grid .complete-guide-link{display:flex;flex-direction:column;justify-content:center;text-decoration:none;box-sizing:border-box}
+.school-mail-panel{max-width:680px;display:grid;gap:16px;padding:20px;border:1px solid var(--rule);border-radius:16px;background:var(--surface);box-sizing:border-box}
+.school-mail-panel form{display:grid;gap:14px;min-width:0}
+.school-mail-panel form[hidden],.school-mail-panel [hidden]{display:none!important}
+.school-mail-panel label{display:grid;gap:6px;min-width:0;font-weight:600}
+.school-mail-panel input,.school-mail-panel select{width:100%;min-width:0;box-sizing:border-box}
+.school-mail-panel .hint{margin:0;overflow-wrap:anywhere}
+.school-mail-panel button{width:100%;min-height:44px}
+.school-mail-panel #schoolMailFeedback:empty{display:none}
 .complete-guide-link small{font-size:.75rem;color:var(--muted)}
 
 /* Mobile dialogs: keep dismissal visible and give the content its own scroll area. */

@@ -8,7 +8,7 @@ class HttpsError extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
 
-function fixture(configValue) {
+function fixture(configValue, options = {}) {
   const reportId = 'a'.repeat(64);
   const records = new Map([
     ['schools/school1', { profile: { email: 'school@example.com' } }],
@@ -23,6 +23,8 @@ function fixture(configValue) {
   const db = { collection: name => ({ doc: id => ({
     async get() { return { exists: records.has(`${name}/${id}`), data: () => records.get(`${name}/${id}`) }; },
     collection: child => db.collection(`${name}/${id}/${child}`),
+    async set(value) { records.set(`${name}/${id}`, value); },
+    async delete() { records.delete(`${name}/${id}`); },
     async create(value) { if (records.has(`${name}/${id}`)) { const error = new Error('exists'); error.code = 6; throw error; } records.set(`${name}/${id}`, value); },
     async update(value) { records.set(`${name}/${id}`, { ...records.get(`${name}/${id}`), ...value }); }
   }) }) };
@@ -34,8 +36,9 @@ function fixture(configValue) {
   };
   const handlers = register({
     onCall: (_options, fn) => fn, HttpsError, db, admin,
-    smtpConfig: { value: () => JSON.stringify(configValue || { schools: { school1: { enabled: true, host: 'smtp.example.com', port: 465, user: 'school@example.com', from: 'school@example.com', password: 'secret' } } }) },
-    createTransport: options => ({ sendMail: async message => { sent.push({ options, message }); return { messageId: 'sent-1', accepted: [message.to] }; } })
+    mailKey: { value: () => Buffer.alloc(32, 7).toString('base64') },
+    resolveAddresses: options.resolveAddresses || (async () => ['8.8.8.8']),
+    createTransport: transportOptions => ({ sendMail: async message => { sent.push({ options: transportOptions, message }); return { messageId: 'sent-1', accepted: [message.to] }; }, close() {} })
   });
   const req = (uid, data = {}) => ({ auth: { uid, token: { email_verified: true } }, data: { expectedSchoolId: 'school1', ...data } });
   return { handlers, records, sent, req, reportId };
@@ -43,7 +46,11 @@ function fixture(configValue) {
 
 test('direct report email attaches only the published PDF and uses the saved parent address', async () => {
   const f = fixture();
-  assert.deepEqual(await f.handlers.getSchoolMailStatus(f.req('head')), { configured: true, from: 'school@example.com', schoolEmail: 'school@example.com' });
+  await f.handlers.beginSchoolMailConnection(f.req('head', { provider: 'gmail', user: 'school@example.com', password: 'secret' }));
+  const code = f.sent[0].message.text.match(/\b\d{6}\b/)[0];
+  await f.handlers.confirmSchoolMailConnection(f.req('head', { code }));
+  f.sent.length = 0;
+  assert.deepEqual(await f.handlers.getSchoolMailStatus(f.req('head')), { configured: true, from: 'school@example.com', schoolEmail: 'school@example.com', pending: false });
   const input = { requestId: 'request1', reportId: f.reportId, recipient: 'parent@example.com', subject: 'Report card', text: 'Please review the report.' };
   await assert.rejects(f.handlers.sendParentReportEmail(f.req('teacher', input)), error => error.code === 'permission-denied');
   await assert.rejects(f.handlers.sendParentReportEmail(f.req('head', { ...input, recipient: 'other@example.com' })), error => error.code === 'failed-precondition');
@@ -58,19 +65,54 @@ test('direct report email attaches only the published PDF and uses the saved par
 
 test('a shared sender cannot send for another school or after the school email changes', async () => {
   const f = fixture();
+  await f.handlers.beginSchoolMailConnection(f.req('head', { provider: 'gmail', user: 'school@example.com', password: 'secret' }));
+  await f.handlers.confirmSchoolMailConnection(f.req('head', { code: f.sent[0].message.text.match(/\b\d{6}\b/)[0] }));
+  f.sent.length = 0;
   const input = { requestId: 'request2', reportId: f.reportId, recipient: 'parent@example.com', subject: 'Report card', text: 'Please review.' };
   assert.deepEqual(await f.handlers.getSchoolMailStatus(f.req('other', { expectedSchoolId: 'school2' })),
-    { configured: false, from: '', schoolEmail: 'school@example.com' });
+    { configured: false, from: '', schoolEmail: 'school@example.com', pending: false });
   await assert.rejects(f.handlers.sendParentReportEmail(f.req('other', { ...input, expectedSchoolId: 'school2' })),
     error => error.code === 'failed-precondition');
   f.records.get('schools/school1').profile.email = 'new@example.com';
   assert.deepEqual(await f.handlers.getSchoolMailStatus(f.req('head')),
-    { configured: false, from: '', schoolEmail: 'new@example.com' });
+    { configured: false, from: '', schoolEmail: 'new@example.com', pending: false });
   await assert.rejects(f.handlers.sendParentReportEmail(f.req('head', input)), error => error.code === 'failed-precondition');
   assert.equal(f.sent.length, 0);
 });
 
-test('legacy global SMTP setting is not treated as every school’s sender', async () => {
+test('legacy global SMTP setting cannot send for a school', async () => {
   const f = fixture({ enabled: true, host: 'smtp.example.com', port: 465, user: 'school@example.com', from: 'school@example.com', password: 'secret' });
   assert.equal((await f.handlers.getSchoolMailStatus(f.req('head'))).configured, false);
+});
+
+test('Head Teacher connects a school mailbox only after inbox verification', async () => {
+  const f = fixture({});
+  const input = { provider: 'gmail', user: 'school@example.com', password: 'a-private-app-password' };
+  await assert.rejects(f.handlers.beginSchoolMailConnection(f.req('teacher', input)), error => error.code === 'permission-denied');
+  assert.deepEqual(await f.handlers.beginSchoolMailConnection(f.req('head', input)),
+    { verificationSent: true, schoolEmail: 'school@example.com' });
+  const saved = f.records.get('schools/school1/mailConfig/outgoing');
+  assert.equal(saved.state, 'pending');
+  assert(!JSON.stringify(saved).includes(input.password));
+  assert.equal(f.sent[0].message.to, 'school@example.com');
+  assert.equal(f.sent[0].options.host, '8.8.8.8');
+  assert.equal((await f.handlers.getSchoolMailStatus(f.req('head'))).configured, false);
+  const code = f.sent[0].message.text.match(/\b\d{6}\b/)[0];
+  await assert.rejects(f.handlers.confirmSchoolMailConnection(f.req('head', { code: '000000' })), error => error.code === 'failed-precondition');
+  assert.deepEqual(await f.handlers.confirmSchoolMailConnection(f.req('head', { code })),
+    { configured: true, from: 'school@example.com' });
+  assert.equal((await f.handlers.getSchoolMailStatus(f.req('head'))).configured, true);
+  await f.handlers.disconnectSchoolMailConnection(f.req('head'));
+  assert.equal((await f.handlers.getSchoolMailStatus(f.req('head'))).configured, false);
+});
+
+test('mail connection refuses an internal SMTP address and any account other than the school email', async () => {
+  const f = fixture({}, { resolveAddresses: async () => ['127.0.0.1'] });
+  await assert.rejects(f.handlers.beginSchoolMailConnection(f.req('head', {
+    provider: 'smtp', host: 'mail.example.com', port: 465, user: 'school@example.com', password: 'secret'
+  })), error => error.code === 'failed-precondition');
+  await assert.rejects(f.handlers.beginSchoolMailConnection(f.req('head', {
+    provider: 'gmail', user: 'other@example.com', password: 'secret'
+  })), error => error.code === 'failed-precondition');
+  assert.equal(f.sent.length, 0);
 });

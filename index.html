@@ -758,9 +758,11 @@
   <section id="view-app-settings" class="view hidden"><h2>Settings</h2><p class="hint">School and app controls. Your personal account actions are in Profile.</p><div class="account-tools-grid"><button type="button" id="profileSetupLink" class="tool-link">Go to Setup</button>
 <button type="button" id="profileNotificationsBtn" class="tool-link">Notifications</button>
 <button type="button" id="profileMessagingBtn" class="tool-link">Messages &amp; Push</button>
+<button type="button" id="profileMailBtn" class="tool-link">Outgoing email</button>
 <button type="button" id="profileSyncCenterBtn" class="tool-link">Sync Center</button>
 <button type="button" id="profileSystemHealthBtn" class="tool-link">System Health</button>
 </div></section>
+  <section id="view-outgoing-mail" class="view hidden"><h2>Outgoing email</h2><p class="hint">Connect the school's own sending account before emailing report PDFs directly to parents.</p><div id="schoolMailSettingsWrap"></div></section>
   <section id="view-help-about" class="view hidden"><h2>Help &amp; About</h2><p class="hint">Guidance, installation and information about SchoolHub.</p><div class="account-tools-grid"><button type="button" id="profileTourBtn" class="tool-link">Show Guided Tour</button>
 <button type="button" class="tool-link" data-inline-doc="faq">Help &amp; FAQ</button>
 <a href="complete-user-guide.html" data-inline-doc="guide" class="tool-link complete-guide-link">Complete user guide</a>
@@ -1049,7 +1051,7 @@
         <h2>Find your way around</h2>
         <details><summary>Where are Settings and Help now?</summary><div class="inline-doc-answer"><p>Open the <strong>Profile button at the top right → Settings</strong> or <strong>Profile → Help</strong>. They no longer appear as Home cards. Home keeps school-work pages such as Setup, Classes, Reports, Stores and Supervision and Observation.</p></div></details>
         <details><summary>How do I pin a page to the top of Home?</summary><div class="inline-doc-answer"><p>On Home, choose the star on a page card. Pinned pages move above the other pages. Choose the star again to unpin. Pins are saved on this device separately for each account and school; they do not sync to another device or add pages your role cannot access.</p></div></details>
-        <details><summary>What is inside Settings?</summary><div class="inline-doc-answer"><p><strong>Profile → Settings</strong> contains Notifications, Messages &amp; Push, Sync Center and System Health. Head Teachers also see School Setup. Billing &amp; Credits appears in Profile before Settings for Head Teachers. The header bell and sync indicator are shortcuts.</p></div></details>
+        <details><summary>What is inside Settings?</summary><div class="inline-doc-answer"><p><strong>Profile → Settings</strong> contains Notifications, Messages &amp; Push, Sync Center and System Health. Head Teachers also see School Setup and Outgoing email. Billing &amp; Credits appears in Profile before Settings for Head Teachers. The header bell and sync indicator are shortcuts.</p></div></details>
         <details><summary>Where is the complete user guide?</summary><div class="inline-doc-answer"><p>Open <strong>Profile → Help → Complete user guide</strong>, or use the link below the controls in any Head Teacher, Teacher or Guest guided tour. It opens inside SchoolHub. Close the guide to return to your current screen. The guide is included with the app and can open offline after the updated app has cached it. <a href="complete-user-guide.html" data-inline-doc="guide">Read the complete user guide</a>.</p></div></details>
         <details><summary>Why did a side swipe close SchoolHub?</summary><div class="inline-doc-answer"><p>An edge swipe can trigger the phone’s Back gesture. SchoolHub now keeps the sections you open in browser history, so Back returns to the previous section. The header arrow and Home shortcut return to Home. At Home, the phone’s system Back gesture may still close an installed app. A sideways swipe inside a wide table scrolls that table.</p></div></details>
         <details><summary>What is inside Help?</summary><div class="inline-doc-answer"><p>The Profile options appear in this order: <strong>Account Security</strong>, <strong>Billing &amp; Credits</strong>, <strong>Settings</strong>, <strong>About</strong> and <strong>Help</strong>. Billing &amp; Credits is shown for Head Teachers; Account Security appears for active signed-in accounts. <strong>Profile → Help</strong> groups Show Guided Tour, Help &amp; FAQ, Complete user guide, Install SchoolHub, Privacy and Terms of Use. About opens the release and update information separately.</p></div></details>
@@ -1166,7 +1168,7 @@
 
       <section class="inline-doc-section">
         <h2>Communications email templates</h2>
-        <details><summary>How are report cards emailed or shared?</summary><div class="inline-doc-answer"><p>Choose a learner in Communications and select Report card, or open the learner from Reports. Review the prepared PDF. Choose <strong>Publish to Parent Portal</strong> to let linked parents download that exact PDF. Direct email is offered only when an outgoing account is configured for this school and its sender matches School Email in Setup. Entering a school email at signup does not authorize SchoolHub to send from it. When direct email is available, review the sender, saved Parent/Guardian Email and message, then choose <strong>Send report email</strong>; the published PDF is attached. Otherwise use Share PDF or Save PDF and attach it in your email app. Other templates still open text drafts. An email accepted by the mail server is not proof that the parent opened it.</p></div></details>
+        <details><summary>How are report cards emailed or shared?</summary><div class="inline-doc-answer"><p>Choose a learner in Communications and select Report card, or open the learner from Reports. Review the prepared PDF. Choose <strong>Publish to Parent Portal</strong> to let linked parents download that exact PDF. The Head Teacher connects the school's own mailbox under <strong>Profile → Settings → Outgoing email</strong>: choose Gmail/Workspace or a provider with SMTP, enter that provider's outgoing details and confirm a code received at the saved School Email. The sender must match School Email in Setup. Entering an email at signup alone does not enable sending. When connected, review the sender, saved Parent/Guardian Email and message, then choose <strong>Send report email</strong>; the published PDF is attached. If the provider cannot connect, direct email stays off; use Share PDF or Save PDF and attach it in your email app. Other templates still open text drafts. An email accepted by the mail server is not proof that the parent opened it.</p></div></details>
         <details><summary>Can I share report cards with several parents?</summary><div class="inline-doc-answer"><p>Yes. In <strong>Reports</strong>, choose a class and add learners to the <strong>Batch sharing list</strong>, or select all learners with a saved parent contact. For each learner, choose Email PDF or WhatsApp PDF. SchoolHub prepares a separate PDF and opens the device share options. Confirm the correct parent in the chosen app before sending, then mark that learner sent in the list. If file sharing fails, use <strong>Try PDF only</strong> or tap <strong>Save PDF</strong>, open the parent draft and attach that saved file. The list does not send automatically or confirm delivery. Do not send the combined class batch PDF to parents because it contains other learners’ reports. Each generated report follows the school’s report credit rules.</p></div></details>
         <details><summary>How do I change a message template?</summary><div class="inline-doc-answer"><p>In <strong>Home → Communications → Edit message templates</strong>, choose a template, edit its subject or message and save it. Changes are saved for the school and sync when connected. Use Restore this template to return one template to its default wording. Available tags are filled from the selected learner and details entered on the form.</p></div></details>
       </section>
@@ -1397,7 +1399,7 @@
 <div id="aboutDialog" class="about-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="about-box dialog-fixed-shell">
     <div class="dialog-fixed-header">
-      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Installed version <strong id="aboutVersion">40.1.137</strong></p></div>
+      <div><h2 id="aboutTitle">AlatiphA SchoolHub</h2><p class="about-version">Installed version <strong id="aboutVersion">40.1.138</strong></p></div>
       <button type="button" id="aboutCloseBtn" class="dialog-close-icon" data-dismiss-ui="header" aria-label="Close About SchoolHub" title="Close">&times;</button>
     </div>
     <div class="dialog-scroll-content">
@@ -1447,6 +1449,7 @@
 <script src="communications.js?v=communication-file-share-2"></script>
 <script src="faq-filter.js"></script>
 <script src="app-4.js?v=home-pin-centered-1"></script>
+<script src="school-mail-settings.js"></script>
 <script src="fees.js?v=v40-private-images-1"></script>
 <script src="school-operations.js?v=v40-private-images-1"></script>
 <script src="parent-portal.js?v=parent-portal-v1"></script>

@@ -1,27 +1,16 @@
 'use strict';
 
 const nodemailer = require('nodemailer');
+const { createMailConnection } = require('./mail-connection');
 
-function register({ onCall, HttpsError, db, admin, smtpConfig, createTransport = nodemailer.createTransport }) {
+function register({ onCall, HttpsError, db, admin, mailKey, createTransport = nodemailer.createTransport, resolveAddresses }) {
   const fail = (code, message) => { throw new HttpsError(code, message); };
-  const options = { region: 'us-central1', invoker: 'public', timeoutSeconds: 90, secrets: [smtpConfig] };
+  const options = { region: 'us-central1', invoker: 'public', timeoutSeconds: 90, secrets: [mailKey].filter(Boolean) };
   const call = fn => onCall(options, fn);
   const id = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
   const email = value => String(value || '').trim().toLowerCase();
   const validEmail = value => /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(value) && value.length <= 254;
-
-  function config(schoolId, schoolEmail) {
-    let stored;
-    try { stored = JSON.parse(String(smtpConfig.value() || '{}')); }
-    catch { return null; }
-    const value = stored?.schools?.[schoolId] || (stored?.schoolId === schoolId ? stored : null);
-    if (!validEmail(schoolEmail) || email(value?.from) !== schoolEmail) return null;
-    if (value.enabled !== true || typeof value.host !== 'string' || !value.host.trim()
-      || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535
-      || !validEmail(email(value.user)) || !validEmail(email(value.from))
-      || typeof value.password !== 'string' || !value.password) return null;
-    return value;
-  }
+  const connection = createMailConnection({ db, mailKey: mailKey || { value: () => '' }, createTransport, resolveAddresses });
 
   async function sender(req) {
     if (!req.auth || req.auth.token?.email_verified !== true) fail('unauthenticated', 'Sign in with a verified school account.');
@@ -31,19 +20,57 @@ function register({ onCall, HttpsError, db, admin, smtpConfig, createTransport =
     return user;
   }
 
+  async function schoolMail(user) {
+    const school = db.collection('schools').doc(user.schoolId);
+    const snap = await school.get();
+    const schoolEmail = email(snap.data()?.profile?.email);
+    const linked = await connection.read(user.schoolId, schoolEmail);
+    const settings = linked.settings;
+    return { school, schoolEmail, settings, pending: linked.status === 'pending' };
+  }
+
+  async function headTeacher(req) {
+    const user = await sender(req);
+    if (user.role !== 'headteacher') fail('permission-denied', 'Only the Head Teacher can connect the school email.');
+    return user;
+  }
+
   const getSchoolMailStatus = call(async req => {
     const user = await sender(req);
-    const school = await db.collection('schools').doc(user.schoolId).get();
-    const schoolEmail = email(school.data()?.profile?.email);
-    const settings = config(user.schoolId, schoolEmail);
-    return { configured: !!settings, from: settings ? email(settings.from) : '', schoolEmail };
+    const { schoolEmail, settings, pending } = await schoolMail(user);
+    return { configured: !!settings, from: settings ? email(settings.from) : '', schoolEmail, pending };
+  });
+
+  const beginSchoolMailConnection = call(async req => {
+    const user = await headTeacher(req);
+    const { schoolEmail } = await schoolMail(user);
+    try { return await connection.begin(user.schoolId, schoolEmail, req.data); }
+    catch (error) {
+      const message = String(error.message || '');
+      const allowed = ['Use the school email and valid outgoing mail details.', 'Wait one minute before requesting another verification code.', 'The outgoing mail server has no public address.', 'The school address did not accept the verification email.'];
+      fail('failed-precondition', allowed.includes(message) ? message : 'Could not send the verification email. Check the mailbox credentials and server details.');
+    }
+  });
+
+  const confirmSchoolMailConnection = call(async req => {
+    const user = await headTeacher(req);
+    const { schoolEmail } = await schoolMail(user);
+    try { return await connection.confirm(user.schoolId, schoolEmail, String(req.data?.code || '').trim()); }
+    catch (error) {
+      const message = String(error.message || '');
+      const allowed = ['Verification expired. Start the connection again.', 'That verification code is incorrect.'];
+      fail('failed-precondition', allowed.includes(message) ? message : 'Could not confirm the school mail account. Try again.');
+    }
+  });
+
+  const disconnectSchoolMailConnection = call(async req => {
+    const user = await headTeacher(req);
+    return connection.disconnect(user.schoolId);
   });
 
   const sendParentReportEmail = call(async req => {
     const user = await sender(req);
-    const school = db.collection('schools').doc(user.schoolId);
-    const schoolSnap = await school.get();
-    const settings = config(user.schoolId, email(schoolSnap.data()?.profile?.email));
+    const { school, settings } = await schoolMail(user);
     if (!settings) fail('failed-precondition', 'This school needs an outgoing mail account matching its saved school email. Use the email draft or Parent Portal until it is set up.');
     const reportId = req.data?.reportId;
     const requestId = req.data?.requestId;
@@ -87,16 +114,13 @@ function register({ onCall, HttpsError, db, admin, smtpConfig, createTransport =
       if (pdf.length > 5_000_000 || pdf.subarray(0, 5).toString() !== '%PDF-') {
         fail('data-loss', 'The published PDF is invalid. Generate and publish it again.');
       }
-      const transporter = createTransport({
-        host: settings.host, port: settings.port, secure: settings.port === 465,
-        auth: { user: settings.user, pass: settings.password },
-        connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 30000
-      });
-      const outcome = await transporter.sendMail({
+      const transporter = await connection.transport(settings);
+      let outcome;
+      try { outcome = await transporter.sendMail({
         from: settings.from, to: recipient, replyTo: settings.replyTo || settings.from,
         subject, text,
         attachments: [{ filename: `${String(student.name || 'Learner').replace(/[^A-Za-z0-9_-]+/g, '_')}_report.pdf`, content: pdf, contentType: 'application/pdf' }]
-      });
+      }); } finally { transporter.close?.(); }
       if (!Array.isArray(outcome.accepted) || !outcome.accepted.map(email).includes(recipient)) {
         throw new Error('The mail server did not accept the parent address.');
       }
@@ -110,7 +134,8 @@ function register({ onCall, HttpsError, db, admin, smtpConfig, createTransport =
     }
   });
 
-  return { getSchoolMailStatus, sendParentReportEmail };
+  return { getSchoolMailStatus, beginSchoolMailConnection, confirmSchoolMailConnection,
+    disconnectSchoolMailConnection, sendParentReportEmail };
 }
 
 module.exports = { register };

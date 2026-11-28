@@ -371,6 +371,6 @@ if(ownerAccess)Object.assign(exports,ownerAccess.register({onCall:rawOnCall,onDo
 const parentPortal = require('./parent-portal');
 if(parentPortal)Object.assign(exports,parentPortal.register({onCall,HttpsError,db,admin}));
 
-const schoolMailConfig = defineSecret('SCHOOLHUB_SMTP_CONFIG');
+const schoolMailKey = defineSecret('SCHOOLHUB_MAIL_KEY');
 const communicationsMail = require('./communications-mail');
-if(communicationsMail)Object.assign(exports,communicationsMail.register({onCall,HttpsError,db,admin,smtpConfig:schoolMailConfig}));
+if(communicationsMail)Object.assign(exports,communicationsMail.register({onCall,HttpsError,db,admin,mailKey:schoolMailKey}));
