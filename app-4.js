@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.123';
+const APP_VERSION = '40.1.124';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -1278,7 +1278,7 @@ function renderQuickAccessList() {
           <span class="qa-icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${c.icon}</svg></span>
           <span class="qa-text"><span class="qa-title">${escapeHtml(c.title)}</span><span class="qa-desc">${escapeHtml(c.description)}</span></span>
         </button>
-        <button type="button" class="qa-pin${isPinned ? ' is-pinned' : ''}" data-pin-view="${c.view}" aria-pressed="${isPinned}" aria-label="${isPinned ? 'Unpin' : 'Pin'} ${escapeHtml(c.title)} ${isPinned ? 'from' : 'to'} the top of Home" title="${isPinned ? 'Unpin from top of Home' : 'Pin to top of Home'}">★</button>
+        <button type="button" class="qa-pin${isPinned ? ' is-pinned' : ''}" data-pin-view="${c.view}" aria-pressed="${isPinned}" aria-label="${isPinned ? 'Unpin' : 'Pin'} ${escapeHtml(c.title)} ${isPinned ? 'from' : 'to'} the top of Home" title="${isPinned ? 'Unpin from top of Home' : 'Pin to top of Home'}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5 14.94 8.45l6.56.95-4.75 4.63 1.12 6.54L12 17.48l-5.87 3.09 1.12-6.54L2.5 9.4l6.56-.95L12 2.5Z"/></svg></button>
       </div>`;
   }).join('');
   wrap.querySelectorAll('.qa-card').forEach(btn => {
