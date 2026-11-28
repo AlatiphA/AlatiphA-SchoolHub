@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.130';
+const APP_VERSION = '40.1.131';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -8242,7 +8242,7 @@ function reportShareContact(student) {
 }
 
 function reportShareStatusText(state) {
-  return ({ ready: 'PDF ready. Use Share PDF in the open window.', handoff: 'Handed to your device. Confirm it was sent before marking sent.', fallback: 'PDF saved. Attach it in the parent’s message, then mark sent.', cancelled: 'Sharing closed. Nothing is marked sent.', unmarked: 'Not marked sent. Prepare the PDF again if needed.', sent: 'Marked sent by you.' })[state] || 'Not prepared';
+  return ({ ready: 'PDF ready. Use Share PDF in the open window.', handoff: 'Handed to your device. Confirm it was sent before marking sent.', fallback: 'Tap Save PDF, open the parent draft, attach the file, then mark sent.', cancelled: 'Sharing closed. Nothing is marked sent.', unmarked: 'Not marked sent. Prepare the PDF again if needed.', sent: 'Marked sent by you.' })[state] || 'Not prepared';
 }
 
 function renderReportShareQueue(results, settings) {
@@ -9747,41 +9747,72 @@ function showPreparedReport(url, filename, autoDownload = true, deliveryOptions 
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   overlay.setAttribute('aria-labelledby', 'preparedReportTitle');
-  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p data-report-note>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><div class="prepared-report-actions"><button type="button" class="btn-primary" data-report-share hidden>Share PDF</button><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close data-dismiss-ui>Close</button></div></div>';
+  overlay.innerHTML = '<div class="about-box"><h2 id="preparedReportTitle">Report ready</h2><p data-report-note>Your PDF is ready. Save it, or open it to print. These links use the same generated report and do not use additional credits.</p><p class="prepared-report-name"></p><p class="hint" data-report-error hidden></p><div class="prepared-report-actions"><button type="button" class="btn-primary" data-report-share hidden>Share PDF</button><a class="btn-primary" data-report-download>Save PDF</a><a class="btn-primary" data-report-compose hidden>Open parent draft</a><a class="btn-primary" data-report-open target="_blank" rel="noopener">Open / Print PDF</a><button type="button" class="btn-text" data-report-close data-dismiss-ui>Close</button></div></div>';
   overlay.querySelector('.prepared-report-name').textContent = filename;
   const download = overlay.querySelector('[data-report-download]');
   const shareButton = overlay.querySelector('[data-report-share]');
   const note = overlay.querySelector('[data-report-note]');
+  const errorInfo = overlay.querySelector('[data-report-error]');
+  const compose = overlay.querySelector('[data-report-compose]');
   download.href = url;
   download.download = filename;
   overlay.querySelector('[data-report-open]').href = url;
+  const showFallback = error => {
+    const channel = deliveryOptions?.channel;
+    const recipient = String(deliveryOptions?.recipient || '').trim();
+    const subject = String(deliveryOptions?.subject || 'SchoolHub report card');
+    const message = String(deliveryOptions?.text || 'Please find the report card attached.');
+    if (channel === 'email') {
+      compose.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+      compose.textContent = 'Open parent email draft';
+      compose.hidden = false;
+    } else if (channel === 'whatsapp') {
+      const phone = guardianWhatsAppDigits(recipient);
+      if (phone) {
+        compose.href = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+        compose.target = '_blank';
+        compose.rel = 'noopener';
+        compose.textContent = 'Open parent WhatsApp chat';
+        compose.hidden = false;
+      }
+    }
+    note.textContent = 'This device could not attach the PDF directly. Tap Save PDF, open the parent draft, and attach that saved PDF before sending. Nothing has been sent yet.';
+    if (error) {
+      console.warn('Report file sharing failed:', error);
+      errorInfo.textContent = `${error.name || 'Share error'}${error.message ? `: ${String(error.message).slice(0, 180)}` : ''}`;
+      errorInfo.hidden = false;
+    }
+  };
   if (deliveryOptions?.file && deliveryOptions?.shareData) {
     shareButton.hidden = false;
     note.textContent = deliveryOptions.channel === 'email'
       ? `Choose your email app, then address the message to ${deliveryOptions.recipient || 'the parent'} before sending.`
       : 'Choose WhatsApp, then select the parent chat before sending.';
+    let fileOnlyRetry = false;
     shareButton.addEventListener('click', async () => {
       shareButton.disabled = true;
       shareButton.textContent = 'Opening share options…';
       try {
-        await navigator.share(deliveryOptions.shareData);
+        await navigator.share(fileOnlyRetry ? { files: [deliveryOptions.file] } : deliveryOptions.shareData);
         deliveryOptions.onResult?.('shared');
         close();
       } catch (error) {
         if (error?.name === 'AbortError') {
           shareButton.disabled = false;
-          shareButton.textContent = 'Share PDF';
+          shareButton.textContent = fileOnlyRetry ? 'Try PDF only' : 'Share PDF';
           note.textContent = 'Nothing was sent. You can try sharing again or save the PDF.';
           deliveryOptions.onResult?.('cancelled');
           return;
         }
-        shareButton.disabled = true;
-        shareButton.textContent = 'File sharing unavailable';
-        note.textContent = 'Save the PDF and attach it manually in your email or WhatsApp message.';
+        fileOnlyRetry = true;
+        shareButton.disabled = false;
+        shareButton.textContent = 'Try PDF only';
+        showFallback(error);
         deliveryOptions.onResult?.('fallback');
-        download.click();
       }
     });
+  } else if (deliveryOptions?.fallback) {
+    showFallback(null);
   }
   const previousFocus = document.activeElement;
   const close = () => {
@@ -9794,7 +9825,7 @@ function showPreparedReport(url, filename, autoDownload = true, deliveryOptions 
   overlay.addEventListener('keydown', event => {
     if (event.key === 'Escape') close();
     if (event.key === 'Tab') {
-      const first = download, last = overlay.querySelector('[data-report-close]');
+      const first = shareButton.hidden ? download : shareButton, last = overlay.querySelector('[data-report-close]');
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     }
@@ -9837,7 +9868,7 @@ async function downloadGeneratedReport(doc, filename, count, reportType = 'paid'
           const file = new File([pdfBlob], filename, { type: 'application/pdf' });
           if (!navigator.canShare || navigator.canShare({ files: [file] })) {
             const shareData = { files: [file], title: shareOptions.subject || 'SchoolHub report card', text: shareOptions.text || '' };
-            showPreparedReport(url, filename, false, { file, shareData, channel: shareOptions.channel, recipient: shareOptions.recipient, onResult: shareOptions.onResult });
+            showPreparedReport(url, filename, false, { file, shareData, channel: shareOptions.channel, recipient: shareOptions.recipient, subject: shareOptions.subject, text: shareOptions.text, onResult: shareOptions.onResult });
             offered = true;
             return 'ready';
           }
@@ -9845,7 +9876,7 @@ async function downloadGeneratedReport(doc, filename, count, reportType = 'paid'
       } catch (error) {
         console.warn('File sharing is unavailable; offering the PDF download instead:', error);
       }
-      showPreparedReport(url, filename);
+      showPreparedReport(url, filename, false, { fallback: true, channel: shareOptions.channel, recipient: shareOptions.recipient, subject: shareOptions.subject, text: shareOptions.text });
       offered = true;
       return 'fallback';
     }

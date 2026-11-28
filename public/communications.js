@@ -253,8 +253,8 @@
           continueLink.textContent = channel === 'email' ? 'Continue to email draft' : 'Continue to WhatsApp';
           continueLink.hidden = false;
           status.textContent = channel === 'email'
-            ? 'This browser cannot attach files directly. The report PDF has been saved; continue to the email draft and attach that PDF before sending.'
-            : 'This browser cannot attach files directly. The report PDF has been saved; continue to WhatsApp and attach that PDF before sending.';
+            ? 'This device could not attach the PDF directly. In the Report ready window, tap Save PDF, then open the parent email draft and attach the saved file before sending.'
+            : 'This device could not attach the PDF directly. In the Report ready window, tap Save PDF, then open the parent WhatsApp chat and attach the saved file before sending.';
         };
         const onShareResult = shareState => {
           if (shareState === 'shared') status.textContent = 'The device share sheet handed off the PDF. Check the email or WhatsApp app and confirm it was sent; SchoolHub cannot confirm delivery.';

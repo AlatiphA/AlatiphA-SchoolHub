@@ -1793,6 +1793,8 @@ html.disabledAccess #schoolHubFloatingPill{
 }
 
 .prepared-report-actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center}.prepared-report-actions a{text-decoration:none;display:inline-block}.prepared-report-name{overflow-wrap:anywhere}
+#preparedReportDialog .about-box{max-height:calc(100dvh - 32px);overflow:auto;box-sizing:border-box}
+#preparedReportDialog .prepared-report-actions>*{flex:1 1 130px;min-width:0;white-space:normal;overflow-wrap:anywhere}
 
 
 /* v40 teacher mobile/pill polish */
