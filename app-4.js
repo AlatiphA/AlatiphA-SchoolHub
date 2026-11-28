@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.136';
+const APP_VERSION = '40.1.137';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -9885,7 +9885,7 @@ function showPreparedReport(url, filename, autoDownload = true, deliveryOptions 
         if (!response.data?.published) throw new Error('The report was not published. Please try again.');
         publishedReportId = response.data.reportId;
         updateEmailAction();
-        publishStatus.textContent = `Published. Linked parents can download this PDF in their Parent Portal after refreshing it.${!mailStatus?.configured ? ' Direct email will be available after the school mail service is set up.' : !savedRecipient ? ' Save the Parent/Guardian Email in Students to send directly.' : requestedRecipient !== savedRecipient ? ' Save the selected email in Students before sending directly.' : ''}`;
+        publishStatus.textContent = `Published. Linked parents can download this PDF in their Parent Portal after refreshing it.${!mailStatus?.configured ? ` Direct email from ${mailStatus?.schoolEmail || 'this school'} needs a verified outgoing account.` : !savedRecipient ? ' Save the Parent/Guardian Email in Students to send directly.' : requestedRecipient !== savedRecipient ? ' Save the selected email in Students before sending directly.' : ''}`;
         publishButton.textContent = 'Published';
       } catch (error) {
         publishStatus.textContent = error.message || 'Could not publish the PDF. Check your connection and try again.';

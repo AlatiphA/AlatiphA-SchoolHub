@@ -52,7 +52,7 @@
     host.innerHTML = `
       <section class="communication-intro">
         <p>Prepare a message using a saved template. SchoolHub fills in learner and school details, then opens Email or WhatsApp sharing options for you to review.</p>
-        <p class="hint">Choose a learner to use their saved parent contact. Publish a reviewed report PDF to the linked Parent Portal from the Report ready window. Email drafts remain available; a configured school mail service can also send the published PDF directly after your review.</p>
+        <p class="hint">Choose a learner to use their saved parent contact. Publish a reviewed report PDF to the linked Parent Portal from the Report ready window. Email drafts remain available; direct sending needs an outgoing account configured for this school's email address.</p>
       </section>
       <div class="communication-layout">
         <section class="communication-card">

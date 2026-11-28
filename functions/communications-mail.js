@@ -10,10 +10,12 @@ function register({ onCall, HttpsError, db, admin, smtpConfig, createTransport =
   const email = value => String(value || '').trim().toLowerCase();
   const validEmail = value => /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(value) && value.length <= 254;
 
-  function config() {
-    let value;
-    try { value = JSON.parse(String(smtpConfig.value() || '{}')); }
+  function config(schoolId, schoolEmail) {
+    let stored;
+    try { stored = JSON.parse(String(smtpConfig.value() || '{}')); }
     catch { return null; }
+    const value = stored?.schools?.[schoolId] || (stored?.schoolId === schoolId ? stored : null);
+    if (!validEmail(schoolEmail) || email(value?.from) !== schoolEmail) return null;
     if (value.enabled !== true || typeof value.host !== 'string' || !value.host.trim()
       || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535
       || !validEmail(email(value.user)) || !validEmail(email(value.from))
@@ -30,15 +32,19 @@ function register({ onCall, HttpsError, db, admin, smtpConfig, createTransport =
   }
 
   const getSchoolMailStatus = call(async req => {
-    await sender(req);
-    const settings = config();
-    return { configured: !!settings, from: settings ? email(settings.from) : '' };
+    const user = await sender(req);
+    const school = await db.collection('schools').doc(user.schoolId).get();
+    const schoolEmail = email(school.data()?.profile?.email);
+    const settings = config(user.schoolId, schoolEmail);
+    return { configured: !!settings, from: settings ? email(settings.from) : '', schoolEmail };
   });
 
   const sendParentReportEmail = call(async req => {
     const user = await sender(req);
-    const settings = config();
-    if (!settings) fail('failed-precondition', 'Direct email is not set up yet. Use the email draft or Parent Portal instead.');
+    const school = db.collection('schools').doc(user.schoolId);
+    const schoolSnap = await school.get();
+    const settings = config(user.schoolId, email(schoolSnap.data()?.profile?.email));
+    if (!settings) fail('failed-precondition', 'This school needs an outgoing mail account matching its saved school email. Use the email draft or Parent Portal until it is set up.');
     const reportId = req.data?.reportId;
     const requestId = req.data?.requestId;
     if (typeof reportId !== 'string' || !/^[a-f0-9]{64}$/.test(reportId) || !id(requestId)) {
@@ -49,7 +55,6 @@ function register({ onCall, HttpsError, db, admin, smtpConfig, createTransport =
     if (!subject || subject.length > 180 || /[\r\n]/.test(subject) || !text || text.length > 5000) {
       fail('invalid-argument', 'Review the email subject and message before sending.');
     }
-    const school = db.collection('schools').doc(user.schoolId);
     const reportSnap = await school.collection('publishedReports').doc(reportId).get();
     const report = reportSnap.data() || {};
     if (!reportSnap.exists || !id(report.studentId) || !id(report.classId)) fail('not-found', 'Publish this report before sending email.');
