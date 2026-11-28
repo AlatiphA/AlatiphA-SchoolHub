@@ -47,7 +47,7 @@
     const settings = DB.get(KEYS.settings, {});
     const esc = value => escapeHtml(String(value == null ? '' : value));
     const options = classes.map(item => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('');
-    const pupilOptions = students.map(item => `<option value="${esc(item.id)}" data-class="${esc(item.classId)}" data-parent-email="${esc(item.parentEmail || '')}" data-parent-phone="${esc(item.parentPhone || '')}">${esc(item.name || 'Unnamed learner')} · ${esc(classes.find(c => String(c.id) === String(item.classId))?.name || 'No class')}</option>`).join('');
+    const pupilOptions = students.map(item => `<option value="${esc(item.id)}" data-class="${esc(item.classId)}" data-parent-email="${esc(item.parentEmail || '')}">${esc(item.name || 'Unnamed learner')} · ${esc(classes.find(c => String(c.id) === String(item.classId))?.name || 'No class')}</option>`).join('');
 
     host.innerHTML = `
       <section class="communication-intro">
@@ -188,14 +188,7 @@
     function emailDraftUrl(recipient, result) {
       return `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(result.subject)}&body=${encodeURIComponent(result.body)}`;
     }
-    function whatsappPhoneDigits(phone) {
-      let digits = String(phone || '').replace(/\D/g, '');
-      if (digits.startsWith('00')) digits = digits.slice(2);
-      if (/^0\d{9}$/.test(digits)) digits = '233' + digits.slice(1);
-      return digits;
-    }
-    function whatsappDraftUrl(phone, result) {
-      const digits = whatsappPhoneDigits(phone);
+    function whatsappDraftUrl(digits, result) {
       const message = `${result.subject}\n\n${result.body}`;
       return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
     }
@@ -226,17 +219,18 @@
       if (!option) return;
       const channel = option.dataset.shareChannel;
       const result = updatePreview();
-      const pupilOption = pupilSelect.selectedOptions[0];
       const studentId = pupilSelect.value;
       const recipient = byId('communicationRecipient').value.trim();
-      const phone = pupilOption?.dataset.parentPhone || '';
       shareOptions.hidden = true;
       shareButton.setAttribute('aria-expanded', 'false');
       clearContinueLink();
       if (!studentId) { status.textContent = 'Choose a learner first.'; return; }
+      const student = DB.get(KEYS.students, []).find(item => String(item.id) === studentId);
+      if (!student) { status.textContent = 'Reopen Communications and select the learner again.'; return; }
+      const phone = guardianWhatsAppDigits(student.parentPhone);
       if (result.missing.length) { status.textContent = 'Complete the highlighted fields before sharing.'; return; }
       if (channel === 'email' && recipient && !byId('communicationRecipient').checkValidity()) { status.textContent = 'Enter a valid parent email address, or leave it blank and add it in your email app.'; return; }
-      if (channel === 'whatsapp' && !whatsappPhoneDigits(phone)) { status.textContent = 'No valid Parent/Guardian phone is saved for this learner. Add it in Students before using WhatsApp.'; return; }
+      if (channel === 'whatsapp' && !phone) { status.textContent = guardianPhoneHelp(student); return; }
 
       if (templateSelect.value !== 'report-card') {
         openShareDestination(channel, recipient, phone, result);

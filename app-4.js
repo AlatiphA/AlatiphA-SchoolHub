@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.124';
+const APP_VERSION = '40.1.125';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -3485,9 +3485,6 @@ function renderStudents() {
         </div>
         <label>Class<select class="edit-student-class">${getAccessibleClasses().map(c => `<option value="${escapeHtml(c.id)}" ${c.id === st.classId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`).join('')}</select></label>
         <input type="text" class="edit-student-id" value="${st.admissionId ? escapeHtml(st.admissionId) : ''}" placeholder="Student ID (optional)">
-        <label>Parent/Guardian phone (optional)
-          <input type="tel" class="edit-student-phone" value="${st.parentPhone ? escapeHtml(st.parentPhone) : ''}" placeholder="Phone number for WhatsApp">
-        </label>
         <label>Disability
           <select class="edit-student-disability">
             <option value="">Select</option>
@@ -3498,10 +3495,16 @@ function renderStudents() {
         <label>Parent/Guardian
           <input type="text" class="edit-student-guardian" value="${st.guardianName ? escapeHtml(st.guardianName) : ''}" placeholder="Parent/Guardian">
         </label>
+        <label>Parent/Guardian phone (optional)
+          <input type="tel" class="edit-student-phone" value="${st.parentPhone ? escapeHtml(st.parentPhone) : ''}" placeholder="Phone number for WhatsApp">
+        </label>
         <label>Parent/Guardian Email (optional)
           <input type="email" class="edit-student-parent-email" value="${st.parentEmail ? escapeHtml(st.parentEmail) : ''}" maxlength="254" autocomplete="email" placeholder="parent@example.com">
         </label>
-        <input type="text" class="edit-student-house-gps" value="${st.houseGps ? escapeHtml(st.houseGps) : ''}" placeholder="House No. / GhanaPost GPS">
+        <label>House No. / GhanaPost GPS
+          <input type="text" class="edit-student-house-gps" value="${st.houseGps ? escapeHtml(st.houseGps) : ''}" placeholder="e.g. House 12 / NT-123-4567">
+        </label>
+        <button type="button" class="btn-secondary move-guardian-phone" hidden>Move to Parent/Guardian phone</button>
         ${photoPreview}
         <label>Passport Photo
           <input type="file" class="edit-student-photo-input" accept="image/*" data-student="${st.id}">
@@ -3511,6 +3514,22 @@ function renderStudents() {
           <button class="cancel-btn cancel-student" data-dismiss-ui>Cancel</button>
         </div>
       </div>`;
+      const phone = li.querySelector('.edit-student-phone');
+      const address = li.querySelector('.edit-student-house-gps');
+      const move = li.querySelector('.move-guardian-phone');
+      const updateMove = () => {
+        move.hidden = !guardianPhoneInAddress(phone.value, address.value);
+      };
+      phone.addEventListener('input', updateMove);
+      address.addEventListener('input', updateMove);
+      move.addEventListener('click', () => {
+        if (!guardianPhoneInAddress(phone.value, address.value)) return;
+        phone.value = address.value.trim();
+        address.value = '';
+        updateMove();
+        phone.focus();
+      });
+      updateMove();
     } else {
       const idPart = st.admissionId ? ` · ID ${escapeHtml(st.admissionId)}` : ' · ID not set';
       li.innerHTML = `<div class="student-list-main">
@@ -8238,12 +8257,16 @@ function renderReportsStudentList() {
 // this is just the public wa.me deep link, so it works whether or not
 // WhatsApp is installed (falls back to WhatsApp Web).
 function shareResultViaWhatsApp(result, classInfo, settings) {
-  const phone = (result.student.parentPhone || '').replace(/[^0-9+]/g, '');
-  if (!phone) {
-    alert('No parent phone number saved for this student. Add one via Edit in the Students tab.');
+  const student = studentsForClassYear(classInfo?.id, settings.currentYear).find(item => item.id === result.student.id);
+  if (!student) {
+    alert('Reopen Reports and select the learner again.');
     return;
   }
-  const digits = phone.replace(/\+/g, '');
+  const digits = guardianWhatsAppDigits(student.parentPhone);
+  if (!digits) {
+    alert(guardianPhoneHelp(student));
+    return;
+  }
   const lines = [
     `${settings.schoolName || 'School'} — Report Card`,
     `Name: ${result.student.name}`,
@@ -9809,6 +9832,25 @@ async function generateBatchPDF(results, positions, numOnRoll, classInfo, remark
 }
 
 /* ---------- utils ---------- */
+function guardianWhatsAppDigits(value) {
+  const compact = String(value ?? '').trim().replace(/[\s().-]/g, '');
+  if (/^0[1-9]\d{8}$/.test(compact)) return '233' + compact.slice(1);
+  const digits = compact.replace(/^(?:\+|00)/, '');
+  return /^[1-9]\d{6,14}$/.test(digits) ? digits : '';
+}
+
+function guardianPhoneInAddress(phone, address) {
+  if (String(phone ?? '').trim()) return false;
+  return /^233[25]\d{8}$/.test(guardianWhatsAppDigits(address));
+}
+
+function guardianPhoneHelp(student) {
+  if (guardianPhoneInAddress(student.parentPhone, student.houseGps)) {
+    return 'A number is saved under House No. / GhanaPost GPS. If it belongs to the parent, open Students → Edit, choose Move to Parent/Guardian phone, then Update.';
+  }
+  return 'Open Students → Edit, enter a valid Parent/Guardian phone number, then choose Update.';
+}
+
 function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, m => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
