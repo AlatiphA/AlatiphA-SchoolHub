@@ -1,6 +1,6 @@
 // AlatiphA SchoolHub — app-4.js
 // v40 sync-safety patch: non-destructive hydration, dirty-record upserts, explicit cloud-confirmed deletes.
-const APP_VERSION = '40.1.131';
+const APP_VERSION = '40.1.133';
 const STUDENT_RESULTS_PAGE_SIZE = 50;
 let studentListVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
 let studentDetailsTableVisibleCount = STUDENT_RESULTS_PAGE_SIZE;
@@ -580,6 +580,7 @@ function resetWorkspaceState() {
   sessionReady = false;
   sessionDataReady = false;
   cloudHydrationInProgress = false;
+  document.documentElement?.classList.remove('schoolhub-home');
 
   // Remove any stale rendered content immediately. Local/cloud records are
   // deliberately NOT deleted here because they belong to their school
@@ -1088,6 +1089,52 @@ function saveAttendanceTabState(mode) {
 
 /* ---------- view switching ---------- */
 const views = ['operations', 'app-settings', 'help-about', 'supervision', 'school-calendar', 'home', 'setup', 'staff', 'classes', 'students', 'subjects', 'attendance', 'grades', 'remarks', 'reports', 'billing', 'fees', 'history', 'manage-teachers', 'activity', 'communications', 'parent-portal'];
+let browserViewHistoryContext = '';
+let restoringBrowserView = false;
+function browserViewContext() {
+  const generation = typeof sessionGeneration === 'undefined' ? 0 : sessionGeneration;
+  const uid = typeof currentUid === 'undefined' ? '' : (currentUid || 'guest');
+  const school = typeof currentSchoolId === 'undefined' ? '' : (currentSchoolId || 'guest');
+  const role = typeof currentRole === 'undefined' ? '' : (currentRole || 'guest');
+  return [generation, uid, school, role].join('|');
+}
+function recordBrowserView(name) {
+  const history = window.history;
+  if (!history || typeof history.pushState !== 'function' || typeof history.replaceState !== 'function') return;
+  const context = browserViewContext();
+  const prior = history.state && typeof history.state === 'object' ? history.state : {};
+  if (browserViewHistoryContext !== context) {
+    browserViewHistoryContext = context;
+    try {
+      const home = { ...prior, schoolHubView: 'home', schoolHubContext: context, schoolHubDepth: 0 };
+      history.replaceState(home, '');
+      if (name !== 'home') history.pushState({ ...home, schoolHubView: name, schoolHubDepth: 1 }, '');
+    } catch (error) {
+      browserViewHistoryContext = '';
+      console.warn('SchoolHub view history is unavailable:', error);
+    }
+    return;
+  }
+  if (restoringBrowserView || (prior.schoolHubContext === context && prior.schoolHubView === name)) return;
+  try {
+    const depth = Number.isSafeInteger(prior.schoolHubDepth) ? prior.schoolHubDepth : 0;
+    history.pushState({ ...prior, schoolHubView: name, schoolHubContext: context, schoolHubDepth: depth + 1 }, '');
+  } catch (error) {
+    console.warn('SchoolHub could not add this view to browser history:', error);
+  }
+}
+function goHomeFromSubView() {
+  const history = window.history;
+  const state = history?.state;
+  if (state?.schoolHubContext === browserViewContext() && Number.isSafeInteger(state.schoolHubDepth) && state.schoolHubDepth > 0 && typeof history.go === 'function') {
+    restoringBrowserView = true;
+    try { showView('home'); }
+    finally { restoringBrowserView = false; }
+    history.go(-state.schoolHubDepth);
+    return;
+  }
+  showView('home');
+}
 function showView(name) {
   if (!enforceGuestTrial()) return;
   // Never render role-sensitive views while an authenticated session is still
@@ -1139,6 +1186,9 @@ function showView(name) {
     return;
   }
 
+  recordBrowserView(name);
+  document.documentElement?.classList.toggle('schoolhub-home', name === 'home');
+
   if (name === 'app-settings' || name === 'help-about') refreshProfileMenu();
   if (name === 'home') renderHome();
   if (name === 'setup') { refreshHeadTeacherSelect(); renderCloudSyncStatus(); renderYearRollover(); renderYearEndRestorePreview(); }
@@ -1177,6 +1227,15 @@ function showView(name) {
   if (typeof requestPendingNotificationTap === 'function') requestPendingNotificationTap();
 }
 
+if (typeof window !== 'undefined') window.addEventListener?.('popstate', event => {
+  if (!sessionReady || !sessionDataReady) return;
+  const state = event.state;
+  if (!state || state.schoolHubContext !== browserViewContext() || !views.includes(state.schoolHubView)) return;
+  restoringBrowserView = true;
+  try { showView(state.schoolHubView); }
+  finally { restoringBrowserView = false; }
+});
+
 function refreshHeadTeacherSelect() {
   const settings = DB.get(KEYS.settings, {});
   fillStaffSelect(document.getElementById('headTeacherSelect'), settings.headTeacherId || '');
@@ -1199,7 +1258,7 @@ function sectionTitle(name) {
   return titles[name] || 'AlatiphA SchoolHub';
 }
 
-document.getElementById('backBtn').addEventListener('click', () => showView('home'));
+document.getElementById('backBtn').addEventListener('click', () => goHomeFromSubView());
 
 /* ---------- v40 floating quick-access pill ---------- */
 let floatingPillLastY = window.scrollY || 0, floatingPillTicking = false;
@@ -1208,7 +1267,7 @@ function floatingPillIcon(name) {
 }
 function currentVisibleViewName(){return views.find(v=>{const el=document.getElementById('view-'+v);return el&&!el.classList.contains('hidden')})||'home'}
 function floatingPillItems(){const x=[{view:'home',label:'Home',icon:'home'},{view:'attendance',label:'Attendance',icon:'attendance'},{view:'grades',label:'Grades',icon:'grades'},{view:'reports',label:'Reports',icon:'reports'}];if(isHeadTeacher())x.push({view:'fees',label:'Fees & Receipts',icon:'billing'});return x}
-function renderFloatingPill(){let p=document.getElementById('schoolHubFloatingPill');if(!sessionReady&&FIREBASE_ENABLED){if(p)p.remove();return;}if(!p){p=document.createElement('nav');p.id='schoolHubFloatingPill';p.setAttribute('aria-label','Quick navigation');document.body.appendChild(p)}const active=currentVisibleViewName();p.innerHTML=floatingPillItems().map(i=>`<button type="button" data-view="${i.view}" class="${active===i.view?'active':''}">${floatingPillIcon(i.icon)}<span class="pill-label">${escapeHtml(i.label)}</span></button>`).join('');p.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{p.classList.remove('pill-hidden');showView(b.dataset.view);renderFloatingPill()}))}
+function renderFloatingPill(){let p=document.getElementById('schoolHubFloatingPill');if(!sessionReady&&FIREBASE_ENABLED){if(p)p.remove();return;}if(!p){p=document.createElement('nav');p.id='schoolHubFloatingPill';p.setAttribute('aria-label','Quick navigation');document.body.appendChild(p)}const active=currentVisibleViewName();p.innerHTML=floatingPillItems().map(i=>`<button type="button" data-view="${i.view}" class="${active===i.view?'active':''}">${floatingPillIcon(i.icon)}<span class="pill-label">${escapeHtml(i.label)}</span></button>`).join('');p.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{p.classList.remove('pill-hidden');if(b.dataset.view==='home')goHomeFromSubView();else showView(b.dataset.view);renderFloatingPill()}))}
 function showFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.remove('pill-hidden')}
 function hideFloatingPill(){const p=document.getElementById('schoolHubFloatingPill');if(p)p.classList.add('pill-hidden')}
 window.addEventListener('scroll',()=>{if(floatingPillTicking)return;floatingPillTicking=true;requestAnimationFrame(()=>{const y=Math.max(0,window.scrollY||document.documentElement.scrollTop||0),d=y-floatingPillLastY;if(y<80)showFloatingPill();else if(d>10)hideFloatingPill();else if(d<-10)showFloatingPill();floatingPillLastY=y;floatingPillTicking=false})},{passive:true});

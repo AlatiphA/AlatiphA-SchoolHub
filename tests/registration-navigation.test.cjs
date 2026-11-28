@@ -22,8 +22,9 @@ const context = vm.createContext({document:{getElementById:node},
   alert:()=>{}, console, isCurrentSession:()=>true, setSchoolChoiceError:message=>{throw Error(message);},
   enforceGuestTrial:()=>true,isTeacher:()=>false,saveNavigationState:()=>{},
   renderHome:()=>{}, renderClasses:()=>{},renderStudents:()=>{},renderSubjects:()=>{},renderStaff:()=>{},renderFloatingPill:()=>{},showFloatingPill:()=>{},
-  window:{scrollTo:()=>{}}
+  window:{scrollTo:()=>{}},recordBrowserView:()=>{}
 });
+context.goHomeFromSubView=()=>context.showView('home');
 vm.runInContext(`let sessionGeneration=1,currentUid='new-user',currentSchoolId='new-school';
 let sessionReady=false,sessionDataReady=false,appStarted=false;
 const FIREBASE_ENABLED=true;

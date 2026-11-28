@@ -58,6 +58,7 @@
 
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;overscroll-behavior-y:auto;}
+html.schoolhub-home,html.schoolhub-home body{overscroll-behavior-x:none;}
 body{
   background:var(--ink);
   color:var(--paper);
